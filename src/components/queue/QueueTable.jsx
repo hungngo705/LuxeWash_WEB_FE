@@ -1,4 +1,4 @@
-import { formatVnd } from '../../data/mockQueue'
+import { formatVnd } from '../../utils/format'
 
 function StatusBadge({ status }) {
   const isPending = status === 'Pending'

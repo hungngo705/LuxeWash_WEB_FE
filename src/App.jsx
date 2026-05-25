@@ -5,8 +5,10 @@ import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
-import PlaceholderPage from './pages/PlaceholderPage'
+import CustomersPage from './pages/CustomersPage'
+import HistoryPage from './pages/HistoryPage'
 import QueuePage from './pages/QueuePage'
+import SettingsPage from './pages/SettingsPage'
 
 export default function App() {
   return (
@@ -24,24 +26,9 @@ export default function App() {
           >
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/queue" element={<QueuePage />} />
-            <Route
-              path="/history"
-              element={
-                <PlaceholderPage
-                  title="History"
-                  description="Lịch sử xe đã rửa — sẽ triển khai ở commit tiếp theo."
-                />
-              }
-            />
-            <Route
-              path="/customers"
-              element={
-                <PlaceholderPage
-                  title="Customers"
-                  description="Tra cứu khách hàng — sẽ triển khai ở commit tiếp theo."
-                />
-              }
-            />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
           <Route path="/" element={<RootRedirect />} />

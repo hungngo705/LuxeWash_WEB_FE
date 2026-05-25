@@ -8,6 +8,7 @@ const PAGE_TITLES = {
   '/queue': 'Queue Management',
   '/history': 'Service History',
   '/customers': 'Customer Lookup',
+  '/settings': 'Settings',
 }
 
 export default function StaffLayout() {

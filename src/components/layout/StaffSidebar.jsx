@@ -49,14 +49,25 @@ export default function StaffSidebar({ station }) {
             </NavLink>
           ))}
 
-          <a
-            href="#settings"
-            className="mx-3 mt-auto flex items-center gap-4 rounded-lg px-4 py-3 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
-            onClick={(e) => e.preventDefault()}
+          <NavLink
+            to="/settings"
+            className={({ isActive }) =>
+              `mx-3 mt-auto flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200 active:scale-95 ${
+                isActive
+                  ? 'bg-primary text-on-primary'
+                  : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+              }`
+            }
           >
-            <span className="material-symbols-outlined">settings</span>
-            <span className="text-sm font-medium tracking-wide">Settings</span>
-          </a>
+            {({ isActive }) => (
+              <>
+                <span className={`material-symbols-outlined ${isActive ? 'filled' : ''}`}>
+                  settings
+                </span>
+                <span className="text-sm font-medium tracking-wide">Settings</span>
+              </>
+            )}
+          </NavLink>
         </div>
       </div>
     </nav>
