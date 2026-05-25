@@ -12,10 +12,10 @@ export default function StaffSidebar({ station }) {
     <nav className="bg-surface-container-lowest fixed top-0 left-0 z-50 h-screen w-64 border-r border-outline-variant shadow-sm">
       <div className="flex h-full flex-col py-6">
         <div className="mb-8 px-4">
-          <h1 className="font-headline-lg text-[32px] leading-10 font-semibold tracking-tight text-primary">
+          <h1 className="font-sora text-[32px] leading-10 font-semibold tracking-tight text-primary">
             LuxeWash Pro
           </h1>
-          <p className="mt-1 text-[12px] leading-4 font-semibold tracking-wider text-on-surface-variant uppercase">
+          <p className="mt-1 text-xs font-semibold tracking-wider text-on-surface-variant">
             {station} - Active
           </p>
         </div>
@@ -41,7 +41,7 @@ export default function StaffSidebar({ station }) {
                   >
                     {icon}
                   </span>
-                  <span className="font-label-bold text-[14px] leading-5 font-medium tracking-wide">
+                  <span className="text-sm font-medium tracking-wide">
                     {label}
                   </span>
                 </>
@@ -55,9 +55,7 @@ export default function StaffSidebar({ station }) {
             onClick={(e) => e.preventDefault()}
           >
             <span className="material-symbols-outlined">settings</span>
-            <span className="font-label-bold text-[14px] leading-5 font-medium tracking-wide">
-              Settings
-            </span>
+            <span className="text-sm font-medium tracking-wide">Settings</span>
           </a>
         </div>
       </div>

@@ -1,9 +1,9 @@
 export default function AutoApproveToggle({ enabled, onChange }) {
   return (
-    <div className="glass-panel soft-shadow flex items-center justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+    <div className="glass-panel soft-shadow flex shrink-0 grow-0 items-center justify-between rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
       <div className="flex items-center gap-3">
         <span className="material-symbols-outlined text-primary">bolt</span>
-        <span className="font-label-bold text-[14px] font-medium tracking-wider text-on-surface uppercase">
+        <span className="text-sm font-medium tracking-wider text-on-surface uppercase">
           Tự động duyệt
         </span>
       </div>

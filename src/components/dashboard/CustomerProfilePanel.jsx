@@ -1,17 +1,8 @@
-import { currentLprDetection } from '../../data/mockDashboard'
-
-function formatDate(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso.includes('T') ? iso : iso.split('/').reverse().join('-'))
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('vi-VN')
-}
-
-export default function CustomerProfilePanel({ autoApprove, onConfirm, onSkip }) {
-  const { customer, vehicle, booking } = currentLprDetection
+export default function CustomerProfilePanel({ detection, autoApprove, onConfirm, onSkip }) {
+  const { customer, vehicle } = detection
 
   return (
-    <section className="glass-panel soft-shadow metallic-edge relative overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+    <section className="glass-panel soft-shadow metallic-edge relative shrink-0 grow-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-container/5 to-transparent" />
       <h3 className="relative z-10 mb-4 font-sora text-2xl font-semibold text-on-surface">
         Thông tin khách hàng
@@ -26,10 +17,10 @@ export default function CustomerProfilePanel({ autoApprove, onConfirm, onSkip })
           />
         </div>
 
-        <div className="min-w-0 flex-grow">
+        <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h4 className="font-sora text-2xl font-semibold text-on-surface sm:text-[32px] sm:leading-10">
+              <h4 className="font-sora text-[32px] leading-10 font-semibold text-on-surface">
                 {customer.fullName}
               </h4>
               <p className="mt-1 flex items-center gap-1 text-base text-on-surface-variant">
@@ -50,23 +41,14 @@ export default function CustomerProfilePanel({ autoApprove, onConfirm, onSkip })
               </span>
               <span className="text-base text-on-surface">{vehicle.displayName}</span>
               <span className="mt-0.5 block text-xs text-on-surface-variant">
-                {vehicle.licensePlate} · {vehicle.vehicleType}
+                {vehicle.licensePlate}
               </span>
             </div>
             <div>
               <span className="mb-1 block text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 Lần rửa cuối
               </span>
-              <span className="text-base text-on-surface">{formatDate(customer.lastVisitDate)}</span>
-            </div>
-            <div className="col-span-2">
-              <span className="mb-1 block text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Dịch vụ đặt
-              </span>
-              <span className="text-base text-on-surface">{booking.serviceName}</span>
-              <span className="ml-2 rounded bg-surface-variant px-2 py-0.5 text-[10px] font-semibold text-on-surface-variant uppercase">
-                {booking.status}
-              </span>
+              <span className="text-base text-on-surface">{customer.lastVisitDisplay}</span>
             </div>
           </div>
 
