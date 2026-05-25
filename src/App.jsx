@@ -6,6 +6,7 @@ import { AuthProvider } from './context/AuthContext'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import PlaceholderPage from './pages/PlaceholderPage'
+import QueuePage from './pages/QueuePage'
 
 export default function App() {
   return (
@@ -22,15 +23,7 @@ export default function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route
-              path="/queue"
-              element={
-                <PlaceholderPage
-                  title="Queue"
-                  description="Trang hàng đợi — sẽ triển khai ở commit tiếp theo."
-                />
-              }
-            />
+            <Route path="/queue" element={<QueuePage />} />
             <Route
               path="/history"
               element={
