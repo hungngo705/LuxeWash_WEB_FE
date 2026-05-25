@@ -130,13 +130,7 @@ export const initialQueueBookings = [
   },
 ]
 
-export function formatVnd(amount) {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-    maximumFractionDigits: 0,
-  }).format(amount)
-}
+export { formatVnd } from '../utils/format'
 
 export function getQueueStats(bookings) {
   const pending = bookings.filter((b) => b.status === 'Pending').length
