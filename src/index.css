@@ -1,111 +1,161 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+@import 'tailwindcss';
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@theme {
+  --color-primary-fixed: #c3e8ff;
+  --color-on-primary: #ffffff;
+  --color-surface-bright: #f7f9fb;
+  --color-on-error: #ffffff;
+  --color-inverse-on-surface: #eff1f3;
+  --color-surface-container-low: #f2f4f6;
+  --color-secondary: #545f73;
+  --color-on-surface: #191c1e;
+  --color-inverse-surface: #2d3133;
+  --color-on-secondary: #ffffff;
+  --color-tertiary-container: #50a9d0;
+  --color-secondary-fixed: #d8e3fb;
+  --color-on-error-container: #93000a;
+  --color-surface-container: #eceef0;
+  --color-surface-variant: #e0e3e5;
+  --color-outline: #6f787f;
+  --color-on-background: #191c1e;
+  --color-error: #ba1a1a;
+  --color-surface: #f7f9fb;
+  --color-primary: #006689;
+  --color-surface-container-high: #e6e8ea;
+  --color-background: #f7f9fb;
+  --color-primary-container: #4aa9d7;
+  --color-error-container: #ffdad6;
+  --color-on-primary-container: #003b51;
+  --color-surface-container-lowest: #ffffff;
+  --color-outline-variant: #bec8cf;
+  --color-secondary-container: #d5e0f8;
+  --color-surface-tint: #006689;
+  --color-surface-container-highest: #e0e3e5;
+  --color-on-surface-variant: #3f484e;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
 
-  @media (max-width: 1024px) {
-    font-size: 16px;
+  /* Design spacing — prefix "lw-" để không ghi đè max-w-md, p-lg, gap-sm của Tailwind */
+  --spacing-lw-xs: 4px;
+  --spacing-lw-sm: 12px;
+  --spacing-lw-md: 16px;
+  --spacing-lw-lg: 24px;
+  --spacing-lw-xl: 32px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply bg-background text-on-background antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+
+  .material-symbols-outlined.filled {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+@layer utilities {
+  .font-sora {
+    font-family: 'Sora', system-ui, sans-serif;
   }
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  .font-inter {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .glass-card {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+  }
+
+  .soft-shadow {
+    box-shadow: 0 4px 20px 0 rgba(74, 169, 215, 0.1);
+  }
+
+  .neon-glow {
+    box-shadow: 0 4px 15px rgba(74, 169, 215, 0.3);
+  }
+
+  .metallic-edge {
+    border: 1px solid;
+    border-image-source: linear-gradient(to bottom right, #4aa9d7, #00a9e5);
+    border-image-slice: 1;
+  }
+
+  .input-focus-glow:focus-within {
+    box-shadow: 0 0 8px rgba(74, 169, 215, 0.2);
   }
 }
 
-body {
-  margin: 0;
+/* Login page — layout web 2 cột, tránh co chữ dọc */
+.login-page {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
+.login-split {
+  display: grid;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .login-split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.login-panel-left,
+.login-panel-right {
+  width: 100%;
+  min-width: 0;
   box-sizing: border-box;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+.login-panel-left {
+  display: none;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+@media (min-width: 1024px) {
+  .login-panel-left {
+    display: block;
   }
 }
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+
+.login-brand-block {
+  width: 100%;
+  max-width: 28rem;
+  white-space: normal;
+  word-break: normal;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+.login-form-wrap {
+  width: 100%;
+  max-width: 28rem;
 }
