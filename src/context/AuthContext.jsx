@@ -1,51 +1,73 @@
 import { createContext, useContext, useMemo, useState } from 'react'
+import { findAdminAccount } from '../data/adminAccounts'
 import { findStaffAccount } from '../data/staffAccounts'
 
 const AuthContext = createContext(null)
-const STORAGE_KEY = 'luxewash_staff_session'
+const STORAGE_KEY = 'luxewash_session'
+const LEGACY_KEY = 'luxewash_staff_session'
 
 function loadSession() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_KEY)
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
   }
 }
 
+function buildSession(account) {
+  const base = {
+    userId: account.userId,
+    phoneNumber: account.phoneNumber,
+    fullName: account.fullName,
+    role: account.role,
+    avatar: account.avatar,
+  }
+  if (account.role === 'Staff') return { ...base, station: account.station }
+  if (account.role === 'Admin') return { ...base, email: account.email }
+  return base
+}
+
 export function AuthProvider({ children }) {
-  const [staff, setStaff] = useState(loadSession)
+  const [user, setUser] = useState(loadSession)
   const [error, setError] = useState('')
 
   const login = (phoneOrEmail, password) => {
-    const account = findStaffAccount(phoneOrEmail, password)
+    const admin = findAdminAccount(phoneOrEmail, password)
+    const staff = !admin ? findStaffAccount(phoneOrEmail, password) : null
+    const account = admin ?? staff
+
     if (!account) {
-      setError('Số điện thoại hoặc mật khẩu không đúng. Chỉ tài khoản Staff được phép đăng nhập.')
-      return false
+      setError('Số điện thoại hoặc mật khẩu không đúng.')
+      return null
     }
-    const session = {
-      userId: account.userId,
-      phoneNumber: account.phoneNumber,
-      fullName: account.fullName,
-      role: account.role,
-      station: account.station,
-      avatar: account.avatar,
-    }
+
+    const session = buildSession(account)
+    localStorage.removeItem(LEGACY_KEY)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session))
-    setStaff(session)
+    setUser(session)
     setError('')
-    return true
+    return session.role
   }
 
   const logout = () => {
     localStorage.removeItem(STORAGE_KEY)
-    setStaff(null)
+    localStorage.removeItem(LEGACY_KEY)
+    setUser(null)
     setError('')
   }
 
   const value = useMemo(
-    () => ({ staff, isAuthenticated: Boolean(staff), login, logout, error, setError }),
-    [staff, error],
+    () => ({
+      user,
+      staff: user,
+      isAuthenticated: Boolean(user),
+      login,
+      logout,
+      error,
+      setError,
+    }),
+    [user, error],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
