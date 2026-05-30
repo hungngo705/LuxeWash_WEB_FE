@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { ADMIN_ACCOUNTS } from '../data/adminAccounts'
 import { STAFF_ACCOUNTS } from '../data/staffAccounts'
+import { getHomePathForRole } from '../utils/format'
 
 const PROMO_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAUXHN3a61U5ro1xkhR4qWLGGNTPTXebsOADVwhgBY2yZ4N_WyfMgRMIPwkgTzPIw-2cQSe2iulTO9E5a34WD2D3GnGL7ew-DGq4Bm-qM2eSCGL3ZgejOjV7ihL0GMiDDUbHAZmBW5RxGT-cs3FTOZQIaelCGaSauRE6_850p-k1dkfsfxsU3efJnOpjRaphe3qt0fjn1Ae8n0DWk_bcjOfx7WtO3s88jDNBIvoQJvCkgrzidp9-IViIkbptIk7PggOV4LrvzCMrHQ'
@@ -23,7 +25,7 @@ function LoginBrandHeader({ centered = false }) {
           LuxeWash
         </h1>
         <p className="text-2xl text-on-surface-variant">Chào mừng trở lại</p>
-        <p className="text-sm text-on-surface-variant/80">Staff Portal · LuxeWash Pro</p>
+        <p className="text-sm text-on-surface-variant/80">Staff & Admin Portal</p>
       </div>
     </header>
   )
@@ -121,48 +123,74 @@ function LoginForm({ phone, setPhone, password, setPassword, showPassword, setSh
         </button>
       </form>
 
-      <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
-        <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-          Tài khoản Staff (demo)
-        </p>
-        <ul className="space-y-2 text-sm text-on-surface-variant">
-          {STAFF_ACCOUNTS.map((acc) => (
-            <li key={acc.userId}>
-              <button
-                type="button"
-                className="text-primary hover:underline"
-                onClick={() => {
-                  setPhone(acc.phoneNumber)
-                  setPassword(acc.password)
-                }}
-              >
-                {acc.phoneNumber}
-              </button>
-              <span> · {acc.fullName}</span>
-            </li>
-          ))}
-        </ul>
+      <div className="space-y-4">
+        <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
+          <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+            Tài khoản Admin (demo)
+          </p>
+          <ul className="space-y-2 text-sm text-on-surface-variant">
+            {ADMIN_ACCOUNTS.map((acc) => (
+              <li key={`admin-${acc.userId}`}>
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => {
+                    setPhone(acc.phoneNumber)
+                    setPassword(acc.password)
+                  }}
+                >
+                  {acc.phoneNumber}
+                </button>
+                <span> · {acc.fullName}</span>
+                <span className="text-on-surface-variant/70"> · Admin@123</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
+          <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+            Tài khoản Staff (demo)
+          </p>
+          <ul className="space-y-2 text-sm text-on-surface-variant">
+            {STAFF_ACCOUNTS.map((acc) => (
+              <li key={`staff-${acc.userId}`}>
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => {
+                    setPhone(acc.phoneNumber)
+                    setPassword(acc.password)
+                  }}
+                >
+                  {acc.phoneNumber}
+                </button>
+                <span> · {acc.fullName}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
     </div>
   )
 }
 
 export default function LoginPage() {
-  const { isAuthenticated, login, error, setError } = useAuth()
+  const { isAuthenticated, user, login, error, setError } = useAuth()
   const navigate = useNavigate()
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />
+    return <Navigate to={getHomePathForRole(user?.role)} replace />
   }
 
   const handleSubmit = (e) => {
     e.preventDefault()
     setError('')
-    if (login(phone, password)) {
-      navigate('/dashboard', { replace: true })
+    const role = login(phone, password)
+    if (role) {
+      navigate(getHomePathForRole(role), { replace: true })
     }
   }
 
@@ -181,8 +209,8 @@ export default function LoginPage() {
             <div className="login-brand-block mx-auto w-full space-y-10">
               <LoginBrandHeader />
               <p className="text-base leading-relaxed text-on-surface-variant">
-                Đăng nhập bằng tài khoản nhân viên để vận hành LPR, hàng chờ và quản lý khách hàng
-                tại trạm.
+                Đăng nhập bằng tài khoản Staff hoặc Admin để vận hành trạm hoặc quản trị hệ thống
+                LuxeWash.
               </p>
               <PromoBanner />
             </div>
@@ -199,7 +227,7 @@ export default function LoginPage() {
 
             <div className="space-y-2 lg:pt-4">
               <h2 className="hidden font-sora text-2xl font-semibold text-primary lg:block">
-                Đăng nhập nhân viên
+                Đăng nhập
               </h2>
               <LoginForm
                 phone={phone}
@@ -214,8 +242,8 @@ export default function LoginPage() {
             </div>
 
             <p className="text-center text-sm text-on-surface-variant lg:text-left">
-              Chỉ nhân viên trạm (<strong className="text-on-surface">Role: Staff</strong>) được phép
-              truy cập.
+              Staff → <strong className="text-on-surface">/dashboard</strong> · Admin →{' '}
+              <strong className="text-on-surface">/admin/dashboard</strong>
             </p>
 
             {/* Mobile: banner dưới form như mockup */}

@@ -1,8 +1,13 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
+import { getHomePathForRole } from '../../utils/format'
 
-/** Trang đầu: Login nếu chưa đăng nhập, Dashboard nếu đã đăng nhập */
 export default function RootRedirect() {
-  const { isAuthenticated } = useAuth()
-  return <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />
+  const { isAuthenticated, user } = useAuth()
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <Navigate to={getHomePathForRole(user?.role)} replace />
 }
