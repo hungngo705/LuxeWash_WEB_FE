@@ -3,6 +3,7 @@ import {
   ApiError,
   createVehicleType,
   deleteVehicleType,
+  fetchServices,
   fetchVehicleTypes,
   updateVehicleType,
 } from '../../api'
@@ -15,6 +16,7 @@ const emptyForm = { name: '', description: '' }
 
 export default function AdminVehicleTypesPage() {
   const [vehicleTypes, setVehicleTypes] = useState([])
+  const [services, setServices] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -34,8 +36,9 @@ export default function AdminVehicleTypesPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const data = await fetchVehicleTypes()
-      setVehicleTypes(Array.isArray(data) ? data : [])
+      const [typesData, servicesData] = await Promise.all([fetchVehicleTypes(), fetchServices()])
+      setVehicleTypes(Array.isArray(typesData) ? typesData : [])
+      setServices(Array.isArray(servicesData) ? servicesData : [])
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách loại xe')
     } finally {
@@ -102,6 +105,11 @@ export default function AdminVehicleTypesPage() {
     }
   }
 
+  const countLinkedServices = (vehicleTypeId) =>
+    services.filter((s) =>
+      s.isActive !== false && s.prices?.some((p) => p.vehicleTypeId === vehicleTypeId),
+    ).length
+
   return (
     <div className="w-full">
       <PageHeader
@@ -152,7 +160,7 @@ export default function AdminVehicleTypesPage() {
                   <td className="px-4 py-3 text-on-surface-variant">#{vt.id}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{vt.name}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{vt.description || '—'}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">—</td>
+                  <td className="px-4 py-3 text-on-surface">{countLinkedServices(vt.id)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button

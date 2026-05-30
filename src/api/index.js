@@ -17,3 +17,10 @@ export {
   updateVehicleType,
   deleteVehicleType,
 } from './admin.vehicleTypes.api'
+
+export {
+  fetchServices,
+  createService,
+  updateService,
+  deleteService,
+} from './admin.services.api'
