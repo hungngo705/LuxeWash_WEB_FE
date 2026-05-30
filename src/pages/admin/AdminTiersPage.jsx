@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { ApiError, fetchTiers, updateTier } from '../../api'
+import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import { initialAdminTiers } from '../../data/mockAdminTiers'
 
 const TIER_COLORS = {
   Standard: 'border-outline-variant bg-surface-container-low',
@@ -10,11 +11,31 @@ const TIER_COLORS = {
   Platinum: 'border-primary/30 bg-primary-container/20',
 }
 
+function toApiPayload(form) {
+  return {
+    tierName: form.tierName,
+    pointMultiplier: Number(form.pointMultiplier),
+    bookingWindowDays: Number(form.bookingWindowDays),
+    minAccumulatedPoints: Number(form.minAccumulatedPoints),
+  }
+}
+
+function validateForm(form) {
+  if (!form.tierName?.trim()) return 'Thiếu tên hạng'
+  if (Number(form.pointMultiplier) <= 0) return 'Hệ số điểm phải lớn hơn 0'
+  if (Number(form.bookingWindowDays) < 1) return 'Cửa sổ đặt lịch phải ít nhất 1 ngày'
+  if (Number(form.minAccumulatedPoints) < 0) return 'Điểm tích lũy không được âm'
+  return null
+}
+
 export default function AdminTiersPage() {
-  const [tiers, setTiers] = useState(initialAdminTiers)
+  const [tiers, setTiers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({})
+  const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -22,18 +43,49 @@ export default function AdminTiersPage() {
     setTimeout(() => setToast(''), 2500)
   }
 
+  const loadTiers = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchTiers()
+      setTiers(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách hạng')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTiers()
+  }, [loadTiers])
+
   const openEdit = (tier) => {
     setEditingId(tier.tierId)
     setForm({ ...tier })
     setModalOpen(true)
   }
 
-  const handleSave = () => {
-    setTiers((prev) =>
-      prev.map((t) => (t.tierId === editingId ? { ...t, ...form } : t)),
-    )
-    setModalOpen(false)
-    showToast('Đã lưu (mock)')
+  const handleSave = async () => {
+    if (!editingId || saving) return
+
+    const validationError = validateForm(form)
+    if (validationError) {
+      showToast(validationError)
+      return
+    }
+
+    setSaving(true)
+    try {
+      await updateTier(editingId, toApiPayload(form))
+      setModalOpen(false)
+      showToast('Đã cập nhật cấu hình hạng')
+      await loadTiers()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được cấu hình hạng')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -56,52 +108,68 @@ export default function AdminTiersPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {tiers.map((tier) => (
-          <div
-            key={tier.tierId}
-            className={`glass-panel soft-shadow rounded-xl border p-5 ${TIER_COLORS[tier.tierName] ?? TIER_COLORS.Standard}`}
+      {loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-error">{loadError}</p>
+          <button
+            type="button"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            onClick={loadTiers}
           >
-            <div className="mb-4 flex items-start justify-between">
-              <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-semibold tracking-wider uppercase">
-                {tier.tierName}
-              </span>
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline"
-                onClick={() => openEdit(tier)}
-              >
-                Sửa
-              </button>
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải hạng thành viên…</p>
+      ) : tiers.length === 0 && !loadError ? (
+        <EmptyState icon="military_tech" title="Chưa có hạng thành viên" />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {tiers.map((tier) => (
+            <div
+              key={tier.tierId}
+              className={`glass-panel soft-shadow rounded-xl border p-5 ${TIER_COLORS[tier.tierName] ?? TIER_COLORS.Standard}`}
+            >
+              <div className="mb-4 flex items-start justify-between">
+                <span className="rounded-full bg-surface-container-lowest px-3 py-1 text-xs font-semibold tracking-wider uppercase">
+                  {tier.tierName}
+                </span>
+                <button
+                  type="button"
+                  className="text-sm text-primary hover:underline"
+                  onClick={() => openEdit(tier)}
+                >
+                  Sửa
+                </button>
+              </div>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-on-surface-variant">Hệ số điểm</dt>
+                  <dd className="font-medium text-on-surface">×{tier.pointMultiplier}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-on-surface-variant">Cửa sổ đặt lịch</dt>
+                  <dd className="font-medium text-on-surface">{tier.bookingWindowDays} ngày</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-on-surface-variant">Điểm tích lũy tối thiểu</dt>
+                  <dd className="font-medium text-on-surface">
+                    {tier.minAccumulatedPoints.toLocaleString('vi-VN')}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-on-surface-variant">Hệ số điểm</dt>
-                <dd className="font-medium text-on-surface">×{tier.pointMultiplier}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-on-surface-variant">Cửa sổ đặt lịch</dt>
-                <dd className="font-medium text-on-surface">{tier.bookingWindowDays} ngày</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-on-surface-variant">Điểm tích lũy tối thiểu</dt>
-                <dd className="font-medium text-on-surface">
-                  {tier.minAccumulatedPoints.toLocaleString('vi-VN')}
-                </dd>
-              </div>
-              <div className="flex justify-between border-t border-outline-variant/40 pt-2">
-                <dt className="text-on-surface-variant">Thành viên</dt>
-                <dd className="font-sora font-semibold text-on-surface">{tier.memberCount}</dd>
-              </div>
-            </dl>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <FormModal
         open={modalOpen}
         title={`Sửa hạng ${form.tierName ?? ''}`}
-        onClose={() => setModalOpen(false)}
+        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
@@ -112,9 +180,10 @@ export default function AdminTiersPage() {
             <input
               type="number"
               step="0.1"
-              min={1}
+              min={0.1}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.pointMultiplier ?? ''}
+              disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, pointMultiplier: Number(e.target.value) }))}
             />
           </label>
@@ -127,6 +196,7 @@ export default function AdminTiersPage() {
               min={1}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.bookingWindowDays ?? ''}
+              disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, bookingWindowDays: Number(e.target.value) }))}
             />
           </label>
@@ -139,7 +209,10 @@ export default function AdminTiersPage() {
               min={0}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.minAccumulatedPoints ?? ''}
-              onChange={(e) => setForm((f) => ({ ...f, minAccumulatedPoints: Number(e.target.value) }))}
+              disabled={saving}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, minAccumulatedPoints: Number(e.target.value) }))
+              }
             />
           </label>
         </div>
