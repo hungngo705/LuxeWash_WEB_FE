@@ -8,3 +8,5 @@ export {
   getStoredSession,
   saveSession,
 } from './client'
+
+export { loginWithCredentials, refreshAccessToken, fetchCurrentUser } from './auth.api'

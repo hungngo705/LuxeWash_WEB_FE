@@ -10,7 +10,7 @@ let onUnauthorized = null
 
 /** Register handler for 401 — wired in auth layer (commit 2). */
 export function setUnauthorizedHandler(handler) {
-  onUnauthorized = handler
+  onUnauthorized = handler ?? null
 }
 
 function buildUrl(path) {
