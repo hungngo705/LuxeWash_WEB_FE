@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Internal docs — không push lên GitHub
+docs/API Staff.md
+docs/API Admin.md
+docs/Admin Page.md
