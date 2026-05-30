@@ -10,3 +10,10 @@ export {
 } from './client'
 
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser } from './auth.api'
+
+export {
+  fetchVehicleTypes,
+  createVehicleType,
+  updateVehicleType,
+  deleteVehicleType,
+} from './admin.vehicleTypes.api'

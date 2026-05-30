@@ -1,34 +1,51 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiError,
+  createVehicleType,
+  deleteVehicleType,
+  fetchVehicleTypes,
+  updateVehicleType,
+} from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import { initialAdminServices } from '../../data/mockAdminServices'
-import { initialAdminVehicleTypes } from '../../data/mockAdminVehicleTypes'
 
 const emptyForm = { name: '', description: '' }
 
 export default function AdminVehicleTypesPage() {
-  const [vehicleTypes, setVehicleTypes] = useState(initialAdminVehicleTypes)
-  const [services] = useState(initialAdminServices)
+  const [vehicleTypes, setVehicleTypes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
-
-  const nextId = useMemo(
-    () => (vehicleTypes.length ? Math.max(...vehicleTypes.map((v) => v.vehicleTypeId)) + 1 : 1),
-    [vehicleTypes],
-  )
-
-  const countLinkedServices = (vehicleTypeId) =>
-    services.filter((s) => s.prices.some((p) => p.vehicleTypeId === vehicleTypeId)).length
 
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
+
+  const loadVehicleTypes = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchVehicleTypes()
+      setVehicleTypes(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách loại xe')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadVehicleTypes()
+  }, [loadVehicleTypes])
 
   const openCreate = () => {
     setEditingId(null)
@@ -37,35 +54,52 @@ export default function AdminVehicleTypesPage() {
   }
 
   const openEdit = (vt) => {
-    setEditingId(vt.vehicleTypeId)
-    setForm({ name: vt.name, description: vt.description })
+    setEditingId(vt.id)
+    setForm({ name: vt.name, description: vt.description ?? '' })
     setModalOpen(true)
   }
 
-  const handleSave = () => {
-    if (!form.name.trim()) return
+  const handleSave = async () => {
+    if (!form.name.trim() || saving) return
 
-    if (editingId) {
-      setVehicleTypes((prev) =>
-        prev.map((v) =>
-          v.vehicleTypeId === editingId ? { ...v, name: form.name, description: form.description } : v,
-        ),
-      )
-    } else {
-      setVehicleTypes((prev) => [
-        ...prev,
-        { vehicleTypeId: nextId, name: form.name, description: form.description },
-      ])
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim(),
     }
 
-    setModalOpen(false)
-    showToast('Đã lưu (mock)')
+    setSaving(true)
+    try {
+      if (editingId) {
+        await updateVehicleType(editingId, payload)
+        showToast('Đã cập nhật loại xe')
+      } else {
+        await createVehicleType(payload)
+        showToast('Đã thêm loại xe mới')
+      }
+
+      setModalOpen(false)
+      await loadVehicleTypes()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được loại xe')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleDelete = () => {
-    setVehicleTypes((prev) => prev.filter((v) => v.vehicleTypeId !== deleteTarget))
-    setDeleteTarget(null)
-    showToast('Đã xóa loại xe (mock)')
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return
+
+    setDeleting(true)
+    try {
+      await deleteVehicleType(deleteTarget)
+      setDeleteTarget(null)
+      showToast('Đã xóa loại xe')
+      await loadVehicleTypes()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không xóa được loại xe')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -83,7 +117,22 @@ export default function AdminVehicleTypesPage() {
         </p>
       )}
 
-      {vehicleTypes.length === 0 ? (
+      {loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-error">{loadError}</p>
+          <button
+            type="button"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            onClick={loadVehicleTypes}
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải danh sách loại xe…</p>
+      ) : vehicleTypes.length === 0 && !loadError ? (
         <EmptyState icon="directions_car" title="Chưa có loại xe" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -99,11 +148,11 @@ export default function AdminVehicleTypesPage() {
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
               {vehicleTypes.map((vt) => (
-                <tr key={vt.vehicleTypeId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{vt.vehicleTypeId}</td>
+                <tr key={vt.id} className="hover:bg-surface-container-low/50">
+                  <td className="px-4 py-3 text-on-surface-variant">#{vt.id}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{vt.name}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{vt.description}</td>
-                  <td className="px-4 py-3 text-on-surface">{countLinkedServices(vt.vehicleTypeId)}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{vt.description || '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">—</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button
@@ -116,7 +165,7 @@ export default function AdminVehicleTypesPage() {
                       <button
                         type="button"
                         className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                        onClick={() => setDeleteTarget(vt.vehicleTypeId)}
+                        onClick={() => setDeleteTarget(vt.id)}
                       >
                         Xóa
                       </button>
@@ -132,7 +181,8 @@ export default function AdminVehicleTypesPage() {
       <FormModal
         open={modalOpen}
         title={editingId ? 'Sửa loại xe' : 'Thêm loại xe'}
-        onClose={() => setModalOpen(false)}
+        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
@@ -145,6 +195,7 @@ export default function AdminVehicleTypesPage() {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
+              disabled={saving}
             />
           </label>
           <label className="block space-y-1">
@@ -156,6 +207,7 @@ export default function AdminVehicleTypesPage() {
               rows={3}
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              disabled={saving}
             />
           </label>
         </div>
@@ -165,10 +217,10 @@ export default function AdminVehicleTypesPage() {
         open={Boolean(deleteTarget)}
         title="Xóa loại xe"
         message="Bạn chắc chắn muốn xóa loại xe này?"
-        confirmLabel="Xóa"
+        confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
         variant="danger"
         onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => !deleting && setDeleteTarget(null)}
       />
     </div>
   )
