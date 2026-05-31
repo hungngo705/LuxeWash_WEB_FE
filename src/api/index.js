@@ -51,3 +51,10 @@ export {
   updateUserStatus,
   normalizeListUser,
 } from './admin.users.api'
+
+export {
+  fetchPendingVehicleApprovals,
+  approveNewVehicleType,
+  rejectNewVehicleType,
+  normalizePendingApproval,
+} from './admin.vehicles.api'
