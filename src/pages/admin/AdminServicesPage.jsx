@@ -319,12 +319,25 @@ export default function AdminServicesPage() {
                 + Thêm mức giá
               </button>
             </div>
+            <div
+              className="mb-1 hidden gap-2 px-3 text-xs font-semibold text-on-surface-variant sm:grid sm:grid-cols-4"
+              aria-hidden
+            >
+              <span>Loại xe</span>
+              <span>Giá tiền (VNĐ)</span>
+              <span>Thời gian tối đa (phút)</span>
+              <span />
+            </div>
             <div className="space-y-3">
               {form.prices.map((price, idx) => (
                 <div
                   key={idx}
                   className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-4"
                 >
+                  <label className="block space-y-1 sm:contents">
+                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
+                      Loại xe
+                    </span>
                   <select
                     className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
                     value={price.vehicleTypeId}
@@ -343,11 +356,15 @@ export default function AdminServicesPage() {
                       </option>
                     ))}
                   </select>
+                  </label>
+                  <label className="block space-y-1 sm:contents">
+                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
+                      Giá tiền
+                    </span>
                   <input
                     type="number"
                     min={0}
                     className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    placeholder="Giá VND"
                     value={price.price}
                     disabled={saving}
                     onChange={(e) => {
@@ -358,12 +375,16 @@ export default function AdminServicesPage() {
                       })
                     }}
                   />
+                  </label>
+                  <label className="block space-y-1 sm:contents">
+                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
+                      Thời gian tối đa 
+                    </span>
                   <input
                     type="number"
                     min={5}
                     max={600}
                     className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    placeholder="Phút"
                     value={price.estimatedDurationMinutes}
                     disabled={saving}
                     onChange={(e) => {
@@ -377,6 +398,7 @@ export default function AdminServicesPage() {
                       })
                     }}
                   />
+                  </label>
                   {form.prices.length > 1 && (
                     <button
                       type="button"
