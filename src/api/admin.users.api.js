@@ -19,7 +19,12 @@ import { apiRequest } from './client'
  *   totalPoint?: number
  *   promotionPoint?: number
  *   churnScore?: number
- *   vehicles?: Array<{ licensePlate?: string; vehicleTypeName?: string }>
+ *   vehicles?: Array<{
+ *     licensePlate?: string
+ *     vehicleType?: string
+ *     vehicleTypeName?: string
+ *     displayName?: string
+ *   }>
  * }} UserDetail
  *
  * @typedef {{
@@ -50,9 +55,33 @@ export function fetchUsers(params = {}) {
   return apiRequest(`/admin/users${query ? `?${query}` : ''}`)
 }
 
+/** @param {Record<string, unknown>} vehicle */
+export function normalizeUserVehicle(vehicle) {
+  const typeLabel =
+    vehicle.vehicleType ??
+    vehicle.vehicleTypeName ??
+    vehicle.typeName ??
+    null
+
+  return {
+    licensePlate: String(vehicle.licensePlate ?? '').trim(),
+    vehicleType: typeLabel ? String(typeLabel) : '',
+    vehicleTypeName: typeLabel ? String(typeLabel) : '',
+    displayName: String(vehicle.displayName ?? vehicle.vehicleDisplayName ?? '').trim(),
+  }
+}
+
+/** @param {UserDetail} detail */
+export function normalizeUserDetail(detail) {
+  return {
+    ...detail,
+    vehicles: Array.isArray(detail.vehicles) ? detail.vehicles.map(normalizeUserVehicle) : [],
+  }
+}
+
 /** @param {number} id @returns {Promise<UserDetail>} */
 export function fetchUserById(id) {
-  return apiRequest(`/admin/users/${id}`)
+  return apiRequest(`/admin/users/${id}`).then(normalizeUserDetail)
 }
 
 /** @param {number} id @param {'Active' | 'Blocked'} status */
