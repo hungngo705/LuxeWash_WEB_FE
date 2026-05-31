@@ -365,12 +365,21 @@ export default function AdminUsersPage() {
                       </dt>
                       <dd className="space-y-1">
                         {selectedUser.vehicles.map((v) => (
-                          <p
-                            key={v.licensePlate ?? v.vehicleTypeName}
-                            className="rounded-lg bg-surface-container-low px-3 py-2 text-on-surface"
+                          <div
+                            key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
+                            className="rounded-lg bg-surface-container-low px-3 py-2"
                           >
-                            {v.licensePlate ?? '—'} · {v.vehicleTypeName ?? '—'}
-                          </p>
+                            <p className="font-medium text-on-surface">
+                              {v.licensePlate || '—'}
+                            </p>
+                            {(v.displayName || v.vehicleType || v.vehicleTypeName) && (
+                              <p className="text-sm text-on-surface-variant">
+                                {[v.displayName, v.vehicleType || v.vehicleTypeName]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                              </p>
+                            )}
+                          </div>
                         ))}
                       </dd>
                     </div>
