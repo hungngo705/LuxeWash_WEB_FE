@@ -69,3 +69,10 @@ export {
   toApiTargetDate,
   toApiBookingStatus,
 } from './admin.bookings.api'
+
+export {
+  fetchTransactions,
+  fetchPointsHistory,
+  normalizeTransaction,
+  normalizePointsEntry,
+} from './admin.transactions.api'
