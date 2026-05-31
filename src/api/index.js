@@ -35,3 +35,12 @@ export {
 } from './admin.timeSlots.api'
 
 export { fetchTiers, createTier, updateTier } from './admin.tiers.api'
+
+export {
+  fetchVouchers,
+  createVoucher,
+  updateVoucher,
+  deleteVoucher,
+  toApiExpiryDate,
+  toDatetimeLocalValue,
+} from './admin.vouchers.api'
