@@ -1,35 +1,74 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiError,
+  createTimeSlot,
+  deleteTimeSlot,
+  fetchTimeSlots,
+  toApiTimeValue,
+  toTimeInputValue,
+  updateTimeSlot,
+} from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import { initialAdminTimeSlots } from '../../data/mockAdminTimeSlots'
 
 const emptyForm = {
   startTime: '07:00',
   endTime: '07:20',
   maxCapacity: 3,
   isVipOnly: false,
-  bookedToday: 0,
+}
+
+function toApiPayload(form) {
+  return {
+    startTime: toApiTimeValue(form.startTime),
+    endTime: toApiTimeValue(form.endTime),
+    maxCapacity: Number(form.maxCapacity),
+    isVipOnly: Boolean(form.isVipOnly),
+  }
+}
+
+function validateForm(form) {
+  if (!form.startTime || !form.endTime) return 'Vui lòng chọn giờ bắt đầu và kết thúc'
+  if (form.startTime >= form.endTime) return 'Giờ kết thúc phải sau giờ bắt đầu'
+  if (Number(form.maxCapacity) < 1) return 'Capacity phải ít nhất 1'
+  return null
 }
 
 export default function AdminTimeSlotsPage() {
-  const [slots, setSlots] = useState(initialAdminTimeSlots)
+  const [slots, setSlots] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
-
-  const nextId = useMemo(
-    () => (slots.length ? Math.max(...slots.map((s) => s.slotId)) + 1 : 1),
-    [slots],
-  )
 
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
+
+  const loadSlots = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchTimeSlots()
+      setSlots(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách khung giờ')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSlots()
+  }, [loadSlots])
 
   const openCreate = () => {
     setEditingId(null)
@@ -40,31 +79,58 @@ export default function AdminTimeSlotsPage() {
   const openEdit = (slot) => {
     setEditingId(slot.slotId)
     setForm({
-      startTime: slot.startTime,
-      endTime: slot.endTime,
+      startTime: toTimeInputValue(slot.startTime),
+      endTime: toTimeInputValue(slot.endTime),
       maxCapacity: slot.maxCapacity,
       isVipOnly: slot.isVipOnly,
-      bookedToday: slot.bookedToday,
     })
     setModalOpen(true)
   }
 
-  const handleSave = () => {
-    if (editingId) {
-      setSlots((prev) =>
-        prev.map((s) => (s.slotId === editingId ? { ...s, ...form } : s)),
-      )
-    } else {
-      setSlots((prev) => [...prev, { slotId: nextId, ...form }])
+  const handleSave = async () => {
+    if (saving) return
+
+    const validationError = validateForm(form)
+    if (validationError) {
+      showToast(validationError)
+      return
     }
-    setModalOpen(false)
-    showToast('Đã lưu (mock)')
+
+    const payload = toApiPayload(form)
+
+    setSaving(true)
+    try {
+      if (editingId) {
+        await updateTimeSlot(editingId, payload)
+        showToast('Đã cập nhật khung giờ')
+      } else {
+        await createTimeSlot(payload)
+        showToast('Đã thêm khung giờ mới')
+      }
+
+      setModalOpen(false)
+      await loadSlots()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được khung giờ')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleDelete = () => {
-    setSlots((prev) => prev.filter((s) => s.slotId !== deleteTarget))
-    setDeleteTarget(null)
-    showToast('Đã xóa khung giờ (mock)')
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return
+
+    setDeleting(true)
+    try {
+      await deleteTimeSlot(deleteTarget)
+      setDeleteTarget(null)
+      showToast('Đã xóa khung giờ')
+      await loadSlots()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không xóa được khung giờ')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -82,11 +148,26 @@ export default function AdminTimeSlotsPage() {
         </p>
       )}
 
-      {slots.length === 0 ? (
+      {loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-error">{loadError}</p>
+          <button
+            type="button"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            onClick={loadSlots}
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải khung giờ…</p>
+      ) : slots.length === 0 && !loadError ? (
         <EmptyState icon="schedule" title="Chưa có khung giờ" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
@@ -94,7 +175,6 @@ export default function AdminTimeSlotsPage() {
                 <th className="px-4 py-3">Giờ kết thúc</th>
                 <th className="px-4 py-3">Capacity</th>
                 <th className="px-4 py-3">VIP only</th>
-                <th className="px-4 py-3">Đã đặt hôm nay</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
@@ -102,8 +182,8 @@ export default function AdminTimeSlotsPage() {
               {slots.map((slot) => (
                 <tr key={slot.slotId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 text-on-surface-variant">#{slot.slotId}</td>
-                  <td className="px-4 py-3 text-on-surface">{slot.startTime}</td>
-                  <td className="px-4 py-3 text-on-surface">{slot.endTime}</td>
+                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.startTime)}</td>
+                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.endTime)}</td>
                   <td className="px-4 py-3 text-on-surface">{slot.maxCapacity}</td>
                   <td className="px-4 py-3">
                     {slot.isVipOnly ? (
@@ -111,9 +191,6 @@ export default function AdminTimeSlotsPage() {
                     ) : (
                       <span className="text-on-surface-variant">—</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">
-                    {slot.bookedToday}/{slot.maxCapacity}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
@@ -143,7 +220,8 @@ export default function AdminTimeSlotsPage() {
       <FormModal
         open={modalOpen}
         title={editingId ? 'Sửa khung giờ' : 'Thêm khung giờ'}
-        onClose={() => setModalOpen(false)}
+        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
@@ -156,6 +234,7 @@ export default function AdminTimeSlotsPage() {
                 type="time"
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.startTime}
+                disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
               />
             </label>
@@ -167,6 +246,7 @@ export default function AdminTimeSlotsPage() {
                 type="time"
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.endTime}
+                disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
               />
             </label>
@@ -180,6 +260,7 @@ export default function AdminTimeSlotsPage() {
               min={1}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.maxCapacity}
+              disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
             />
           </label>
@@ -187,6 +268,7 @@ export default function AdminTimeSlotsPage() {
             <input
               type="checkbox"
               checked={form.isVipOnly}
+              disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, isVipOnly: e.target.checked }))}
               className="h-4 w-4 rounded border-outline-variant"
             />
@@ -199,10 +281,10 @@ export default function AdminTimeSlotsPage() {
         open={Boolean(deleteTarget)}
         title="Xóa khung giờ"
         message="Bạn chắc chắn muốn xóa khung giờ này?"
-        confirmLabel="Xóa"
+        confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
         variant="danger"
         onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => !deleting && setDeleteTarget(null)}
       />
     </div>
   )

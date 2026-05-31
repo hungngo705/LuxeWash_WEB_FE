@@ -1,70 +1,155 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiError,
+  createVoucher,
+  deleteVoucher,
+  fetchVouchers,
+  toApiExpiryDate,
+  toDatetimeLocalValue,
+  updateVoucher,
+} from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import { initialAdminVouchers } from '../../data/mockAdminVouchers'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const emptyForm = {
   code: '',
-  discountAmount: 0,
+  discountAmount: 50000,
   pointsRequired: 0,
   maxUsages: 100,
-  usedCount: 0,
   expiryDate: '',
-  status: 'Active',
+}
+
+function getVoucherStatus(voucher) {
+  const expiry = new Date(voucher.expiryDate)
+  if (expiry < new Date()) return 'Expired'
+  if ((voucher.redeemedCount ?? 0) >= voucher.maxUsages) return 'Expired'
+  return 'Active'
+}
+
+function toApiPayload(form) {
+  return {
+    code: form.code.trim().toUpperCase(),
+    discountAmount: Number(form.discountAmount),
+    maxUsages: Number(form.maxUsages),
+    expiryDate: toApiExpiryDate(form.expiryDate),
+    pointsRequired: Number(form.pointsRequired),
+  }
+}
+
+function validateForm(form) {
+  if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
+  if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
+  const amount = Number(form.discountAmount)
+  if (amount < 1 || amount > 1_000_000_000) return 'Giảm giá phải từ 1 đến 1.000.000.000 VND'
+  if (!form.expiryDate) return 'Vui lòng chọn ngày hết hạn'
+  if (Number(form.maxUsages) < 1) return 'Max usages phải ít nhất 1'
+  if (Number(form.pointsRequired) < 0) return 'Điểm đổi không được âm'
+  return null
 }
 
 export default function AdminVouchersPage() {
-  const [vouchers, setVouchers] = useState(initialAdminVouchers)
+  const [vouchers, setVouchers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [deleteTarget, setDeleteTarget] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
-
-  const nextId = useMemo(
-    () => (vouchers.length ? Math.max(...vouchers.map((v) => v.voucherId)) + 1 : 1),
-    [vouchers],
-  )
 
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
 
+  const loadVouchers = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchVouchers()
+      setVouchers(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách voucher')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadVouchers()
+  }, [loadVouchers])
+
   const openCreate = () => {
     setEditingId(null)
-    setForm({ ...emptyForm, expiryDate: '2026-12-31T23:59:59' })
+    setForm({
+      ...emptyForm,
+      expiryDate: toDatetimeLocalValue('2026-12-31T23:59:59Z'),
+    })
     setModalOpen(true)
   }
 
   const openEdit = (voucher) => {
     setEditingId(voucher.voucherId)
-    setForm({ ...voucher })
+    setForm({
+      code: voucher.code,
+      discountAmount: voucher.discountAmount,
+      pointsRequired: voucher.pointsRequired,
+      maxUsages: voucher.maxUsages,
+      expiryDate: toDatetimeLocalValue(voucher.expiryDate),
+    })
     setModalOpen(true)
   }
 
-  const handleSave = () => {
-    if (!form.code.trim()) return
+  const handleSave = async () => {
+    if (saving) return
 
-    if (editingId) {
-      setVouchers((prev) =>
-        prev.map((v) => (v.voucherId === editingId ? { ...v, ...form } : v)),
-      )
-    } else {
-      setVouchers((prev) => [...prev, { voucherId: nextId, ...form }])
+    const validationError = validateForm(form)
+    if (validationError) {
+      showToast(validationError)
+      return
     }
-    setModalOpen(false)
-    showToast('Đã lưu (mock)')
+
+    const payload = toApiPayload(form)
+
+    setSaving(true)
+    try {
+      if (editingId) {
+        await updateVoucher(editingId, payload)
+        showToast('Đã cập nhật voucher')
+      } else {
+        await createVoucher(payload)
+        showToast('Đã thêm voucher mới')
+      }
+
+      setModalOpen(false)
+      await loadVouchers()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được voucher')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleDelete = () => {
-    setVouchers((prev) => prev.filter((v) => v.voucherId !== deleteTarget))
-    setDeleteTarget(null)
-    showToast('Đã xóa voucher (mock)')
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return
+
+    setDeleting(true)
+    try {
+      await deleteVoucher(deleteTarget)
+      setDeleteTarget(null)
+      showToast('Đã xóa voucher')
+      await loadVouchers()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không xóa được voucher')
+    } finally {
+      setDeleting(false)
+    }
   }
 
   return (
@@ -82,7 +167,22 @@ export default function AdminVouchersPage() {
         </p>
       )}
 
-      {vouchers.length === 0 ? (
+      {loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-error">{loadError}</p>
+          <button
+            type="button"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            onClick={loadVouchers}
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải voucher…</p>
+      ) : vouchers.length === 0 && !loadError ? (
         <EmptyState icon="confirmation_number" title="Chưa có voucher" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -105,13 +205,13 @@ export default function AdminVouchersPage() {
                   <td className="px-4 py-3 text-on-surface">{formatVnd(voucher.discountAmount)}</td>
                   <td className="px-4 py-3 text-on-surface">{voucher.pointsRequired}</td>
                   <td className="px-4 py-3 text-on-surface">
-                    {voucher.usedCount} / {voucher.maxUsages}
+                    {voucher.redeemedCount ?? 0} / {voucher.maxUsages}
                   </td>
                   <td className="px-4 py-3 text-on-surface-variant">
                     {formatDateTime(voucher.expiryDate)}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge status={voucher.status} />
+                    <StatusBadge status={getVoucherStatus(voucher)} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
@@ -141,7 +241,8 @@ export default function AdminVouchersPage() {
       <FormModal
         open={modalOpen}
         title={editingId ? 'Sửa voucher' : 'Thêm voucher'}
-        onClose={() => setModalOpen(false)}
+        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
@@ -152,6 +253,7 @@ export default function AdminVouchersPage() {
             <input
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono uppercase"
               value={form.code}
+              disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
               required
             />
@@ -163,8 +265,10 @@ export default function AdminVouchersPage() {
               </span>
               <input
                 type="number"
+                min={1}
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.discountAmount}
+                disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, discountAmount: Number(e.target.value) }))}
               />
             </label>
@@ -174,38 +278,27 @@ export default function AdminVouchersPage() {
               </span>
               <input
                 type="number"
+                min={0}
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.pointsRequired}
+                disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, pointsRequired: Number(e.target.value) }))}
               />
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Max usages
-              </span>
-              <input
-                type="number"
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.maxUsages}
-                onChange={(e) => setForm((f) => ({ ...f, maxUsages: Number(e.target.value) }))}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Trạng thái
-              </span>
-              <select
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.status}
-                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-              >
-                <option value="Active">Active</option>
-                <option value="Expired">Expired</option>
-              </select>
-            </label>
-          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Max usages
+            </span>
+            <input
+              type="number"
+              min={1}
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.maxUsages}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, maxUsages: Number(e.target.value) }))}
+            />
+          </label>
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               Ngày hết hạn
@@ -213,8 +306,9 @@ export default function AdminVouchersPage() {
             <input
               type="datetime-local"
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.expiryDate ? form.expiryDate.slice(0, 16) : ''}
-              onChange={(e) => setForm((f) => ({ ...f, expiryDate: `${e.target.value}:00` }))}
+              value={form.expiryDate}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))}
             />
           </label>
         </div>
@@ -224,10 +318,10 @@ export default function AdminVouchersPage() {
         open={Boolean(deleteTarget)}
         title="Xóa voucher"
         message="Bạn chắc chắn muốn xóa voucher này?"
-        confirmLabel="Xóa"
+        confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
         variant="danger"
         onConfirm={handleDelete}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => !deleting && setDeleteTarget(null)}
       />
     </div>
   )

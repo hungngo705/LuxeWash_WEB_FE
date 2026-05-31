@@ -1,51 +1,104 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ApiError,
+  fetchBookingsByDate,
+  normalizeAdminBooking,
+  toApiTargetDate,
+  updateBookingStatus,
+} from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import { initialAdminBookings } from '../../data/mockAdminBookings'
 import { formatVnd } from '../../utils/format'
 
-const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Completed', 'Cancelled']
+const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Completed', 'Cancelled', 'No-show']
+
+function todayDateValue() {
+  const now = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
 
 export default function AdminBookingsPage() {
-  const [bookings, setBookings] = useState(initialAdminBookings)
-  const [dateFilter, setDateFilter] = useState('')
+  const [bookings, setBookings] = useState([])
+  const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [statusFilter, setStatusFilter] = useState('All')
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [detailBooking, setDetailBooking] = useState(null)
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
+
+  const loadBookings = useCallback(async () => {
+    const targetDate = toApiTargetDate(dateFilter)
+    if (!targetDate) return
+
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchBookingsByDate(targetDate)
+      const items = Array.isArray(data) ? data.map(normalizeAdminBooking) : []
+      setBookings(items)
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách booking')
+    } finally {
+      setLoading(false)
+    }
+  }, [dateFilter])
+
+  useEffect(() => {
+    loadBookings()
+  }, [loadBookings])
 
   const filtered = useMemo(() => {
-    return bookings.filter((b) => {
-      const matchDate = !dateFilter || b.scheduledDate === dateFilter
-      const matchStatus = statusFilter === 'All' || b.status === statusFilter
-      return matchDate && matchStatus
-    })
-  }, [bookings, dateFilter, statusFilter])
+    return bookings.filter((b) => statusFilter === 'All' || b.status === statusFilter)
+  }, [bookings, statusFilter])
 
-  const handleForceCancel = () => {
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.bookingId === cancelTarget
-          ? { ...b, status: 'Cancelled' }
-          : b,
-      ),
-    )
-    window.alert(`Đã hủy booking #${cancelTarget} (mock). Lý do: ${cancelReason || 'Admin force cancel'}`)
-    setCancelTarget(null)
-    setCancelReason('')
+  const handleCancel = async () => {
+    if (!cancelTarget || cancelling) return
+
+    setCancelling(true)
+    try {
+      await updateBookingStatus(cancelTarget, 'Cancelled')
+      setCancelTarget(null)
+      showToast(
+        cancelReason.trim()
+          ? `Đã hủy booking #${cancelTarget}. Lý do: ${cancelReason.trim()}`
+          : `Đã hủy booking #${cancelTarget}`,
+      )
+      setCancelReason('')
+      setDetailBooking(null)
+      await loadBookings()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không hủy được booking')
+    } finally {
+      setCancelling(false)
+    }
   }
 
   return (
     <div className="w-full">
       <PageHeader
         title="Lịch đặt toàn hệ thống"
-        description="Xem và quản lý booking trên toàn bộ trạm"
+        description="Xem và quản lý booking theo ngày trên toàn bộ trạm"
       />
 
-      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
+
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex items-center gap-2 text-sm">
           <span className="text-on-surface-variant">Ngày:</span>
           <input
@@ -54,15 +107,6 @@ export default function AdminBookingsPage() {
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
           />
-          {dateFilter && (
-            <button
-              type="button"
-              className="text-primary hover:underline"
-              onClick={() => setDateFilter('')}
-            >
-              Xóa
-            </button>
-          )}
         </label>
         <div className="flex flex-wrap gap-2">
           {STATUS_OPTIONS.map((status) => (
@@ -82,7 +126,22 @@ export default function AdminBookingsPage() {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {loadError && (
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-error">{loadError}</p>
+          <button
+            type="button"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            onClick={loadBookings}
+          >
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải booking…</p>
+      ) : filtered.length === 0 && !loadError ? (
         <EmptyState icon="calendar_month" title="Không có booking" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -125,15 +184,17 @@ export default function AdminBookingsPage() {
                       >
                         Chi tiết
                       </button>
-                      {booking.status !== 'Cancelled' && booking.status !== 'Completed' && (
-                        <button
-                          type="button"
-                          className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                          onClick={() => setCancelTarget(booking.bookingId)}
-                        >
-                          Hủy
-                        </button>
-                      )}
+                      {booking.status !== 'Cancelled' &&
+                        booking.status !== 'Completed' &&
+                        booking.status !== 'No-show' && (
+                          <button
+                            type="button"
+                            className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
+                            onClick={() => setCancelTarget(booking.bookingId)}
+                          >
+                            Hủy
+                          </button>
+                        )}
                     </div>
                   </td>
                 </tr>
@@ -159,7 +220,7 @@ export default function AdminBookingsPage() {
               </div>
               <div>
                 <p className="text-xs text-on-surface-variant">Ngày đặt</p>
-                <p className="text-on-surface">{detailBooking.scheduledDate}</p>
+                <p className="text-on-surface">{detailBooking.scheduledDate || '—'}</p>
               </div>
               <div>
                 <p className="text-xs text-on-surface-variant">Khung giờ</p>
@@ -174,49 +235,58 @@ export default function AdminBookingsPage() {
                 <p className="font-mono text-on-surface">{detailBooking.fallbackQrCode}</p>
               </div>
             </div>
-            <div>
-              <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Chi tiết xe
-              </p>
-              <ul className="space-y-2">
-                {detailBooking.details.map((d) => (
-                  <li
-                    key={d.detailId}
-                    className="rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2 text-sm"
-                  >
-                    <p className="font-medium text-on-surface">{d.licensePlate}</p>
-                    <p className="text-on-surface-variant">
-                      {d.serviceName} · {d.vehicleCondition}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            {detailBooking.details.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                  Chi tiết xe
+                </p>
+                <ul className="space-y-2">
+                  {detailBooking.details.map((d) => (
+                    <li
+                      key={d.detailId}
+                      className="rounded-lg border border-outline-variant/60 bg-surface-container-low px-3 py-2 text-sm"
+                    >
+                      <p className="font-medium text-on-surface">{d.licensePlate}</p>
+                      <p className="text-on-surface-variant">
+                        {d.serviceName} · {d.vehicleCondition}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-on-surface-variant">Không có chi tiết xe trong response.</p>
+            )}
           </div>
         )}
       </FormModal>
 
       <ConfirmDialog
         open={Boolean(cancelTarget)}
-        title="Force Cancel booking"
+        title="Hủy booking"
         message={
           <div className="mt-3 space-y-1">
-            <p className="text-sm text-on-surface-variant">Nhập lý do hủy booking:</p>
+            <p className="text-sm text-on-surface-variant">
+              Hủy booking #{cancelTarget}. Lý do (tùy chọn, chỉ hiển thị nội bộ):
+            </p>
             <textarea
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
               rows={3}
               value={cancelReason}
+              disabled={cancelling}
               onChange={(e) => setCancelReason(e.target.value)}
               placeholder="Lý do..."
             />
           </div>
         }
-        confirmLabel="Hủy booking"
+        confirmLabel={cancelling ? 'Đang xử lý…' : 'Hủy booking'}
         variant="danger"
-        onConfirm={handleForceCancel}
+        onConfirm={handleCancel}
         onCancel={() => {
-          setCancelTarget(null)
-          setCancelReason('')
+          if (!cancelling) {
+            setCancelTarget(null)
+            setCancelReason('')
+          }
         }}
       />
     </div>

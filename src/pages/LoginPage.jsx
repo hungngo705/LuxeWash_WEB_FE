@@ -46,7 +46,17 @@ function PromoBanner({ className = '' }) {
   )
 }
 
-function LoginForm({ phone, setPhone, password, setPassword, showPassword, setShowPassword, error, onSubmit }) {
+function LoginForm({
+  phone,
+  setPhone,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
+  error,
+  isSubmitting,
+  onSubmit,
+}) {
   return (
     <div className="glass-card w-full space-y-6 rounded-xl p-8">
       <form className="space-y-5" onSubmit={onSubmit}>
@@ -116,17 +126,18 @@ function LoginForm({ phone, setPhone, password, setPassword, showPassword, setSh
 
         <button
           type="submit"
-          className="neon-glow flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary-container text-xl font-semibold text-on-primary-container transition-transform duration-200 active:scale-95"
+          disabled={isSubmitting}
+          className="neon-glow flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary-container text-xl font-semibold text-on-primary-container transition-transform duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Đăng nhập
-          <span className="material-symbols-outlined">arrow_forward</span>
+          {isSubmitting ? 'Đang đăng nhập...' : 'Đăng nhập'}
+          {!isSubmitting && <span className="material-symbols-outlined">arrow_forward</span>}
         </button>
       </form>
 
       <div className="space-y-4">
         <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
           <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Tài khoản Admin (demo)
+            Admin (API — đã seed trên server)
           </p>
           <ul className="space-y-2 text-sm text-on-surface-variant">
             {ADMIN_ACCOUNTS.map((acc) => (
@@ -149,7 +160,7 @@ function LoginForm({ phone, setPhone, password, setPassword, showPassword, setSh
         </div>
         <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
           <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Tài khoản Staff (demo)
+            Staff (điền nhanh — cần tài khoản Staff trên server)
           </p>
           <ul className="space-y-2 text-sm text-on-surface-variant">
             {STAFF_ACCOUNTS.map((acc) => (
@@ -180,17 +191,23 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   if (isAuthenticated) {
     return <Navigate to={getHomePathForRole(user?.role)} replace />
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    const role = login(phone, password)
-    if (role) {
-      navigate(getHomePathForRole(role), { replace: true })
+    setIsSubmitting(true)
+    try {
+      const role = await login(phone, password)
+      if (role) {
+        navigate(getHomePathForRole(role), { replace: true })
+      }
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -237,6 +254,7 @@ export default function LoginPage() {
                 showPassword={showPassword}
                 setShowPassword={setShowPassword}
                 error={error}
+                isSubmitting={isSubmitting}
                 onSubmit={handleSubmit}
               />
             </div>
