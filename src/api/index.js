@@ -76,3 +76,5 @@ export {
   normalizeTransaction,
   normalizePointsEntry,
 } from './admin.transactions.api'
+
+export { fetchDashboardStats } from './admin.dashboard.api'
