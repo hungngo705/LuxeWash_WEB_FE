@@ -130,6 +130,31 @@ export function AuthProvider({ children }) {
           return false
         }
       },
+      refreshProfile: async () => {
+        if (!user) return null
+        try {
+          const profile = await fetchCurrentUser()
+          const next = {
+            ...user,
+            fullName: profile.fullName ?? user.fullName,
+            phoneNumber: profile.phoneNumber ?? user.phoneNumber,
+            email: profile.email ?? user.email,
+          }
+          saveSession(next)
+          setUser(next)
+          return profile
+        } catch {
+          return null
+        }
+      },
+      patchUser: (updates) => {
+        setUser((prev) => {
+          if (!prev) return prev
+          const next = { ...prev, ...updates }
+          saveSession(next)
+          return next
+        })
+      },
     }),
     [user, error, login, logout],
   )

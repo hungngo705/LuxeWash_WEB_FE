@@ -9,7 +9,7 @@ export {
   saveSession,
 } from './client'
 
-export { loginWithCredentials, refreshAccessToken, fetchCurrentUser } from './auth.api'
+export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
 export {
   fetchVehicleTypes,
