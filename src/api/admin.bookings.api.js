@@ -142,3 +142,15 @@ export function forceCancelBookings(payload) {
     body: JSON.stringify(payload),
   })
 }
+
+/**
+ * @param {number} detailId
+ * @param {{ condition: number; actualTypeId?: number }} params
+ */
+export function reportBookingMismatch(detailId, { condition, actualTypeId }) {
+  const search = new URLSearchParams({ condition: String(condition) })
+  if (actualTypeId != null) search.set('actualTypeId', String(actualTypeId))
+  return apiRequest(`/admin/bookings/${detailId}/report-mismatch?${search}`, {
+    method: 'PUT',
+  })
+}

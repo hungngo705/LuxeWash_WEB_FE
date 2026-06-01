@@ -64,6 +64,7 @@ export {
   updateBookingStatus,
   markBookingNoShow,
   forceCancelBookings,
+  reportBookingMismatch,
   normalizeAdminBooking,
   normalizeBookingStatus,
   toApiTargetDate,

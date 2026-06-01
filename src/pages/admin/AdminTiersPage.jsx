@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError, fetchTiers, updateTier } from '../../api'
+import { ApiError, createTier, fetchTiers, updateTier } from '../../api'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
@@ -11,9 +11,16 @@ const TIER_COLORS = {
   Platinum: 'border-primary/30 bg-primary-container/20',
 }
 
+const emptyForm = {
+  tierName: '',
+  pointMultiplier: 1,
+  bookingWindowDays: 7,
+  minAccumulatedPoints: 0,
+}
+
 function toApiPayload(form) {
   return {
-    tierName: form.tierName,
+    tierName: form.tierName.trim(),
     pointMultiplier: Number(form.pointMultiplier),
     bookingWindowDays: Number(form.bookingWindowDays),
     minAccumulatedPoints: Number(form.minAccumulatedPoints),
@@ -22,8 +29,12 @@ function toApiPayload(form) {
 
 function validateForm(form) {
   if (!form.tierName?.trim()) return 'Thiếu tên hạng'
-  if (Number(form.pointMultiplier) <= 0) return 'Hệ số điểm phải lớn hơn 0'
-  if (Number(form.bookingWindowDays) < 1) return 'Cửa sổ đặt lịch phải ít nhất 1 ngày'
+  if (Number(form.pointMultiplier) < 1 || Number(form.pointMultiplier) > 5) {
+    return 'Hệ số điểm phải từ 1–5'
+  }
+  if (Number(form.bookingWindowDays) < 1 || Number(form.bookingWindowDays) > 30) {
+    return 'Cửa sổ đặt lịch phải từ 1–30 ngày'
+  }
   if (Number(form.minAccumulatedPoints) < 0) return 'Điểm tích lũy không được âm'
   return null
 }
@@ -34,7 +45,7 @@ export default function AdminTiersPage() {
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({})
+  const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
 
@@ -60,6 +71,12 @@ export default function AdminTiersPage() {
     loadTiers()
   }, [loadTiers])
 
+  const openCreate = () => {
+    setEditingId(null)
+    setForm({ ...emptyForm })
+    setModalOpen(true)
+  }
+
   const openEdit = (tier) => {
     setEditingId(tier.tierId)
     setForm({ ...tier })
@@ -67,7 +84,7 @@ export default function AdminTiersPage() {
   }
 
   const handleSave = async () => {
-    if (!editingId || saving) return
+    if (saving) return
 
     const validationError = validateForm(form)
     if (validationError) {
@@ -75,11 +92,19 @@ export default function AdminTiersPage() {
       return
     }
 
+    const payload = toApiPayload(form)
+
     setSaving(true)
     try {
-      await updateTier(editingId, toApiPayload(form))
+      if (editingId) {
+        await updateTier(editingId, payload)
+        showToast('Đã cập nhật cấu hình hạng')
+      } else {
+        await createTier(payload)
+        showToast('Đã thêm hạng thành viên mới')
+      }
+
       setModalOpen(false)
-      showToast('Đã cập nhật cấu hình hạng')
       await loadTiers()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không lưu được cấu hình hạng')
@@ -93,6 +118,8 @@ export default function AdminTiersPage() {
       <PageHeader
         title="Hạng thành viên"
         description="Cấu hình tier loyalty và quyền lợi đặt lịch"
+        actionLabel="Thêm hạng"
+        onAction={openCreate}
       />
 
       <p className="mb-6 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
@@ -124,7 +151,11 @@ export default function AdminTiersPage() {
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải hạng thành viên…</p>
       ) : tiers.length === 0 && !loadError ? (
-        <EmptyState icon="military_tech" title="Chưa có hạng thành viên" />
+        <EmptyState
+          icon="military_tech"
+          title="Chưa có hạng thành viên"
+          message="Thêm hạng đầu tiên (Standard, Silver, …) để bắt đầu."
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {tiers.map((tier) => (
@@ -167,20 +198,35 @@ export default function AdminTiersPage() {
 
       <FormModal
         open={modalOpen}
-        title={`Sửa hạng ${form.tierName ?? ''}`}
+        title={editingId ? `Sửa hạng ${form.tierName}` : 'Thêm hạng thành viên'}
         submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
+          {!editingId && (
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Tên hạng
+              </span>
+              <input
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.tierName}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, tierName: e.target.value }))}
+                placeholder="VD: Gold"
+              />
+            </label>
+          )}
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Hệ số điểm
+              Hệ số điểm (1–5)
             </span>
             <input
               type="number"
               step="0.1"
-              min={0.1}
+              min={1}
+              max={5}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.pointMultiplier ?? ''}
               disabled={saving}
@@ -189,11 +235,12 @@ export default function AdminTiersPage() {
           </label>
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Cửa sổ đặt lịch (ngày)
+              Cửa sổ đặt lịch (ngày, 1–30)
             </span>
             <input
               type="number"
               min={1}
+              max={30}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.bookingWindowDays ?? ''}
               disabled={saving}
