@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   fetchBookingsByDate,
+  fetchTimeSlots,
+  fetchVehicleTypes,
+  forceCancelBookings,
+  markBookingNoShow,
   normalizeAdminBooking,
+  reportBookingMismatch,
   toApiTargetDate,
   updateBookingStatus,
 } from '../../api'
@@ -15,14 +20,28 @@ import { formatVnd } from '../../utils/format'
 
 const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Completed', 'Cancelled', 'No-show']
 
+const VEHICLE_CONDITIONS = [
+  { value: 1, label: 'Sạch (Clean)' },
+  { value: 2, label: 'Bẩn (Dirty)' },
+  { value: 3, label: 'Rất bẩn (Very dirty)' },
+]
+
 function todayDateValue() {
   const now = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+function formatSlotOption(slot) {
+  const start = slot.startTime ? String(slot.startTime).slice(0, 5) : ''
+  const end = slot.endTime ? String(slot.endTime).slice(0, 5) : ''
+  return `${start} – ${end}`
+}
+
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState([])
+  const [timeSlots, setTimeSlots] = useState([])
+  const [vehicleTypes, setVehicleTypes] = useState([])
   const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [statusFilter, setStatusFilter] = useState('All')
   const [loading, setLoading] = useState(true)
@@ -31,6 +50,18 @@ export default function AdminBookingsPage() {
   const [cancelTarget, setCancelTarget] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const [forceCancelOpen, setForceCancelOpen] = useState(false)
+  const [forceCancelForm, setForceCancelForm] = useState({
+    timeSlotId: '',
+    reason: '',
+  })
+  const [forceCancelling, setForceCancelling] = useState(false)
+  const [mismatchForm, setMismatchForm] = useState({
+    detailId: null,
+    condition: 2,
+    actualTypeId: '',
+  })
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -59,9 +90,34 @@ export default function AdminBookingsPage() {
     loadBookings()
   }, [loadBookings])
 
+  useEffect(() => {
+    Promise.all([fetchTimeSlots(), fetchVehicleTypes()])
+      .then(([slots, types]) => {
+        setTimeSlots(Array.isArray(slots) ? slots : [])
+        setVehicleTypes(Array.isArray(types) ? types : [])
+      })
+      .catch(() => {
+        // Non-blocking — force-cancel / mismatch still work with manual ids if needed
+      })
+  }, [])
+
   const filtered = useMemo(() => {
     return bookings.filter((b) => statusFilter === 'All' || b.status === statusFilter)
   }, [bookings, statusFilter])
+
+  const runBookingAction = async (fn, successMessage) => {
+    setActionLoading(true)
+    try {
+      await fn()
+      showToast(successMessage)
+      setDetailBooking(null)
+      await loadBookings()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không thực hiện được thao tác')
+    } finally {
+      setActionLoading(false)
+    }
+  }
 
   const handleCancel = async () => {
     if (!cancelTarget || cancelling) return
@@ -85,11 +141,59 @@ export default function AdminBookingsPage() {
     }
   }
 
+  const handleForceCancel = async () => {
+    if (!forceCancelForm.reason.trim() || forceCancelling) return
+
+    const timeSlotId = Number(forceCancelForm.timeSlotId)
+    if (!timeSlotId) {
+      showToast('Chọn khung giờ cần hủy hàng loạt')
+      return
+    }
+
+    setForceCancelling(true)
+    try {
+      await forceCancelBookings({
+        timeSlotId,
+        affectedDate: toApiTargetDate(dateFilter),
+        reason: forceCancelForm.reason.trim(),
+      })
+      setForceCancelOpen(false)
+      setForceCancelForm({ timeSlotId: '', reason: '' })
+      showToast('Đã hủy hàng loạt booking trong khung giờ')
+      await loadBookings()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không force-cancel được')
+    } finally {
+      setForceCancelling(false)
+    }
+  }
+
+  const handleReportMismatch = async () => {
+    if (!mismatchForm.detailId || actionLoading) return
+
+    await runBookingAction(
+      () =>
+        reportBookingMismatch(mismatchForm.detailId, {
+          condition: Number(mismatchForm.condition),
+          actualTypeId: mismatchForm.actualTypeId
+            ? Number(mismatchForm.actualTypeId)
+            : undefined,
+        }),
+      'Đã báo sai loại/tình trạng xe',
+    )
+    setMismatchForm({ detailId: null, condition: 2, actualTypeId: '' })
+  }
+
+  const canChangeStatus = (status) =>
+    status !== 'Cancelled' && status !== 'Completed' && status !== 'No-show'
+
   return (
     <div className="w-full">
       <PageHeader
         title="Lịch đặt toàn hệ thống"
-        description="Xem và quản lý booking theo ngày trên toàn bộ trạm"
+        description="Xem và quản lý booking theo ngày — đổi trạng thái, no-show, force-cancel"
+        actionLabel="Hủy hàng loạt (slot)"
+        onAction={() => setForceCancelOpen(true)}
       />
 
       {toast && (
@@ -184,17 +288,15 @@ export default function AdminBookingsPage() {
                       >
                         Chi tiết
                       </button>
-                      {booking.status !== 'Cancelled' &&
-                        booking.status !== 'Completed' &&
-                        booking.status !== 'No-show' && (
-                          <button
-                            type="button"
-                            className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                            onClick={() => setCancelTarget(booking.bookingId)}
-                          >
-                            Hủy
-                          </button>
-                        )}
+                      {canChangeStatus(booking.status) && (
+                        <button
+                          type="button"
+                          className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
+                          onClick={() => setCancelTarget(booking.bookingId)}
+                        >
+                          Hủy
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -208,7 +310,7 @@ export default function AdminBookingsPage() {
         open={Boolean(detailBooking)}
         title={`Booking #${detailBooking?.bookingId ?? ''}`}
         submitLabel="Đóng"
-        onClose={() => setDetailBooking(null)}
+        onClose={() => !actionLoading && setDetailBooking(null)}
         onSubmit={() => setDetailBooking(null)}
       >
         {detailBooking && (
@@ -230,11 +332,71 @@ export default function AdminBookingsPage() {
                 <p className="text-xs text-on-surface-variant">Tổng tiền</p>
                 <p className="font-medium text-on-surface">{formatVnd(detailBooking.finalAmount)}</p>
               </div>
-              <div>
+              <div className="col-span-2">
                 <p className="text-xs text-on-surface-variant">QR fallback</p>
                 <p className="font-mono text-on-surface">{detailBooking.fallbackQrCode}</p>
               </div>
             </div>
+
+            {canChangeStatus(detailBooking.status) && (
+              <div className="flex flex-wrap gap-2 border-t border-outline-variant/60 pt-4">
+                {detailBooking.status === 'Pending' && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:opacity-50"
+                    onClick={() =>
+                      runBookingAction(
+                        () => updateBookingStatus(detailBooking.bookingId, 'Checked-in'),
+                        'Đã check-in',
+                      )
+                    }
+                  >
+                    Check-in
+                  </button>
+                )}
+                {detailBooking.status === 'Checked-in' && (
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:opacity-50"
+                    onClick={() =>
+                      runBookingAction(
+                        () => updateBookingStatus(detailBooking.bookingId, 'Completed'),
+                        'Đã hoàn thành',
+                      )
+                    }
+                  >
+                    Hoàn thành
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm font-medium text-on-surface hover:bg-surface-variant disabled:opacity-50"
+                  onClick={() =>
+                    runBookingAction(
+                      () => markBookingNoShow(detailBooking.bookingId),
+                      'Đã đánh dấu no-show',
+                    )
+                  }
+                >
+                  No-show
+                </button>
+                <button
+                  type="button"
+                  disabled={actionLoading}
+                  className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20 disabled:opacity-50"
+                  onClick={() => {
+                    setDetailBooking(null)
+                    setCancelTarget(detailBooking.bookingId)
+                  }}
+                >
+                  Hủy booking
+                </button>
+              </div>
+            )}
+
             {detailBooking.details.length > 0 ? (
               <div>
                 <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -250,6 +412,21 @@ export default function AdminBookingsPage() {
                       <p className="text-on-surface-variant">
                         {d.serviceName} · {d.vehicleCondition}
                       </p>
+                      {canChangeStatus(detailBooking.status) && (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-primary hover:underline"
+                          onClick={() =>
+                            setMismatchForm({
+                              detailId: d.detailId,
+                              condition: 2,
+                              actualTypeId: vehicleTypes[0]?.id ?? '',
+                            })
+                          }
+                        >
+                          Báo sai loại/tình trạng
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -257,8 +434,117 @@ export default function AdminBookingsPage() {
             ) : (
               <p className="text-sm text-on-surface-variant">Không có chi tiết xe trong response.</p>
             )}
+
+            {mismatchForm.detailId != null && (
+              <div className="rounded-lg border border-tertiary/30 bg-tertiary-container/10 p-3">
+                <p className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
+                  Report mismatch — detail #{mismatchForm.detailId}
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="block space-y-1 text-sm">
+                    <span className="text-on-surface-variant">Tình trạng xe</span>
+                    <select
+                      className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2"
+                      value={mismatchForm.condition}
+                      onChange={(e) =>
+                        setMismatchForm((f) => ({ ...f, condition: Number(e.target.value) }))
+                      }
+                    >
+                      {VEHICLE_CONDITIONS.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block space-y-1 text-sm">
+                    <span className="text-on-surface-variant">Loại xe thực tế</span>
+                    <select
+                      className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2"
+                      value={mismatchForm.actualTypeId}
+                      onChange={(e) =>
+                        setMismatchForm((f) => ({ ...f, actualTypeId: e.target.value }))
+                      }
+                    >
+                      {vehicleTypes.map((vt) => (
+                        <option key={vt.id} value={vt.id}>
+                          {vt.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary disabled:opacity-50"
+                    onClick={handleReportMismatch}
+                  >
+                    Gửi báo cáo
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:underline"
+                    onClick={() =>
+                      setMismatchForm({ detailId: null, condition: 2, actualTypeId: '' })
+                    }
+                  >
+                    Hủy
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
+      </FormModal>
+
+      <FormModal
+        open={forceCancelOpen}
+        title="Hủy hàng loạt theo khung giờ"
+        submitLabel={forceCancelling ? 'Đang xử lý…' : 'Xác nhận hủy'}
+        onClose={() => !forceCancelling && setForceCancelOpen(false)}
+        onSubmit={handleForceCancel}
+      >
+        <div className="space-y-4 text-sm">
+          <p className="text-on-surface-variant">
+            Hủy mọi booking trong khung giờ đã chọn cho ngày{' '}
+            <strong className="text-on-surface">{dateFilter}</strong>.
+          </p>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">
+              Khung giờ
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={forceCancelForm.timeSlotId}
+              disabled={forceCancelling}
+              onChange={(e) =>
+                setForceCancelForm((f) => ({ ...f, timeSlotId: e.target.value }))
+              }
+            >
+              <option value="">— Chọn slot —</option>
+              {timeSlots.map((slot) => (
+                <option key={slot.slotId} value={slot.slotId}>
+                  {formatSlotOption(slot)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">
+              Lý do (bắt buộc)
+            </span>
+            <textarea
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              rows={3}
+              value={forceCancelForm.reason}
+              disabled={forceCancelling}
+              onChange={(e) => setForceCancelForm((f) => ({ ...f, reason: e.target.value }))}
+              placeholder="VD: Bảo trì buồng rửa"
+            />
+          </label>
+        </div>
       </FormModal>
 
       <ConfirmDialog

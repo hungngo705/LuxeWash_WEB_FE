@@ -14,39 +14,81 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { formatVnd } from '../../utils/format'
 
-function defaultPriceRow(vehicleTypes) {
-  const first = vehicleTypes[0]
-  return {
-    vehicleTypeId: first?.id ?? '',
+const DEFAULT_DURATION_MINUTES = 20
+
+/** Một dòng giá cho mỗi loại xe — bắt buộc khi tạo/sửa dịch vụ */
+function buildPricesForAllVehicleTypes(vehicleTypes) {
+  return vehicleTypes.map((vt) => ({
+    vehicleTypeId: vt.id,
     price: 0,
-    estimatedDurationMinutes: 20,
-  }
+    capacityWeight: 1,
+  }))
+}
+
+function mergePricesWithVehicleTypes(existingPrices, vehicleTypes) {
+  const byTypeId = new Map(
+    (existingPrices ?? []).map((p) => [Number(p.vehicleTypeId), p]),
+  )
+  return vehicleTypes.map((vt) => {
+    const existing = byTypeId.get(Number(vt.id))
+    return {
+      vehicleTypeId: vt.id,
+      price: existing?.price ?? 0,
+      capacityWeight: existing?.capacityWeight ?? 1,
+      estimatedDurationMinutes: existing?.estimatedDurationMinutes,
+    }
+  })
+}
+
+function getVehicleTypeName(vehicleTypes, vehicleTypeId) {
+  return vehicleTypes.find((vt) => Number(vt.id) === Number(vehicleTypeId))?.name ?? '—'
 }
 
 function toApiPayload(form) {
   return {
     serviceName: form.serviceName.trim(),
     description: form.description.trim(),
-    prices: form.prices.map(({ vehicleTypeId, price, estimatedDurationMinutes }) => ({
-      vehicleTypeId: Number(vehicleTypeId),
-      price: Number(price),
-      estimatedDurationMinutes: Number(estimatedDurationMinutes),
-    })),
+    prices: form.prices.map(({ vehicleTypeId, price, capacityWeight, estimatedDurationMinutes }) => {
+      const row = {
+        vehicleTypeId: Number(vehicleTypeId),
+        price: Number(price),
+        capacityWeight: Number(capacityWeight),
+      }
+      const minutes = Number(estimatedDurationMinutes)
+      if (minutes >= 5 && minutes <= 600) {
+        row.estimatedDurationMinutes = minutes
+      } else {
+        row.estimatedDurationMinutes = DEFAULT_DURATION_MINUTES
+      }
+      return row
+    }),
   }
 }
 
-function validateForm(form) {
+function validateForm(form, vehicleTypes) {
   if (!form.serviceName.trim()) return 'Vui lòng nhập tên dịch vụ'
+  if (!vehicleTypes.length) return 'Chưa có loại xe trong hệ thống'
   if (!form.prices.length) return 'Cần ít nhất một mức giá'
 
+  if (form.prices.length !== vehicleTypes.length) {
+    return `Phải nhập giá và sức chứa cho đủ ${vehicleTypes.length} loại xe`
+  }
+
   const seen = new Set()
+  const allowedIds = new Set(vehicleTypes.map((vt) => Number(vt.id)))
+
   for (const row of form.prices) {
-    if (!row.vehicleTypeId) return 'Chọn loại xe cho từng mức giá'
-    if (seen.has(row.vehicleTypeId)) return 'Mỗi loại xe chỉ được một mức giá'
-    seen.add(row.vehicleTypeId)
+    const typeId = Number(row.vehicleTypeId)
+    if (!allowedIds.has(typeId)) return 'Mức giá phải thuộc loại xe hiện có'
+    if (seen.has(typeId)) return 'Mỗi loại xe chỉ được một mức giá'
+    seen.add(typeId)
     if (Number(row.price) < 0) return 'Giá không được âm'
-    const minutes = Number(row.estimatedDurationMinutes)
-    if (minutes < 5 || minutes > 600) return 'Thời lượng phải từ 5–600 phút'
+    const weight = Number(row.capacityWeight)
+    if (weight < 0 || weight > 100) return 'Sức chứa phải từ 0–100'
+  }
+
+  if (seen.size !== vehicleTypes.length) {
+    return 'Thiếu mức giá cho một hoặc nhiều loại xe'
   }
 
   return null
@@ -101,7 +143,7 @@ export default function AdminServicesPage() {
     setForm({
       serviceName: '',
       description: '',
-      prices: [defaultPriceRow(vehicleTypes)],
+      prices: buildPricesForAllVehicleTypes(vehicleTypes),
     })
     setModalOpen(true)
   }
@@ -111,11 +153,7 @@ export default function AdminServicesPage() {
     setForm({
       serviceName: service.serviceName,
       description: service.description ?? '',
-      prices: service.prices.map(({ vehicleTypeId, price, estimatedDurationMinutes }) => ({
-        vehicleTypeId,
-        price,
-        estimatedDurationMinutes,
-      })),
+      prices: mergePricesWithVehicleTypes(service.prices, vehicleTypes),
     })
     setModalOpen(true)
   }
@@ -123,7 +161,7 @@ export default function AdminServicesPage() {
   const handleSave = async () => {
     if (saving) return
 
-    const validationError = validateForm(form)
+    const validationError = validateForm(form, vehicleTypes)
     if (validationError) {
       showToast(validationError)
       return
@@ -178,7 +216,7 @@ export default function AdminServicesPage() {
     <div className="w-full">
       <PageHeader
         title="Quản lý dịch vụ"
-        description="CRUD dịch vụ và bảng giá theo loại xe"
+        description="CRUD dịch vụ — giá và sức chứa (capacityWeight) theo từng loại xe"
         actionLabel="Thêm dịch vụ"
         onAction={openCreate}
       />
@@ -254,7 +292,7 @@ export default function AdminServicesPage() {
                           className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
                           onClick={() => setDeleteTarget(service.serviceId)}
                         >
-                          Xóa
+                          ngừng hoạt động
                         </button>
                       )}
                     </div>
@@ -301,62 +339,35 @@ export default function AdminServicesPage() {
           </label>
 
           <div>
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 Bảng giá theo loại xe
               </span>
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline disabled:opacity-50"
-                disabled={saving || form.prices.length >= vehicleTypes.length}
-                onClick={() =>
-                  setForm((f) => ({
-                    ...f,
-                    prices: [...f.prices, defaultPriceRow(vehicleTypes)],
-                  }))
-                }
-              >
-                + Thêm mức giá
-              </button>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Bắt buộc nhập giá và sức chứa cho{' '}
+                <strong className="text-on-surface">tất cả {vehicleTypes.length} loại xe</strong>{' '}
+                hiện có.
+              </p>
             </div>
             <div
-              className="mb-1 hidden gap-2 px-3 text-xs font-semibold text-on-surface-variant sm:grid sm:grid-cols-4"
+              className="mb-1 hidden gap-2 px-3 text-xs font-semibold text-on-surface-variant sm:grid sm:grid-cols-3"
               aria-hidden
             >
               <span>Loại xe</span>
               <span>Giá tiền (VNĐ)</span>
-              <span>Thời gian tối đa (phút)</span>
-              <span />
+              <span>Sức chứa (capacityWeight)</span>
             </div>
             <div className="space-y-3">
-              {form.prices.map((price, idx) => (
+              {form.prices.map((price) => (
                 <div
-                  key={idx}
-                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-4"
+                  key={price.vehicleTypeId}
+                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-3"
                 >
-                  <label className="block space-y-1 sm:contents">
-                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
-                      Loại xe
-                    </span>
-                  <select
-                    className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    value={price.vehicleTypeId}
-                    disabled={saving}
-                    onChange={(e) => {
-                      setForm((f) => {
-                        const prices = [...f.prices]
-                        prices[idx] = { ...prices[idx], vehicleTypeId: Number(e.target.value) }
-                        return { ...f, prices }
-                      })
-                    }}
-                  >
-                    {vehicleTypes.map((vt) => (
-                      <option key={vt.id} value={vt.id}>
-                        {vt.name}
-                      </option>
-                    ))}
-                  </select>
-                  </label>
+                  <div className="flex items-center sm:items-end">
+                    <p className="text-sm font-medium text-on-surface">
+                      {getVehicleTypeName(vehicleTypes, price.vehicleTypeId)}
+                    </p>
+                  </div>
                   <label className="block space-y-1 sm:contents">
                     <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
                       Giá tiền
@@ -368,49 +379,42 @@ export default function AdminServicesPage() {
                     value={price.price}
                     disabled={saving}
                     onChange={(e) => {
-                      setForm((f) => {
-                        const prices = [...f.prices]
-                        prices[idx] = { ...prices[idx], price: Number(e.target.value) }
-                        return { ...f, prices }
-                      })
+                      const value = Number(e.target.value)
+                      setForm((f) => ({
+                        ...f,
+                        prices: f.prices.map((row) =>
+                          row.vehicleTypeId === price.vehicleTypeId
+                            ? { ...row, price: value }
+                            : row,
+                        ),
+                      }))
                     }}
                   />
                   </label>
                   <label className="block space-y-1 sm:contents">
                     <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
-                      Thời gian tối đa 
+                      Sức chứa
                     </span>
                   <input
                     type="number"
-                    min={5}
-                    max={600}
+                    min={0}
+                    max={100}
                     className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    value={price.estimatedDurationMinutes}
+                    value={price.capacityWeight}
                     disabled={saving}
                     onChange={(e) => {
-                      setForm((f) => {
-                        const prices = [...f.prices]
-                        prices[idx] = {
-                          ...prices[idx],
-                          estimatedDurationMinutes: Number(e.target.value),
-                        }
-                        return { ...f, prices }
-                      })
+                      const value = Number(e.target.value)
+                      setForm((f) => ({
+                        ...f,
+                        prices: f.prices.map((row) =>
+                          row.vehicleTypeId === price.vehicleTypeId
+                            ? { ...row, capacityWeight: value }
+                            : row,
+                        ),
+                      }))
                     }}
                   />
                   </label>
-                  {form.prices.length > 1 && (
-                    <button
-                      type="button"
-                      className="text-sm text-error hover:underline disabled:opacity-50"
-                      disabled={saving}
-                      onClick={() =>
-                        setForm((f) => ({ ...f, prices: f.prices.filter((_, i) => i !== idx) }))
-                      }
-                    >
-                      Xóa
-                    </button>
-                  )}
                 </div>
               ))}
             </div>
