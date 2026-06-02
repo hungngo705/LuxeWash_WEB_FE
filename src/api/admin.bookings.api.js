@@ -154,3 +154,27 @@ export function reportBookingMismatch(detailId, { condition, actualTypeId }) {
     method: 'PUT',
   })
 }
+
+/**
+ * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
+ * Returns array of BookingResponseDTO for the given plate.
+ */
+export function fetchBookingsByLicensePlate(licensePlate) {
+  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate)}`)
+}
+
+/**
+ * PUT /api/v1/admin/bookings/status-by-license-plate
+ * Updates the status of the most-recent valid booking for the given plate today.
+ * @param {string} licensePlate
+ * @param {string} newStatus UI status (e.g. 'Checked-in', 'Completed')
+ */
+export function updateBookingStatusByLicensePlate(licensePlate, newStatus) {
+  return apiRequest('/admin/bookings/status-by-license-plate', {
+    method: 'PUT',
+    body: JSON.stringify({
+      licensePlate,
+      newStatus: toApiBookingStatus(newStatus),
+    }),
+  })
+}
