@@ -6,7 +6,11 @@ import AdminLayout from './components/layout/AdminLayout'
 import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
 import AdminBookingsPage from './pages/admin/AdminBookingsPage'
+import AdminBranchesPage from './pages/admin/AdminBranchesPage'
+import AdminCarModelsPage from './pages/admin/AdminCarModelsPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import AdminEmployeesPage from './pages/admin/AdminEmployeesPage'
+import AdminLanesPage from './pages/admin/AdminLanesPage'
 import AdminServicesPage from './pages/admin/AdminServicesPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
 import AdminTimeSlotsPage from './pages/admin/AdminTimeSlotsPage'
@@ -55,6 +59,10 @@ export default function App() {
             <Route path="/admin/services" element={<AdminServicesPage />} />
             <Route path="/admin/vehicle-types" element={<AdminVehicleTypesPage />} />
             <Route path="/admin/vehicle-approvals" element={<AdminVehicleApprovalsPage />} />
+            <Route path="/admin/branches" element={<AdminBranchesPage />} />
+            <Route path="/admin/lanes" element={<AdminLanesPage />} />
+            <Route path="/admin/employees" element={<AdminEmployeesPage />} />
+            <Route path="/admin/car-models" element={<AdminCarModelsPage />} />
             <Route path="/admin/time-slots" element={<AdminTimeSlotsPage />} />
             <Route path="/admin/tiers" element={<AdminTiersPage />} />
             <Route path="/admin/vouchers" element={<AdminVouchersPage />} />

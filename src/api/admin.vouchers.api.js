@@ -9,6 +9,11 @@ import { apiRequest } from './client'
  *   expiryDate: string
  *   pointsRequired: number
  *   redeemedCount?: number
+ *   voucherType?: number
+ *   imageUrl?: string | null
+ *   requiredTierId?: number | null
+ *   validStartTime?: string | null
+ *   validEndTime?: string | null
  * }} Voucher
  *
  * @typedef {{
@@ -17,6 +22,11 @@ import { apiRequest } from './client'
  *   maxUsages: number
  *   expiryDate: string
  *   pointsRequired: number
+ *   voucherType?: number
+ *   imageUrl?: string | null
+ *   requiredTierId?: number | null
+ *   validStartTime?: string | null
+ *   validEndTime?: string | null
  * }} VoucherPayload
  */
 
@@ -63,3 +73,4 @@ export function toDatetimeLocalValue(iso) {
   const pad = (n) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
+

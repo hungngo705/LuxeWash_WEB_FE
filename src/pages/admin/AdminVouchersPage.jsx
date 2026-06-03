@@ -3,9 +3,12 @@ import {
   ApiError,
   createVoucher,
   deleteVoucher,
+  fetchTiers,
   fetchVouchers,
   toApiExpiryDate,
+  toApiTimeValue,
   toDatetimeLocalValue,
+  toTimeInputValue,
   updateVoucher,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
@@ -15,12 +18,22 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
+const VOUCHER_TYPE_OPTIONS = [
+  { value: 0, label: 'Loại 0' },
+  { value: 1, label: 'Loại 1' },
+]
+
 const emptyForm = {
   code: '',
   discountAmount: 50000,
   pointsRequired: 0,
   maxUsages: 100,
   expiryDate: '',
+  voucherType: 0,
+  imageUrl: '',
+  requiredTierId: '',
+  validStartTime: '',
+  validEndTime: '',
 }
 
 function getVoucherStatus(voucher) {
@@ -37,6 +50,11 @@ function toApiPayload(form) {
     maxUsages: Number(form.maxUsages),
     expiryDate: toApiExpiryDate(form.expiryDate),
     pointsRequired: Number(form.pointsRequired),
+    voucherType: Number(form.voucherType),
+    imageUrl: form.imageUrl.trim() || null,
+    requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
+    validStartTime: form.validStartTime ? toApiTimeValue(form.validStartTime) : null,
+    validEndTime: form.validEndTime ? toApiTimeValue(form.validEndTime) : null,
   }
 }
 
@@ -44,7 +62,7 @@ function validateForm(form) {
   if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
   if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
   const amount = Number(form.discountAmount)
-  if (amount < 1 || amount > 1_000_000_000) return 'Giảm giá phải từ 1 đến 1.000.000.000 VND'
+  if (amount < 0 || amount > 1_000_000_000) return 'Giảm giá phải từ 0 đến 1.000.000.000 VND'
   if (!form.expiryDate) return 'Vui lòng chọn ngày hết hạn'
   if (Number(form.maxUsages) < 1) return 'Max usages phải ít nhất 1'
   if (Number(form.pointsRequired) < 0) return 'Điểm đổi không được âm'
@@ -53,6 +71,7 @@ function validateForm(form) {
 
 export default function AdminVouchersPage() {
   const [vouchers, setVouchers] = useState([])
+  const [tiers, setTiers] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -85,6 +104,12 @@ export default function AdminVouchersPage() {
     loadVouchers()
   }, [loadVouchers])
 
+  useEffect(() => {
+    fetchTiers()
+      .then((data) => setTiers(Array.isArray(data) ? data : []))
+      .catch(() => {})
+  }, [])
+
   const openCreate = () => {
     setEditingId(null)
     setForm({
@@ -102,6 +127,11 @@ export default function AdminVouchersPage() {
       pointsRequired: voucher.pointsRequired,
       maxUsages: voucher.maxUsages,
       expiryDate: toDatetimeLocalValue(voucher.expiryDate),
+      voucherType: voucher.voucherType ?? 0,
+      imageUrl: voucher.imageUrl ?? '',
+      requiredTierId: voucher.requiredTierId ? String(voucher.requiredTierId) : '',
+      validStartTime: toTimeInputValue(voucher.validStartTime),
+      validEndTime: toTimeInputValue(voucher.validEndTime),
     })
     setModalOpen(true)
   }
@@ -194,6 +224,7 @@ export default function AdminVouchersPage() {
                 <th className="px-4 py-3">Điểm đổi</th>
                 <th className="px-4 py-3">Đã dùng / Max</th>
                 <th className="px-4 py-3">Hết hạn</th>
+                <th className="px-4 py-3">Loại</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
@@ -210,6 +241,7 @@ export default function AdminVouchersPage() {
                   <td className="px-4 py-3 text-on-surface-variant">
                     {formatDateTime(voucher.expiryDate)}
                   </td>
+                  <td className="px-4 py-3 text-on-surface-variant">{voucher.voucherType ?? 0}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={getVoucherStatus(voucher)} />
                   </td>
@@ -309,6 +341,79 @@ export default function AdminVouchersPage() {
               value={form.expiryDate}
               disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Loại voucher
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.voucherType}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, voucherType: Number(e.target.value) }))}
+            >
+              {VOUCHER_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Hạng yêu cầu (tùy chọn)
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.requiredTierId}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, requiredTierId: e.target.value }))}
+            >
+              <option value="">— Không yêu cầu —</option>
+              {tiers.map((tier) => (
+                <option key={tier.tierId} value={tier.tierId}>
+                  {tier.tierName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Giờ bắt đầu (tùy chọn)
+              </span>
+              <input
+                type="time"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.validStartTime}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, validStartTime: e.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Giờ kết thúc (tùy chọn)
+              </span>
+              <input
+                type="time"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.validEndTime}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, validEndTime: e.target.value }))}
+              />
+            </label>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              URL ảnh (tùy chọn)
+            </span>
+            <input
+              type="url"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.imageUrl}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
             />
           </label>
         </div>
