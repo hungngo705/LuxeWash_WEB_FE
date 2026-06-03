@@ -46,6 +46,32 @@ export {
 } from './admin.vouchers.api'
 
 export {
+  fetchBranches,
+  fetchBranchById,
+  createBranch,
+  updateBranch,
+  normalizeBranch,
+} from './admin.branches.api'
+
+export {
+  fetchLanes,
+  fetchLaneById,
+  createLane,
+  updateLane,
+  normalizeLane,
+} from './admin.lanes.api'
+
+export { createEmployee, transferEmployee } from './admin.employees.api'
+
+export {
+  fetchCarModels,
+  createCarModel,
+  updateCarModel,
+  deleteCarModel,
+  normalizeCarModel,
+} from './admin.carModels.api'
+
+export {
   fetchUsers,
   fetchUserById,
   updateUserStatus,
@@ -61,7 +87,9 @@ export {
 
 export {
   fetchBookingsByDate,
+  fetchBookingsByLicensePlate,
   updateBookingStatus,
+  updateBookingStatusByLicensePlate,
   markBookingNoShow,
   forceCancelBookings,
   reportBookingMismatch,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   fetchBookingsByDate,
+  fetchBookingsByLicensePlate,
   fetchTimeSlots,
   fetchVehicleTypes,
   forceCancelBookings,
@@ -10,6 +11,7 @@ import {
   reportBookingMismatch,
   toApiTargetDate,
   updateBookingStatus,
+  updateBookingStatusByLicensePlate,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
@@ -63,6 +65,11 @@ export default function AdminBookingsPage() {
     actualTypeId: '',
   })
   const [toast, setToast] = useState('')
+  const [plateQuery, setPlateQuery] = useState('')
+  const [plateResults, setPlateResults] = useState([])
+  const [plateLoading, setPlateLoading] = useState(false)
+  const [plateStatus, setPlateStatus] = useState('Checked-in')
+  const [plateActionLoading, setPlateActionLoading] = useState(false)
 
   const showToast = (msg) => {
     setToast(msg)
@@ -187,6 +194,41 @@ export default function AdminBookingsPage() {
   const canChangeStatus = (status) =>
     status !== 'Cancelled' && status !== 'Completed' && status !== 'No-show'
 
+  const searchByPlate = async () => {
+    const plate = plateQuery.trim()
+    if (!plate) return
+
+    setPlateLoading(true)
+    setPlateResults([])
+    try {
+      const data = await fetchBookingsByLicensePlate(plate)
+      const items = Array.isArray(data) ? data.map(normalizeAdminBooking) : []
+      setPlateResults(items)
+      if (!items.length) showToast('Không tìm thấy booking cho biển số này')
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không tra cứu được theo biển số')
+    } finally {
+      setPlateLoading(false)
+    }
+  }
+
+  const applyPlateStatus = async () => {
+    const plate = plateQuery.trim()
+    if (!plate || plateActionLoading) return
+
+    setPlateActionLoading(true)
+    try {
+      await updateBookingStatusByLicensePlate(plate, plateStatus)
+      showToast('Đã cập nhật trạng thái theo biển số')
+      await searchByPlate()
+      await loadBookings()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không đổi trạng thái được')
+    } finally {
+      setPlateActionLoading(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <PageHeader
@@ -201,6 +243,64 @@ export default function AdminBookingsPage() {
           {toast}
         </p>
       )}
+
+      <div className="glass-panel soft-shadow mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+        <h2 className="mb-3 text-sm font-semibold text-on-surface">Tra cứu theo biển số</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
+            <span className="text-on-surface-variant">Biển số</span>
+            <input
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 uppercase"
+              value={plateQuery}
+              onChange={(e) => setPlateQuery(e.target.value)}
+              placeholder="51F-123.45"
+            />
+          </label>
+          <button
+            type="button"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-60"
+            disabled={plateLoading || !plateQuery.trim()}
+            onClick={searchByPlate}
+          >
+            {plateLoading ? 'Đang tìm…' : 'Tra cứu'}
+          </button>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-on-surface-variant">Đổi trạng thái (booking gần nhất hôm nay)</span>
+            <select
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={plateStatus}
+              disabled={plateActionLoading}
+              onChange={(e) => setPlateStatus(e.target.value)}
+            >
+              {STATUS_OPTIONS.filter((s) => s !== 'All').map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:opacity-60"
+            disabled={plateActionLoading || !plateQuery.trim()}
+            onClick={applyPlateStatus}
+          >
+            {plateActionLoading ? 'Đang xử lý…' : 'Áp dụng'}
+          </button>
+        </div>
+        {plateResults.length > 0 && (
+          <ul className="mt-4 space-y-2 border-t border-outline-variant/60 pt-4 text-sm">
+            {plateResults.map((b) => (
+              <li key={b.bookingId} className="flex flex-wrap items-center gap-2 text-on-surface">
+                <span className="font-medium">#{b.bookingId}</span>
+                <StatusBadge status={b.status} />
+                <span className="text-on-surface-variant">{b.serviceName}</span>
+                <span className="text-on-surface-variant">{b.slotLabel}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex items-center gap-2 text-sm">
