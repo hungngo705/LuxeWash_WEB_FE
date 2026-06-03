@@ -3,8 +3,7 @@ import {
   fetchBookingsByDate,
   fetchBookingsByLicensePlate,
   normalizeBookingStatus,
-  toApiBookingStatus,
-  updateBookingStatusByLicensePlate,
+  updateBookingStatus,
 } from '../api/admin.bookings.api'
 import { ApiError } from '../api/client'
 
@@ -304,7 +303,7 @@ function ProcessingVehiclesPanel({ vehicles, onComplete, completingPlate }) {
 
             <button
               className="w-full rounded-xl border border-primary-container bg-primary-container/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/25 disabled:opacity-50"
-              onClick={() => onComplete(v.licensePlate)}
+              onClick={() => onComplete(v.licensePlate, v.bookingId)}
               disabled={completingPlate === v.licensePlate}
             >
               {completingPlate === v.licensePlate ? (
@@ -410,7 +409,7 @@ export default function DashboardPage() {
     if (!pendingBooking) return
     setConfirming(true)
     try {
-      await updateBookingStatusByLicensePlate(pendingBooking.licensePlate, 'Checked-in')
+      await updateBookingStatus(pendingBooking.bookingId, 'Checked-in')
       showToast(`Xe ${pendingBooking.licensePlate} da xac nhan den.`)
 
       // Move from pending to processing
@@ -445,10 +444,10 @@ export default function DashboardPage() {
     setLookupError('')
   }, [])
 
-  const handleComplete = useCallback(async (licensePlate) => {
+  const handleComplete = useCallback(async (licensePlate, bookingId) => {
     setCompletingPlate(licensePlate)
     try {
-      await updateBookingStatusByLicensePlate(licensePlate, 'Completed')
+      await updateBookingStatus(bookingId, 'Completed')
       showToast(`Xe ${licensePlate} da hoan thanh.`)
       setProcessingVehicles((prev) =>
         prev.filter((v) => v.licensePlate !== licensePlate),
