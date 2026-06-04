@@ -2,16 +2,22 @@ import { formatVnd } from '../../utils/format'
 
 function StatusBadge({ status }) {
   const isPending = status === 'Pending'
+  const isProcessing = status === 'Processing'
+  const isCheckedIn = status === 'Checked-in'
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${
         isPending
           ? 'border border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container'
+          : isProcessing
+          ? 'border border-secondary-container/40 bg-secondary-container/15 text-secondary-container'
           : 'border border-primary-container/40 bg-primary-container/15 text-primary-container'
       }`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${isPending ? 'bg-tertiary-container' : 'bg-primary-container'}`}
+        className={`h-1.5 w-1.5 rounded-full ${
+          isPending ? 'bg-tertiary-container' : isProcessing ? 'bg-secondary-container animate-pulse' : 'bg-primary-container'
+        }`}
       />
       {status}
     </span>
@@ -33,7 +39,7 @@ function RankBadge({ rankName, rankId }) {
   )
 }
 
-export default function QueueTable({ bookings, onCheckIn, onComplete }) {
+export default function QueueTable({ bookings, onStartProcessing, onComplete }) {
   if (bookings.length === 0) {
     return (
       <div className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
@@ -56,7 +62,6 @@ export default function QueueTable({ bookings, onCheckIn, onComplete }) {
               <th className="px-4 py-3">Dịch vụ</th>
               <th className="px-4 py-3">Giờ hẹn</th>
               <th className="px-4 py-3">Làn</th>
-              <th className="px-4 py-3">Chờ</th>
               <th className="px-4 py-3">Trạng thái</th>
               <th className="px-4 py-3 text-right">Thao tác</th>
             </tr>
@@ -71,40 +76,25 @@ export default function QueueTable({ bookings, onCheckIn, onComplete }) {
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-primary-container">directions_car</span>
-                    <div>
-                      <p className="font-sora text-lg font-semibold tracking-wide text-on-surface">
-                        {row.licensePlate}
-                      </p>
-                      <p className="text-xs text-on-surface-variant">
-                        {row.vehicleDisplay} · {row.vehicleType}
-                      </p>
+                    <p className="font-sora text-lg font-semibold tracking-wide text-on-surface uppercase">
+                      {row.licensePlate}
+                    </p>
+                  </div>
+                </td>
+                <td className="px-4 py-4">
+                  <div>
+                    <p className="font-medium text-on-surface">{row.customerName}</p>
+                    <div className="mt-1">
+                      <StatusBadge status={row.status} />
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-4">
-                  {row.isWalkIn ? (
-                    <span className="text-sm italic text-on-surface-variant">Khách vãng lai</span>
-                  ) : (
-                    <div>
-                      <p className="font-medium text-on-surface">{row.customerName}</p>
-                      <p className="text-xs text-on-surface-variant">{row.phoneMasked}</p>
-                      <div className="mt-1">
-                        <RankBadge rankName={row.rankName} rankId={row.rankId} />
-                      </div>
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-4">
                   <p className="font-medium text-on-surface">{row.serviceName}</p>
-                  <p className="text-xs text-on-surface-variant">
-                    {formatVnd(row.basePrice)} · {row.durationMinutes} phút
-                  </p>
+                  <p className="text-xs text-on-surface-variant">{formatVnd(row.finalAmount)}</p>
                 </td>
-                <td className="px-4 py-4 text-sm text-on-surface">{row.scheduledDisplay}</td>
-                <td className="px-4 py-4 text-sm text-on-surface-variant">{row.lane}</td>
-                <td className="px-4 py-4">
-                  <span className="text-sm font-medium text-on-surface">{row.waitMinutes} phút</span>
-                </td>
+                <td className="px-4 py-4 text-sm text-on-surface">{row.slotLabel || '—'}</td>
+                <td className="px-4 py-4 text-sm text-on-surface">{row.processingLaneName || '—'}</td>
                 <td className="px-4 py-4">
                   <StatusBadge status={row.status} />
                 </td>
@@ -114,18 +104,27 @@ export default function QueueTable({ bookings, onCheckIn, onComplete }) {
                       <button
                         type="button"
                         className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold tracking-wide text-on-primary uppercase transition-colors hover:bg-primary/90"
-                        onClick={() => onCheckIn(row.bookingId)}
+                        onClick={() => onStartProcessing(row.bookingId)}
                       >
-                        Check-in
+                        Bat dau rua
                       </button>
                     )}
                     {row.status === 'Checked-in' && (
                       <button
                         type="button"
+                        className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold tracking-wide text-on-primary uppercase transition-colors hover:bg-primary/90"
+                        onClick={() => onStartProcessing(row.bookingId)}
+                      >
+                        Bat dau rua
+                      </button>
+                    )}
+                    {row.status === 'Processing' && (
+                      <button
+                        type="button"
                         className="rounded-lg border border-primary-container bg-primary-container/10 px-3 py-2 text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/20"
                         onClick={() => onComplete(row.bookingId)}
                       >
-                        Hoàn thành
+                        Hoan thanh
                       </button>
                     )}
                   </div>

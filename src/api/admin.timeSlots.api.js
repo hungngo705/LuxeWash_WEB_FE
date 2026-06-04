@@ -18,11 +18,15 @@ import { apiRequest } from './client'
  */
 
 /** @returns {Promise<TimeSlot[]>} */
-export function fetchTimeSlots() {
-  return apiRequest('/admin/time-slots')
+export function fetchTimeSlots({ branchId } = {}) {
+  const params = branchId ? `?branchId=${branchId}` : ''
+  return apiRequest(`/admin/time-slots${params}`)
 }
 
-/** @param {TimeSlotPayload} payload @returns {Promise<TimeSlot>} */
+/**
+ * @param {TimeSlotPayload & { branchId?: number }} payload
+ * @returns {Promise<TimeSlot>}
+ */
 export function createTimeSlot(payload) {
   return apiRequest('/admin/time-slots', {
     method: 'POST',
@@ -30,7 +34,10 @@ export function createTimeSlot(payload) {
   })
 }
 
-/** @param {number} id @param {TimeSlotPayload} payload */
+/**
+ * @param {number} id
+ * @param {TimeSlotPayload & { branchId?: number }} payload
+ */
 export function updateTimeSlot(id, payload) {
   return apiRequest(`/admin/time-slots/${id}`, {
     method: 'PUT',

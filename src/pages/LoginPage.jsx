@@ -137,7 +137,7 @@ function LoginForm({
       <div className="space-y-4">
         <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
           <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Admin (API — đã seed trên server)
+            Admin 
           </p>
           <ul className="space-y-2 text-sm text-on-surface-variant">
             {ADMIN_ACCOUNTS.map((acc) => (
@@ -160,7 +160,7 @@ function LoginForm({
         </div>
         <div className="rounded-lg border border-outline-variant/50 bg-surface-container-low p-4">
           <p className="mb-2 text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Staff (điền nhanh — cần tài khoản Staff trên server)
+            Staff & Manager
           </p>
           <ul className="space-y-2 text-sm text-on-surface-variant">
             {STAFF_ACCOUNTS.map((acc) => (

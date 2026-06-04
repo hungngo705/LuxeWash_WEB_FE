@@ -24,7 +24,7 @@ export function normalizeBranch(item) {
 
 /** @returns {Promise<Branch[]>} */
 export async function fetchBranches() {
-  const data = await apiRequest('/admin/branches')
+  const data = await apiRequest('/branches')
   const list = Array.isArray(data) ? data : []
   return list.map(normalizeBranch)
 }

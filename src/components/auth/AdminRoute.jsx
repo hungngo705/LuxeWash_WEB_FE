@@ -13,6 +13,10 @@ export default function AdminRoute({ children }) {
     return <Navigate to="/dashboard" replace />
   }
 
+  if (user?.role === 'Manager') {
+    return <Navigate to="/manager/dashboard" replace />
+  }
+
   if (user?.role !== 'Admin') {
     return <Navigate to="/login" replace />
   }

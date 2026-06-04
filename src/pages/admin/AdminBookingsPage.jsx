@@ -12,6 +12,7 @@ import {
   toApiTargetDate,
   updateBookingStatus,
   updateBookingStatusByLicensePlate,
+  updateBookingCondition,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
@@ -27,6 +28,12 @@ const VEHICLE_CONDITIONS = [
   { value: 2, label: 'Bẩn (Dirty)' },
   { value: 3, label: 'Rất bẩn (Very dirty)' },
 ]
+
+const CONDITION_LABELS = {
+  1: 'Sạch (Clean)',
+  2: 'Bẩn (Dirty)',
+  3: 'Rất bẩn (Very dirty)',
+}
 
 function todayDateValue() {
   const now = new Date()
@@ -64,6 +71,11 @@ export default function AdminBookingsPage() {
     condition: 2,
     actualTypeId: '',
   })
+  const [conditionForm, setConditionForm] = useState({
+    bookingId: null,
+    condition: 2,
+  })
+  const [conditionLoading, setConditionLoading] = useState(false)
   const [toast, setToast] = useState('')
   const [plateQuery, setPlateQuery] = useState('')
   const [plateResults, setPlateResults] = useState([])
@@ -189,6 +201,21 @@ export default function AdminBookingsPage() {
       'Đã báo sai loại/tình trạng xe',
     )
     setMismatchForm({ detailId: null, condition: 2, actualTypeId: '' })
+  }
+
+  const handleUpdateCondition = async () => {
+    if (!conditionForm.bookingId || conditionLoading) return
+    setConditionLoading(true)
+    try {
+      await updateBookingCondition(conditionForm.bookingId, Number(conditionForm.condition))
+      showToast(`Đã cập nhật tình trạng xe: ${CONDITION_LABELS[conditionForm.condition]}`)
+      setConditionForm({ bookingId: null, condition: 2 })
+      setDetailBooking(null)
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Lỗi khi cập nhật tình trạng xe.')
+    } finally {
+      setConditionLoading(false)
+    }
   }
 
   const canChangeStatus = (status) =>
@@ -513,19 +540,33 @@ export default function AdminBookingsPage() {
                         {d.serviceName} · {d.vehicleCondition}
                       </p>
                       {canChangeStatus(detailBooking.status) && (
-                        <button
-                          type="button"
-                          className="mt-2 text-xs text-primary hover:underline"
-                          onClick={() =>
-                            setMismatchForm({
-                              detailId: d.detailId,
-                              condition: 2,
-                              actualTypeId: vehicleTypes[0]?.id ?? '',
-                            })
-                          }
-                        >
-                          Báo sai loại/tình trạng
-                        </button>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            className="text-xs text-secondary hover:underline"
+                            onClick={() =>
+                              setConditionForm({
+                                bookingId: detailBooking.bookingId,
+                                condition: 2,
+                              })
+                            }
+                          >
+                            Ghi nhận tình trạng
+                          </button>
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() =>
+                              setMismatchForm({
+                                detailId: d.detailId,
+                                condition: 2,
+                                actualTypeId: vehicleTypes[0]?.id ?? '',
+                              })
+                            }
+                          >
+                            Báo sai loại/tình trạng
+                          </button>
+                        </div>
                       )}
                     </li>
                   ))}
@@ -589,6 +630,47 @@ export default function AdminBookingsPage() {
                     onClick={() =>
                       setMismatchForm({ detailId: null, condition: 2, actualTypeId: '' })
                     }
+                  >
+                    Hủy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {conditionForm.bookingId != null && (
+              <div className="rounded-lg border border-secondary/30 bg-secondary-container/10 p-3">
+                <p className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
+                  Ghi nhận tình trạng xe #{conditionForm.bookingId}
+                </p>
+                <label className="mb-2 block space-y-1 text-sm">
+                  <span className="text-on-surface-variant">Tình trạng thực tế</span>
+                  <select
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2"
+                    value={conditionForm.condition}
+                    onChange={(e) =>
+                      setConditionForm((f) => ({ ...f, condition: Number(e.target.value) }))
+                    }
+                  >
+                    {VEHICLE_CONDITIONS.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={conditionLoading}
+                    className="rounded-lg bg-secondary px-3 py-1.5 text-sm font-semibold text-on-secondary disabled:opacity-50"
+                    onClick={handleUpdateCondition}
+                  >
+                    {conditionLoading ? 'Đang xử lý…' : 'Cập nhật'}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-1.5 text-sm text-on-surface-variant hover:underline"
+                    onClick={() => setConditionForm({ bookingId: null, condition: 2 })}
                   >
                     Hủy
                   </button>

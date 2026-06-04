@@ -66,12 +66,21 @@ export default function AdminCarModelsPage() {
   const handleSave = async () => {
     if (saving) return
 
+    const trimmedBrand = form.brand.trim()
+    const trimmedName = form.name.trim()
+
+    if (!trimmedBrand) {
+      showToast('Vui lòng nhập tên hãng xe')
+      return
+    }
+    if (!trimmedName) {
+      showToast('Vui lòng nhập tên dòng xe')
+      return
+    }
+
     setSaving(true)
     try {
-      const payload = {
-        brand: form.brand.trim() || null,
-        name: form.name.trim() || null,
-      }
+      const payload = { brand: trimmedBrand, name: trimmedName }
       if (editingId) {
         await updateCarModel(editingId, { ...payload, isActive: form.isActive })
         showToast('Đã cập nhật mẫu xe')

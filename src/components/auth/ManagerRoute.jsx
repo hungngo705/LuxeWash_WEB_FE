@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
-export default function StaffRoute({ children }) {
+export default function ManagerRoute({ children }) {
   const { isAuthenticated, user } = useAuth()
   const location = useLocation()
 
@@ -13,11 +13,11 @@ export default function StaffRoute({ children }) {
     return <Navigate to="/admin/dashboard" replace />
   }
 
-  if (user?.role === 'Manager') {
-    return <Navigate to="/manager/dashboard" replace />
+  if (user?.role === 'Staff') {
+    return <Navigate to="/dashboard" replace />
   }
 
-  if (user?.role !== 'Staff') {
+  if (user?.role !== 'Manager') {
     return <Navigate to="/login" replace />
   }
 

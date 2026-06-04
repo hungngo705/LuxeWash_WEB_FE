@@ -22,12 +22,11 @@ export default function QueueStats({ stats, avgWaitMinutes }) {
       accent: 'text-primary-container',
     },
     {
-      label: 'Thời gian chờ TB',
-      value: `${avgWaitMinutes} phút`,
-      suffix: '',
-      icon: 'timer',
-      accent: 'text-on-surface',
-      isText: true,
+      label: 'Đang rửa',
+      value: stats.processing ?? 0,
+      suffix: 'Processing',
+      icon: 'wash',
+      accent: 'text-secondary',
     },
   ]
 
