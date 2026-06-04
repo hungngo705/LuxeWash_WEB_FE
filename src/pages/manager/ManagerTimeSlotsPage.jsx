@@ -1,0 +1,213 @@
+import { useCallback, useEffect, useState } from 'react'
+import {
+  ApiError,
+  createManagerTimeSlot,
+  fetchManagerTimeSlots,
+  toTimeInputValue,
+} from '../../api'
+import EmptyState from '../../components/admin/shared/EmptyState'
+import FormModal from '../../components/admin/shared/FormModal'
+import PageHeader from '../../components/admin/shared/PageHeader'
+
+const emptyForm = {
+  startTime: '07:00',
+  endTime: '07:20',
+  maxCapacity: 3,
+  isVipOnly: false,
+}
+
+function validateForm(form) {
+  if (!form.startTime || !form.endTime) return 'Vui lòng chọn giờ bắt đầu và kết thúc'
+  if (form.startTime >= form.endTime) return 'Giờ kết thúc phải sau giờ bắt đầu'
+  if (Number(form.maxCapacity) < 1) return 'Sức chứa phải ít nhất 1'
+  return null
+}
+
+export default function ManagerTimeSlotsPage() {
+  const [slots, setSlots] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [form, setForm] = useState(emptyForm)
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
+
+  const loadSlots = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const data = await fetchManagerTimeSlots()
+      setSlots(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách khung giờ')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSlots()
+  }, [loadSlots])
+
+  const openCreate = () => {
+    setForm(emptyForm)
+    setModalOpen(true)
+  }
+
+  const handleSave = async () => {
+    if (saving) return
+
+    const validationError = validateForm(form)
+    if (validationError) {
+      showToast(validationError)
+      return
+    }
+
+    const payload = {
+      startTime: form.startTime,
+      endTime: form.endTime,
+      maxCapacity: Number(form.maxCapacity),
+      isVipOnly: Boolean(form.isVipOnly),
+    }
+
+    setSaving(true)
+    try {
+      await createManagerTimeSlot(payload)
+      showToast('Đã thêm khung giờ mới')
+      setModalOpen(false)
+      await loadSlots()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được khung giờ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="w-full">
+      <PageHeader
+        title="Khung giờ đặt lịch"
+        description="Cấu hình khung giờ phục vụ tại chi nhánh của bạn"
+        actionLabel="Thêm khung giờ"
+        actionIcon="schedule"
+        onAction={openCreate}
+      />
+
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
+
+      {loadError && (
+        <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
+          <p className="text-sm text-error">{loadError}</p>
+          <button type="button" className="text-sm text-error" onClick={loadSlots}>
+            Thử lại
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải...</p>
+      ) : slots.length === 0 && !loadError ? (
+        <EmptyState
+          icon="schedule"
+          title="Chưa có khung giờ"
+          description="Thêm khung giờ để khách hàng có thể đặt lịch."
+        />
+      ) : (
+        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+          <table className="w-full min-w-[600px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                <th className="px-4 py-3">ID</th>
+                <th className="px-4 py-3">Giờ bắt đầu</th>
+                <th className="px-4 py-3">Giờ kết thúc</th>
+                <th className="px-4 py-3">Sức chứa</th>
+                <th className="px-4 py-3">Phân loại</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/60">
+              {slots.map((slot) => (
+                <tr key={slot.slotId} className="hover:bg-surface-container-low/50">
+                  <td className="px-4 py-3 text-on-surface-variant">#{slot.slotId}</td>
+                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.startTime)}</td>
+                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.endTime)}</td>
+                  <td className="px-4 py-3 text-on-surface">{slot.maxCapacity}</td>
+                  <td className="px-4 py-3">
+                    {slot.isVipOnly ? (
+                      <span className="rounded-full bg-tertiary-container px-2 py-0.5 text-xs font-semibold text-on-tertiary-container">
+                        VIP
+                      </span>
+                    ) : (
+                      <span className="text-on-surface-variant">Thường</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <FormModal
+        open={modalOpen}
+        title="Thêm khung giờ"
+        submitLabel={saving ? 'Đang lưu...' : 'Lưu'}
+        onClose={() => !saving && setModalOpen(false)}
+        onSubmit={handleSave}
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Giờ bắt đầu</span>
+              <input
+                type="time"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.startTime}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Giờ kết thúc</span>
+              <input
+                type="time"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.endTime}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
+              />
+            </label>
+          </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Sức chứa (xe)</span>
+            <input
+              type="number"
+              min="1"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.maxCapacity}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-on-surface">
+            <input
+              type="checkbox"
+              checked={form.isVipOnly}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, isVipOnly: e.target.checked }))}
+            />
+            Chỉ dành cho khách VIP
+          </label>
+        </div>
+      </FormModal>
+    </div>
+  )
+}

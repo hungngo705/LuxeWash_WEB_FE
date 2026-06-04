@@ -2,46 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import QueueStats from '../components/queue/QueueStats'
 import QueueTable from '../components/queue/QueueTable'
 import QueueToolbar from '../components/queue/QueueToolbar'
-import { fetchBookingsByDate, normalizeBookingStatus, updateBookingStatus } from '../api/admin.bookings.api'
+import {
+  fetchStaffTasks,
+  updateStaffBookingStatus,
+  normalizeStaffTask,
+} from '../api'
 import { ApiError } from '../api/client'
-
-function formatVnd(amount) {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)
-}
-
-function formatScheduledDisplay(isoString) {
-  if (!isoString) return '—'
-  const d = new Date(isoString)
-  const time = d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-  return `${time} — Hom nay`
-}
-
-/**
- * Map raw API BookingResponseDTO to the shape QueueTable expects.
- */
-function mapApiBooking(item) {
-  return {
-    bookingId: Number(item.bookingId ?? item.id ?? 0),
-    licensePlate: String(item.licensePlate ?? '').trim(),
-    vehicleType: item.vehicleType ?? '—',
-    vehicleDisplay: item.vehicleDisplay ?? item.vehicleName ?? '—',
-    serviceId: item.serviceId ?? 0,
-    serviceName: String(item.serviceName ?? '—'),
-    basePrice: Number(item.originalPrice ?? 0),
-    durationMinutes: item.durationMinutes ?? 0,
-    scheduledTime: item.scheduledTime ?? item.scheduledDate ?? null,
-    scheduledDisplay: formatScheduledDisplay(item.scheduledTime ?? item.scheduledDate),
-    status: normalizeBookingStatus(item.status ?? item.bookingStatus),
-    rankName: item.rankName ?? item.tierName ?? '—',
-    rankId: item.rankId ?? 0,
-    customerName: item.customerName ?? '—',
-    phoneMasked: item.phoneMasked ?? '—',
-    waitMinutes: 0,
-    lane: item.lane ?? '—',
-    isWalkIn: Boolean(item.isWalkIn),
-    finalAmount: Number(item.finalAmount ?? 0),
-  }
-}
 
 export default function QueuePage() {
   const [allBookings, setAllBookings] = useState([])
@@ -60,10 +26,9 @@ export default function QueuePage() {
     setLoading(true)
     setFetchError('')
     try {
-      const targetDate = new Date().toISOString()
-      const data = await fetchBookingsByDate(targetDate)
+      const data = await fetchStaffTasks()
       const raw = Array.isArray(data) ? data : []
-      const mapped = raw.map(mapApiBooking)
+      const mapped = raw.map(normalizeStaffTask)
       setAllBookings(mapped)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Khong the tai du lieu. Vui long thu lai.'
@@ -79,7 +44,7 @@ export default function QueuePage() {
 
   const displayedBookings = useMemo(() => {
     return allBookings.filter((b) => {
-      const isActive = b.status === 'Pending' || b.status === 'Checked-in'
+      const isActive = b.status === 'Pending' || b.status === 'Checked-in' || b.status === 'Processing'
       if (!isActive) return false
       const matchStatus = filter === 'all' || b.status === filter
       const q = search.trim().toLowerCase()
@@ -87,46 +52,42 @@ export default function QueuePage() {
         !q ||
         b.licensePlate.toLowerCase().includes(q) ||
         b.customerName?.toLowerCase().includes(q) ||
-        b.serviceName.toLowerCase().includes(q) ||
-        b.phoneMasked?.includes(q)
+        b.serviceName.toLowerCase().includes(q)
       return matchStatus && matchSearch
     })
   }, [allBookings, filter, search])
 
   const stats = useMemo(() => {
-    const active = allBookings.filter((b) => b.status === 'Pending' || b.status === 'Checked-in')
-    const pending = active.filter((b) => b.status === 'Pending').length
-    const checkedIn = active.filter((b) => b.status === 'Checked-in').length
-    return { total: active.length, pending, checkedIn }
+    const pending = allBookings.filter((b) => b.status === 'Pending').length
+    const checkedIn = allBookings.filter((b) => b.status === 'Checked-in').length
+    const processing = allBookings.filter((b) => b.status === 'Processing').length
+    return {
+      total: pending + checkedIn + processing,
+      pending,
+      checkedIn,
+      processing,
+    }
   }, [allBookings])
 
-  const avgWaitMinutes = useMemo(() => {
-    const active = allBookings.filter((b) => b.status === 'Pending' || b.status === 'Checked-in')
-    if (active.length === 0) return 0
-    const sum = active.reduce((acc, b) => acc + (b.waitMinutes ?? 0), 0)
-    return Math.round(sum / active.length)
-  }, [allBookings])
-
-  const handleCheckIn = useCallback(async (bookingId) => {
+  const handleStartProcessing = useCallback(async (bookingId) => {
     try {
-      await updateBookingStatus(bookingId, 'Checked-in')
-      showToast(`Lich hen #${bookingId} da check-in thanh cong.`)
+      await updateStaffBookingStatus(bookingId, 'Processing')
+      showToast(`Xe #${bookingId} bat dau rua.`)
       setAllBookings((prev) =>
         prev.map((b) =>
-          Number(b.bookingId) === Number(bookingId) ? { ...b, status: 'Checked-in' } : b,
+          Number(b.bookingId) === Number(bookingId) ? { ...b, status: 'Processing' } : b,
         ),
       )
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Loi khi check-in. Vui long thu lai.'
+      const msg = err instanceof ApiError ? err.message : 'Loi khi bat dau rua. Vui long thu lai.'
       showToast(msg, 'error')
     }
   }, [])
 
   const handleComplete = useCallback(async (bookingId) => {
-    const row = allBookings.find((b) => Number(b.bookingId) === Number(bookingId))
     try {
-      await updateBookingStatus(bookingId, 'Completed')
-      showToast(`Xe ${row?.licensePlate ?? bookingId} da hoan thanh.`)
+      await updateStaffBookingStatus(bookingId, 'Completed')
+      showToast(`Xe #${bookingId} da hoan thanh.`)
       setAllBookings((prev) =>
         prev.filter((b) => Number(b.bookingId) !== Number(bookingId)),
       )
@@ -134,11 +95,10 @@ export default function QueuePage() {
       const msg = err instanceof ApiError ? err.message : 'Loi khi hoan thanh. Vui long thu lai.'
       showToast(msg, 'error')
     }
-  }, [allBookings])
+  }, [])
 
   return (
     <div className="relative w-full">
-      {/* Toast */}
       {toast && (
         <div
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3 shadow-xl ${
@@ -157,7 +117,7 @@ export default function QueuePage() {
       <div className="mb-6">
         <h1 className="font-sora text-2xl font-semibold text-on-surface">Quan ly hang doi</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          Danh sach xe cho — Bookings trang thai Pending va Checked-in
+          Danh sach xe tai lan cua ban — Bookings Checked-in va Processing
         </p>
       </div>
 
@@ -173,7 +133,7 @@ export default function QueuePage() {
         </div>
       ) : (
         <>
-          <QueueStats stats={stats} avgWaitMinutes={avgWaitMinutes} />
+          <QueueStats stats={stats} avgWaitMinutes={0} />
 
           <QueueToolbar
             filter={filter}
@@ -193,7 +153,7 @@ export default function QueuePage() {
           ) : (
             <QueueTable
               bookings={displayedBookings}
-              onCheckIn={handleCheckIn}
+              onStartProcessing={handleStartProcessing}
               onComplete={handleComplete}
             />
           )}

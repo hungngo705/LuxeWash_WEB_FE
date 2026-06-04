@@ -20,5 +20,6 @@ export function formatDateTime(iso) {
 export function getHomePathForRole(role) {
   if (role === 'Admin') return '/admin/dashboard'
   if (role === 'Staff') return '/dashboard'
+  if (role === 'Manager') return '/manager/dashboard'
   return '/login'
 }

@@ -61,7 +61,7 @@ export {
   normalizeLane,
 } from './admin.lanes.api'
 
-export { createEmployee, transferEmployee } from './admin.employees.api'
+export { createEmployee, transferEmployee, fetchEmployees } from './admin.employees.api'
 
 export {
   fetchCarModels,
@@ -93,6 +93,7 @@ export {
   markBookingNoShow,
   forceCancelBookings,
   reportBookingMismatch,
+  updateBookingCondition,
   normalizeAdminBooking,
   normalizeBookingStatus,
   toApiTargetDate,
@@ -107,3 +108,42 @@ export {
 } from './admin.transactions.api'
 
 export { fetchDashboardStats } from './admin.dashboard.api'
+
+export {
+  fetchManagerBookings,
+  fetchManagerStaffs,
+  assignStaffToLane,
+  checkinAssignBooking,
+  markManagerBookingNoShow,
+  normalizeManagerBooking,
+} from './manager.api'
+
+export {
+  fetchManagerLanes,
+  createManagerLane,
+  fetchLaneAssignedStaff,
+} from './manager.lanes.api'
+
+export {
+  fetchManagerTimeSlots,
+  createManagerTimeSlot,
+} from './manager.timeSlots.api'
+
+export {
+  createManagerStaff,
+  normalizeManagerStaff,
+  fetchBranchEmployeesSummary,
+} from './manager.employees.api'
+
+export {
+  fetchStaffTasks,
+  updateStaffBookingStatus,
+  normalizeStaffTask,
+} from './operationStaff.api'
+
+export {
+  checkAvailableSlots,
+  checkCompatibility,
+  createBooking,
+  createWalkInBooking,
+} from './customer.api'

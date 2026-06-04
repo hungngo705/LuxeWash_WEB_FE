@@ -144,6 +144,8 @@ export function forceCancelBookings(payload) {
 }
 
 /**
+ * PUT /api/v1/admin/bookings/{detailId}/report-mismatch
+ * Reports a mismatch between registered and actual vehicle condition/type.
  * @param {number} detailId
  * @param {{ condition: number; actualTypeId?: number }} params
  */
@@ -176,5 +178,18 @@ export function updateBookingStatusByLicensePlate(licensePlate, newStatus) {
       licensePlate,
       newStatus: toApiBookingStatus(newStatus),
     }),
+  })
+}
+
+/**
+ * PUT /api/v1/bookings/{bookingId}/condition
+ * Updates the vehicle condition (for surcharge assessment).
+ * @param {number} bookingId
+ * @param {1 | 2 | 3} condition 1=Clean, 2=Dirty, 3=VeryDirty
+ */
+export function updateBookingCondition(bookingId, condition) {
+  return apiRequest(`/bookings/${bookingId}/condition`, {
+    method: 'PUT',
+    body: JSON.stringify({ condition }),
   })
 }
