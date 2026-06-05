@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
+  fetchAdminBranches,
   fetchBookingsByDate,
   fetchBookingsByLicensePlate,
-  fetchBranches,
   fetchTimeSlots,
   fetchVehicleTypes,
+  filterBookingsByBranch,
   forceCancelBookings,
   markBookingNoShow,
   normalizeAdminBooking,
@@ -52,6 +53,7 @@ export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState([])
   const [timeSlots, setTimeSlots] = useState([])
   const [branches, setBranches] = useState([])
+  const [selectedBranchId, setSelectedBranchId] = useState('')
   const [vehicleTypes, setVehicleTypes] = useState([])
   const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [statusFilter, setStatusFilter] = useState('All')
@@ -64,7 +66,6 @@ export default function AdminBookingsPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [forceCancelOpen, setForceCancelOpen] = useState(false)
   const [forceCancelForm, setForceCancelForm] = useState({
-    branchId: '',
     timeSlotId: '',
     reason: '',
   })
@@ -91,46 +92,50 @@ export default function AdminBookingsPage() {
     setTimeout(() => setToast(''), 2500)
   }
 
+  const branchIdNum = Number(selectedBranchId)
+  const selectedBranchName =
+    branches.find((b) => b.id === branchIdNum)?.name ?? ''
+
   const loadBookings = useCallback(async () => {
     const targetDate = toApiTargetDate(dateFilter)
-    if (!targetDate) return
+    if (!targetDate || !branchIdNum) return
 
     setLoading(true)
     setLoadError('')
     try {
       const data = await fetchBookingsByDate(targetDate)
       const items = Array.isArray(data) ? data.map(normalizeAdminBooking) : []
-      setBookings(items)
+      setBookings(filterBookingsByBranch(items, branchIdNum))
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách booking')
     } finally {
       setLoading(false)
     }
-  }, [dateFilter])
+  }, [dateFilter, branchIdNum])
 
   useEffect(() => {
     loadBookings()
   }, [loadBookings])
 
   useEffect(() => {
-    Promise.all([fetchBranches(), fetchVehicleTypes()])
-      .then(([branchList, types]) => {
-        setBranches(Array.isArray(branchList) ? branchList : [])
-        setVehicleTypes(Array.isArray(types) ? types : [])
-      })
+    fetchAdminBranches()
+      .then((branchList) => setBranches(Array.isArray(branchList) ? branchList : []))
+      .catch(() => {})
+    fetchVehicleTypes()
+      .then((types) => setVehicleTypes(Array.isArray(types) ? types : []))
       .catch(() => {})
   }, [])
 
   useEffect(() => {
-    const branchId = forceCancelForm.branchId
-    if (!branchId) {
+    if (!branchIdNum) {
       setTimeSlots([])
+      setBookings([])
       return
     }
-    fetchTimeSlots({ branchId })
+    fetchTimeSlots({ branchId: branchIdNum })
       .then((slots) => setTimeSlots(Array.isArray(slots) ? slots : []))
       .catch(() => setTimeSlots([]))
-  }, [forceCancelForm.branchId])
+  }, [branchIdNum])
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => statusFilter === 'All' || b.status === statusFilter)
@@ -175,9 +180,8 @@ export default function AdminBookingsPage() {
   const handleForceCancel = async () => {
     if (!forceCancelForm.reason.trim() || forceCancelling) return
 
-    const branchId = Number(forceCancelForm.branchId)
-    if (!branchId) {
-      showToast('Chọn chi nhánh')
+    if (!branchIdNum) {
+      showToast('Chọn chi nhánh trước khi hủy hàng loạt')
       return
     }
 
@@ -190,13 +194,13 @@ export default function AdminBookingsPage() {
     setForceCancelling(true)
     try {
       await forceCancelBookings({
-        branchId,
+        branchId: branchIdNum,
         timeSlotId,
         affectedDate: toApiTargetDate(dateFilter),
         reason: forceCancelForm.reason.trim(),
       })
       setForceCancelOpen(false)
-      setForceCancelForm({ branchId: '', timeSlotId: '', reason: '' })
+      setForceCancelForm({ timeSlotId: '', reason: '' })
       showToast('Đã hủy hàng loạt booking trong khung giờ')
       await loadBookings()
     } catch (err) {
@@ -243,12 +247,19 @@ export default function AdminBookingsPage() {
   const searchByPlate = async () => {
     const plate = plateQuery.trim()
     if (!plate) return
+    if (!branchIdNum) {
+      showToast('Chọn chi nhánh trước khi tra cứu')
+      return
+    }
 
     setPlateLoading(true)
     setPlateResults([])
     try {
       const data = await fetchBookingsByLicensePlate(plate)
-      const items = Array.isArray(data) ? data.map(normalizeAdminBooking) : []
+      const items = filterBookingsByBranch(
+        Array.isArray(data) ? data.map(normalizeAdminBooking) : [],
+        branchIdNum,
+      )
       setPlateResults(items)
       if (!items.length) showToast('Không tìm thấy booking cho biển số này')
     } catch (err) {
@@ -261,6 +272,10 @@ export default function AdminBookingsPage() {
   const applyPlateStatus = async () => {
     const plate = plateQuery.trim()
     if (!plate || plateActionLoading) return
+    if (!branchIdNum) {
+      showToast('Chọn chi nhánh trước khi đổi trạng thái')
+      return
+    }
 
     setPlateActionLoading(true)
     try {
@@ -278,11 +293,47 @@ export default function AdminBookingsPage() {
   return (
     <div className="w-full">
       <PageHeader
-        title="Lịch đặt toàn hệ thống"
-        description="Xem và quản lý booking theo ngày — đổi trạng thái, no-show, force-cancel"
+        title="Lịch đặt"
+        description="Chọn chi nhánh để xem và thao tác lịch đặt theo ngày"
         actionLabel="Hủy hàng loạt (slot)"
-        onAction={() => setForceCancelOpen(true)}
+        onAction={() => {
+          if (!branchIdNum) {
+            showToast('Chọn chi nhánh trước')
+            return
+          }
+          setForceCancelOpen(true)
+        }}
       />
+
+      <div className="glass-panel soft-shadow mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+        <label className="block max-w-md space-y-1 text-sm">
+          <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+            Chi nhánh thao tác
+          </span>
+          <select
+            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+            value={selectedBranchId}
+            onChange={(e) => setSelectedBranchId(e.target.value)}
+          >
+            <option value="">— Chọn chi nhánh —</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+                {b.isActive === false ? ' (Inactive)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        {selectedBranchId ? (
+          <p className="mt-2 text-sm text-on-surface-variant">
+            Đang thao tác tại: <strong className="text-on-surface">{selectedBranchName}</strong>
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-on-surface-variant">
+            Chọn chi nhánh trước khi tra cứu, xem danh sách hoặc hủy hàng loạt.
+          </p>
+        )}
+      </div>
 
       {toast && (
         <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
@@ -389,7 +440,13 @@ export default function AdminBookingsPage() {
         </div>
       )}
 
-      {loading ? (
+      {!selectedBranchId ? (
+        <EmptyState
+          icon="store"
+          title="Chọn chi nhánh"
+          message="Chọn chi nhánh ở trên để tải và thao tác lịch đặt theo ngày."
+        />
+      ) : loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải booking…</p>
       ) : filtered.length === 0 && !loadError ? (
         <EmptyState icon="calendar_month" title="Không có booking" />
@@ -709,33 +766,10 @@ export default function AdminBookingsPage() {
       >
         <div className="space-y-4 text-sm">
           <p className="text-on-surface-variant">
-            Hủy mọi booking trong khung giờ đã chọn cho ngày{' '}
+            Hủy mọi booking tại <strong className="text-on-surface">{selectedBranchName}</strong>{' '}
+            trong khung giờ đã chọn, ngày{' '}
             <strong className="text-on-surface">{dateFilter}</strong>.
           </p>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">
-              Chi nhánh
-            </span>
-            <select
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={forceCancelForm.branchId}
-              disabled={forceCancelling}
-              onChange={(e) =>
-                setForceCancelForm((f) => ({
-                  ...f,
-                  branchId: e.target.value,
-                  timeSlotId: '',
-                }))
-              }
-            >
-              <option value="">— Chọn chi nhánh —</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase text-on-surface-variant">
               Khung giờ
@@ -743,7 +777,7 @@ export default function AdminBookingsPage() {
             <select
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={forceCancelForm.timeSlotId}
-              disabled={forceCancelling || !forceCancelForm.branchId}
+              disabled={forceCancelling || !branchIdNum}
               onChange={(e) =>
                 setForceCancelForm((f) => ({ ...f, timeSlotId: e.target.value }))
               }

@@ -96,6 +96,7 @@ export {
   reportBookingMismatch,
   updateBookingCondition,
   normalizeAdminBooking,
+  filterBookingsByBranch,
   normalizeBookingStatus,
   toApiTargetDate,
   toApiBookingStatus,

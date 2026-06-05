@@ -13,6 +13,8 @@ import { apiRequest } from './client'
  *   finalAmount: number
  *   fallbackQrCode: string
  *   slotId?: number
+ *   branchId?: number
+ *   branchName?: string
  *   details: Array<{
  *     detailId?: number
  *     licensePlate: string
@@ -111,14 +113,27 @@ export function normalizeAdminBooking(item) {
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     fallbackQrCode: String(item.fallbackQrCode ?? item.qrCode ?? '—'),
     slotId: item.slotId ?? item.timeSlotId ?? undefined,
+    branchId: item.branchId != null ? Number(item.branchId) : undefined,
+    branchName: item.branchName != null ? String(item.branchName) : undefined,
     details: Array.isArray(details) ? details.map(normalizeBookingDetail) : [],
   }
 }
 
-/** @param {string} targetDate ISO date-time */
+/**
+ * GET /api/v1/admin/bookings?targetDate= — Swagger chỉ có targetDate.
+ * Lọc theo chi nhánh thực hiện ở FE qua {@link filterBookingsByBranch}.
+ * @param {string} targetDate ISO date-time
+ */
 export function fetchBookingsByDate(targetDate) {
   const params = new URLSearchParams({ targetDate })
   return apiRequest(`/admin/bookings?${params}`)
+}
+
+/** @param {AdminBooking[]} bookings @param {number | string} branchId */
+export function filterBookingsByBranch(bookings, branchId) {
+  const bid = Number(branchId)
+  if (!bid) return []
+  return bookings.filter((b) => b.branchId == null || Number(b.branchId) === bid)
 }
 
 /** @param {number} bookingId @param {string} newStatus */

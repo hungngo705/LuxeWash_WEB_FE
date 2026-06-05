@@ -24,9 +24,10 @@ export function normalizeLane(item) {
   }
 }
 
-/** @returns {Promise<Lane[]>} */
-export async function fetchLanes() {
-  const data = await apiRequest('/admin/lanes')
+/** @param {{ branchId?: number | string }} [options] @returns {Promise<Lane[]>} */
+export async function fetchLanes({ branchId } = {}) {
+  const params = branchId ? `?branchId=${branchId}` : ''
+  const data = await apiRequest(`/admin/lanes${params}`)
   const list = Array.isArray(data) ? data : []
   return list.map(normalizeLane)
 }
