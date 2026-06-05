@@ -25,7 +25,8 @@ function StatusBadge({ status }) {
 }
 
 function RankBadge({ rankName, rankId }) {
-  const isVip = rankName.includes('VIP') || rankName === 'VIP' || rankId >= 4
+  const label = String(rankName ?? '—')
+  const isVip = label.includes('VIP') || label === 'VIP' || (rankId != null && rankId >= 4)
   return (
     <span
       className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase ${
@@ -34,7 +35,7 @@ function RankBadge({ rankName, rankId }) {
           : 'border-outline-variant bg-surface-variant text-on-surface-variant'
       }`}
     >
-      {rankName}
+      {label}
     </span>
   )
 }
