@@ -84,7 +84,8 @@ export default function QueueTable({ bookings, onStartProcessing, onComplete }) 
                 <td className="px-4 py-4">
                   <div>
                     <p className="font-medium text-on-surface">{row.customerName}</p>
-                    <div className="mt-1">
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <RankBadge rankName={row.rankName} rankId={row.rankId} />
                       <StatusBadge status={row.status} />
                     </div>
                   </div>
@@ -100,22 +101,13 @@ export default function QueueTable({ bookings, onStartProcessing, onComplete }) 
                 </td>
                 <td className="px-4 py-4">
                   <div className="flex justify-end gap-2">
-                    {row.status === 'Pending' && (
-                      <button
-                        type="button"
-                        className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold tracking-wide text-on-primary uppercase transition-colors hover:bg-primary/90"
-                        onClick={() => onStartProcessing(row.bookingId)}
-                      >
-                        Bat dau rua
-                      </button>
-                    )}
                     {row.status === 'Checked-in' && (
                       <button
                         type="button"
                         className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold tracking-wide text-on-primary uppercase transition-colors hover:bg-primary/90"
                         onClick={() => onStartProcessing(row.bookingId)}
                       >
-                        Bat dau rua
+                        Bắt đầu rửa
                       </button>
                     )}
                     {row.status === 'Processing' && (
@@ -124,7 +116,7 @@ export default function QueueTable({ bookings, onStartProcessing, onComplete }) 
                         className="rounded-lg border border-primary-container bg-primary-container/10 px-3 py-2 text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/20"
                         onClick={() => onComplete(row.bookingId)}
                       >
-                        Hoan thanh
+                        Hoàn thành
                       </button>
                     )}
                   </div>

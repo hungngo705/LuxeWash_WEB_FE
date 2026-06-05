@@ -1,18 +1,301 @@
 import { apiRequest } from './client'
-import { normalizeBookingStatus } from './admin.bookings.api'
+import {
+  asBookingList,
+  fetchBookingsByDate,
+  normalizeBookingStatus,
+  toApiTargetDate,
+} from './admin.bookings.api'
+import { fetchTransactions, normalizeTransaction } from './admin.transactions.api'
+import { findUserByLicensePlate, maskPhoneNumber } from './staff.customers.api'
+
+/**
+ * @typedef {{
+ *   laneId?: number
+ *   laneName?: string
+ *   branchId?: number
+ *   branchName?: string
+ *   assignedDate?: string
+ *   staffId?: number
+ * }} StaffLaneAssignment
+ */
+
+/** @param {string | undefined | null} method */
+export function formatPaymentMethodLabel(method) {
+  const raw = String(method ?? '').trim()
+  if (!raw || raw === '—') return 'Chưa xác định'
+  const map = {
+    Wallet: 'Ví LuxeWash',
+    Card: 'Thẻ ngân hàng',
+    Cash: 'Tiền mặt',
+    Points: 'Điểm thưởng',
+    Point: 'Điểm thưởng',
+    COD: 'Thanh toán tại quầy',
+    Pending: 'Chưa thanh toán',
+  }
+  return map[raw] ?? raw
+}
+
+function formatSlotLabel(start, end) {
+  const fmt = (v) => (v ? String(v).slice(0, 5) : '')
+  if (start && end) return `${fmt(start)} – ${fmt(end)}`
+  return fmt(start) || fmt(end) || '—'
+}
+
+function normalizeVehicleCondition(condition) {
+  if (condition == null || condition === '') return '—'
+  if (typeof condition === 'number') {
+    return ({ 1: 'Sạch', 2: 'Bẩn', 3: 'Rất bẩn' })[condition] ?? String(condition)
+  }
+  const text = String(condition)
+  const map = { Clean: 'Sạch', Dirty: 'Bẩn', VeryDirty: 'Rất bẩn' }
+  return map[text] ?? text
+}
+
+function formatScheduledSlotLabel(scheduledTime) {
+  if (!scheduledTime) return undefined
+  const d = new Date(String(scheduledTime))
+  if (Number.isNaN(d.getTime())) return undefined
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function normalizeServiceNames(value) {
+  if (Array.isArray(value)) {
+    const names = value.map((v) => String(v ?? '').trim()).filter(Boolean)
+    return names.length ? names.join(', ') : undefined
+  }
+  if (value == null || value === '') return undefined
+  return String(value)
+}
+
+function sumDiscounts(item) {
+  const point = Number(item.pointDiscountAmount ?? item.pointDiscount ?? 0)
+  const voucher = Number(item.voucherDiscountAmount ?? item.voucherDiscount ?? 0)
+  const generic = Number(item.discountAmount ?? item.discount ?? 0)
+  return point + voucher + generic
+}
+
+/** Flatten nested booking payloads from various BE DTO shapes. */
+function flattenBookingSource(item) {
+  if (!item || typeof item !== 'object') return {}
+
+  const customer = /** @type {Record<string, unknown>} */ (
+    item.customer ?? item.customerProfile ?? item.customerInfo ?? item.user ?? item.owner ?? {}
+  )
+  const vehicle = /** @type {Record<string, unknown>} */ (
+    item.vehicle ?? item.registeredVehicle ?? {}
+  )
+  const payment = /** @type {Record<string, unknown>} */ (
+    item.payment ?? item.transaction ?? item.paymentInfo ?? {}
+  )
+  const timeSlot = /** @type {Record<string, unknown>} */ (item.timeSlot ?? item.slot ?? {})
+  const services = item.services ?? item.serviceList ?? item.bookingServices ?? []
+  const firstService = Array.isArray(services) ? services[0] : null
+  const details = item.details ?? item.bookingDetails ?? item.bookingDetailList ?? []
+  const firstDetail = Array.isArray(details) ? details[0] : null
+  const nestedService = /** @type {Record<string, unknown>} */ (firstDetail?.service ?? {})
+
+  const serviceName =
+    normalizeServiceNames(item.serviceNames) ??
+    normalizeServiceNames(item.serviceName) ??
+    normalizeServiceNames(firstService?.name ?? firstService?.serviceName) ??
+    normalizeServiceNames(nestedService.name ?? nestedService.serviceName) ??
+    normalizeServiceNames(firstDetail?.serviceName)
+
+  const scheduledTime = item.scheduledTime ?? item.scheduledDate ?? item.affectedDate
+
+  return {
+    ...item,
+    details,
+    customerName:
+      item.customerName ??
+      item.fullName ??
+      item.ownerName ??
+      customer.fullName ??
+      customer.customerName ??
+      customer.name,
+    phoneNumber:
+      item.customerPhone ??
+      item.phoneNumber ??
+      item.customerPhoneNumber ??
+      item.ownerPhone ??
+      customer.phoneNumber ??
+      customer.phone,
+    userId: item.userId ?? item.customerId ?? customer.userId ?? customer.id ?? customer.customerId,
+    tierName:
+      item.tierName ??
+      item.rankName ??
+      customer.tierName ??
+      customer.rankName ??
+      customer.membershipTier,
+    rankId: item.rankId ?? item.tierId ?? customer.rankId ?? customer.tierId,
+    paymentMethod:
+      item.paymentMethod ??
+      item.payMethod ??
+      payment.paymentMethod ??
+      payment.method ??
+      item.paymentType,
+    paymentStatus:
+      item.paymentStatus ?? payment.status ?? payment.paymentStatus ?? item.transactionStatus,
+    licensePlate:
+      item.licensePlate ?? vehicle.licensePlate ?? firstDetail?.licensePlate,
+    vehicleType:
+      item.vehicleType ??
+      item.vehicleTypeName ??
+      vehicle.vehicleTypeName ??
+      vehicle.vehicleType ??
+      vehicle.type ??
+      firstDetail?.vehicleTypeName ??
+      firstDetail?.vehicleType,
+    vehicleDisplayName:
+      item.vehicleDisplayName ??
+      item.displayName ??
+      vehicle.displayName ??
+      vehicle.carModelName ??
+      vehicle.modelName ??
+      vehicle.carModel ??
+      firstDetail?.displayName,
+    serviceName,
+    originalAmount: item.originalPrice ?? item.originalAmount ?? item.subtotal,
+    discountAmount: sumDiscounts(item),
+    startTime: item.startTime ?? timeSlot.startTime ?? item.slotStartTime,
+    endTime: item.endTime ?? timeSlot.endTime ?? item.slotEndTime,
+    slotLabel:
+      item.slotLabel ??
+      item.timeSlotLabel ??
+      timeSlot.label ??
+      formatScheduledSlotLabel(scheduledTime) ??
+      (item.startTime && item.endTime ? formatSlotLabel(item.startTime, item.endTime) : undefined),
+    scheduledTime,
+  }
+}
+
+function needsCustomerLookup(task) {
+  return !task.customerName || task.customerName === '—' || !task.userId
+}
+
+async function attachPaymentFromTransactions(booking) {
+  if (booking.paymentMethod && booking.paymentMethod !== '—') return booking
+
+  try {
+    const txs = await fetchTransactions()
+    const list = (Array.isArray(txs) ? txs : []).map(normalizeTransaction)
+    const tx = list.find((t) => Number(t.bookingId) === Number(booking.bookingId))
+    if (tx) {
+      return {
+        ...booking,
+        paymentMethod: tx.paymentMethod,
+        paymentStatus: tx.status,
+        customerName: booking.customerName === '—' ? tx.customerName : booking.customerName,
+      }
+    }
+  } catch {
+    // optional
+  }
+
+  if (booking.status === 'Pending') {
+    return {
+      ...booking,
+      paymentMethod: 'Pending',
+      paymentStatus: 'Chưa thanh toán',
+    }
+  }
+
+  return booking
+}
+
+function attachDetailsFromSummary(task) {
+  if (task.details?.length || !task.serviceName || task.serviceName === '—') return task
+  return {
+    ...task,
+    details: [
+      {
+        detailId: task.bookingId,
+        licensePlate: task.licensePlate,
+        serviceName: task.serviceName,
+        vehicleCondition: '—',
+      },
+    ],
+  }
+}
+
+/**
+ * Load full booking detail for Staff UI.
+ * StaffBookings summary DTO lacks customer — resolved via /admin/users vehicle garage.
+ * @param {StaffTask} booking
+ * @returns {Promise<StaffTask>}
+ */
+export async function enrichStaffBooking(booking) {
+  if (!booking?.bookingId) return booking
+
+  let merged = normalizeStaffTask(booking)
+
+  try {
+    const dateKey =
+      merged.scheduledTime?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+    const data = await fetchBookingsByDate(toApiTargetDate(dateKey))
+    const match = asBookingList(data).find(
+      (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
+    )
+    if (match) {
+      merged = normalizeStaffTask({ ...match, bookingId: booking.bookingId })
+    }
+  } catch {
+    // same shape as by-license-plate — continue
+  }
+
+  if (needsCustomerLookup(merged) && merged.licensePlate && merged.licensePlate !== '—') {
+    const lookup = await findUserByLicensePlate(merged.licensePlate)
+    if (lookup) {
+      const { customer, vehicle } = lookup
+      merged = normalizeStaffTask({
+        ...merged,
+        customerName: customer.fullName,
+        phoneNumber: customer.phoneNumber,
+        userId: customer.userId,
+        tierName: customer.rankName,
+        vehicleType: vehicle.vehicleType ?? vehicle.vehicleTypeName ?? merged.vehicleType,
+        vehicleDisplayName:
+          vehicle.displayName ??
+          vehicle.carModel ??
+          vehicle.vehicleDisplayName ??
+          merged.vehicleDisplayName,
+      })
+    }
+  }
+
+  merged = await attachPaymentFromTransactions(merged)
+  merged = attachDetailsFromSummary(merged)
+
+  return merged
+}
 
 /**
  * @typedef {{
  *   bookingId: number
  *   licensePlate: string
  *   customerName: string
+ *   userId?: number
+ *   phoneNumber: string
+ *   phoneMasked: string
+ *   rankName: string
+ *   rankId?: number
  *   serviceName: string
  *   slotLabel: string
- *   scheduledTime: string
+ *   scheduledTime: string | null
  *   status: string
  *   finalAmount: number
+ *   originalAmount?: number
+ *   discountAmount?: number
+ *   paymentMethod: string
+ *   paymentStatus: string
+ *   fallbackQrCode: string
+ *   branchId?: number
+ *   branchName?: string
  *   processingLaneId?: number
  *   processingLaneName?: string
+ *   vehicleType: string
+ *   vehicleDisplayName: string
+ *   lastVisitDate?: string | null
  *   details: Array<{
  *     detailId?: number
  *     licensePlate: string
@@ -23,52 +306,171 @@ import { normalizeBookingStatus } from './admin.bookings.api'
  */
 
 /**
- * Normalize a raw booking response for Staff task view.
+ * Normalize booking/task payload from operation-staff, admin bookings, or recognize API.
  * @param {Record<string, unknown>} item
  * @returns {StaffTask}
  */
 export function normalizeStaffTask(item) {
-  const details = item.details ?? item.bookingDetails ?? []
+  const flat = flattenBookingSource(item)
+  const details = flat.details ?? []
   const firstDetail = Array.isArray(details) ? details[0] : null
+  const phoneRaw = flat.phoneNumber ?? ''
 
-  const formatSlotLabel = (start, end) => {
-    const fmt = (v) => (v ? String(v).slice(0, 5) : '')
-    if (start && end) return `${fmt(start)} – ${fmt(end)}`
-    return fmt(start) || fmt(end) || '—'
-  }
+  const scheduledRaw = flat.scheduledTime ?? flat.scheduledDate ?? flat.affectedDate ?? null
 
-  const normalizeCondition = (cond) => {
-    if (cond == null || cond === '') return '—'
-    if (typeof cond === 'number') {
-      return ({ 1: 'Sạch', 2: 'Bẩn', 3: 'Rất bẩn' })[cond] ?? String(cond)
-    }
-    return String(cond)
+  let slotLabel =
+    flat.slotLabel ??
+    flat.timeSlotLabel ??
+    formatSlotLabel(flat.startTime, flat.endTime)
+  if (!slotLabel || slotLabel === '—') {
+    slotLabel = formatScheduledSlotLabel(scheduledRaw) ?? '—'
   }
 
   return {
-    bookingId: Number(item.bookingId ?? item.id),
-    licensePlate: String(item.licensePlate ?? firstDetail?.licensePlate ?? '—'),
-    customerName: String(item.customerName ?? item.fullName ?? '—'),
-    serviceName: String(item.serviceName ?? firstDetail?.serviceName ?? '—'),
-    slotLabel: String(
-      item.slotLabel ?? item.timeSlotLabel ?? formatSlotLabel(item.startTime, item.endTime),
+    bookingId: Number(flat.bookingId ?? flat.id ?? 0),
+    licensePlate: String(flat.licensePlate ?? firstDetail?.licensePlate ?? '—'),
+    customerName: String(flat.customerName ?? '—'),
+    userId: flat.userId != null ? Number(flat.userId) : undefined,
+    phoneNumber: String(phoneRaw || '—'),
+    phoneMasked: maskPhoneNumber(String(phoneRaw || '')),
+    rankName: String(flat.rankName ?? flat.tierName ?? flat.membershipTier ?? '—'),
+    rankId: flat.rankId != null ? Number(flat.rankId) : flat.tierId != null ? Number(flat.tierId) : undefined,
+    serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
+    slotLabel: String(slotLabel),
+    scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
+    status: normalizeBookingStatus(flat.status ?? flat.bookingStatus),
+    finalAmount: Number(flat.finalAmount ?? flat.totalAmount ?? flat.amount ?? 0),
+    originalAmount: Number(flat.originalAmount ?? flat.originalPrice ?? flat.finalAmount ?? 0),
+    discountAmount: Number(flat.discountAmount ?? 0),
+    paymentMethod: String(flat.paymentMethod ?? '—'),
+    paymentStatus: String(flat.paymentStatus ?? '—'),
+    fallbackQrCode: String(flat.fallbackQrCode ?? flat.qrCode ?? '—'),
+    branchId: flat.branchId != null ? Number(flat.branchId) : undefined,
+    branchName: flat.branchName != null ? String(flat.branchName) : undefined,
+    processingLaneId: flat.processingLaneId ?? flat.laneId ?? undefined,
+    processingLaneName:
+      flat.processingLaneName != null
+        ? String(flat.processingLaneName)
+        : flat.laneName != null
+          ? String(flat.laneName)
+          : undefined,
+    vehicleType: String(
+      flat.vehicleType ??
+        flat.vehicleTypeName ??
+        firstDetail?.vehicleType ??
+        firstDetail?.vehicleTypeName ??
+        '—',
     ),
-    scheduledTime: item.scheduledTime ?? item.scheduledDate ?? null,
-    status: normalizeBookingStatus(item.status ?? item.bookingStatus),
-    finalAmount: Number(item.finalAmount ?? 0),
-    processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
-    processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
+    vehicleDisplayName: String(
+      flat.vehicleDisplayName ??
+        flat.displayName ??
+        flat.carModel ??
+        flat.carModelName ??
+        firstDetail?.displayName ??
+        '—',
+    ),
+    lastVisitDate:
+      flat.lastVisitDate != null
+        ? String(flat.lastVisitDate)
+        : flat.lastVisit != null
+          ? String(flat.lastVisit)
+          : null,
     details: Array.isArray(details)
       ? details.map((d, i) => ({
           detailId: d.detailId ?? d.id ?? i + 1,
-          licensePlate: d.licensePlate ?? '—',
-          serviceName: d.serviceName ?? '—',
-          vehicleCondition: normalizeCondition(
+          licensePlate: String(d.licensePlate ?? '—'),
+          serviceName: String(d.serviceName ?? d.service?.serviceName ?? d.service?.name ?? '—'),
+          vehicleCondition: normalizeVehicleCondition(
             d.vehicleCondition ?? d.condition ?? d.conditionName,
           ),
         }))
       : [],
   }
+}
+
+/**
+ * Map vehicle recognize API response to StaffTask when possible.
+ * @param {Record<string, unknown>} data
+ * @returns {StaffTask | null}
+ */
+export function normalizeVehicleRecognition(data) {
+  if (!data || typeof data !== 'object') return null
+
+  const booking = /** @type {Record<string, unknown>} */ (
+    data.activeBooking ?? data.booking ?? data.currentBooking ?? {}
+  )
+  const customer = /** @type {Record<string, unknown>} */ (
+    data.customer ?? data.owner ?? data.user ?? {}
+  )
+  const vehicle = /** @type {Record<string, unknown>} */ (data.vehicle ?? {})
+
+  if (!booking.bookingId && !data.licensePlate && !vehicle.licensePlate) return null
+
+  return normalizeStaffTask({
+    ...data,
+    ...booking,
+    ...customer,
+    licensePlate: data.licensePlate ?? vehicle.licensePlate ?? booking.licensePlate,
+    vehicleType: vehicle.vehicleType ?? vehicle.vehicleTypeName ?? data.vehicleType,
+    vehicleDisplayName:
+      vehicle.displayName ?? vehicle.carModelName ?? vehicle.carModel ?? data.vehicleDisplayName,
+    customerName: customer.fullName ?? data.ownerName ?? data.customerName,
+    phoneNumber: customer.phoneNumber ?? data.phoneNumber,
+    rankName: customer.tierName ?? customer.rankName ?? data.tierName,
+    userId: customer.userId ?? data.userId ?? data.ownerId,
+  })
+}
+
+/** @param {Record<string, unknown>} item @returns {StaffLaneAssignment} */
+export function normalizeStaffLaneAssignment(item) {
+  if (!item || typeof item !== 'object') return {}
+  return {
+    laneId: item.laneId != null ? Number(item.laneId) : undefined,
+    laneName: item.laneName != null ? String(item.laneName) : undefined,
+    branchId: item.branchId != null ? Number(item.branchId) : undefined,
+    branchName: item.branchName != null ? String(item.branchName) : undefined,
+    assignedDate: item.assignedDate != null ? String(item.assignedDate) : undefined,
+    staffId: item.staffId != null ? Number(item.staffId) : undefined,
+  }
+}
+
+export function formatStaffStationLabel(assignment) {
+  if (!assignment) return 'Chưa phân công làn'
+  if (assignment.laneName && assignment.branchName) {
+    return `${assignment.laneName} · ${assignment.branchName}`
+  }
+  if (assignment.laneName) return assignment.laneName
+  if (assignment.laneId) return `Làn #${assignment.laneId}`
+  return 'Chưa phân công làn'
+}
+
+/**
+ * GET /api/v1/operation-staff/lane-assignment
+ * @returns {Promise<StaffLaneAssignment>}
+ */
+export function fetchStaffLaneAssignment() {
+  return apiRequest('/operation-staff/lane-assignment').then(normalizeStaffLaneAssignment)
+}
+
+/**
+ * GET /api/v1/vehicles/recognize/{licensePlate}
+ * @param {string} licensePlate
+ * @returns {Promise<StaffTask | null>}
+ */
+export function recognizeVehicleByPlate(licensePlate) {
+  const plate = encodeURIComponent(licensePlate.trim())
+  return apiRequest(`/vehicles/recognize/${plate}`).then(normalizeVehicleRecognition)
+}
+
+/**
+ * POST /api/v1/staff/vouchers/consume
+ * @param {{ userId: number; voucherCode: string }} payload
+ */
+export function consumeStaffVoucher(payload) {
+  return apiRequest('/staff/vouchers/consume', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 /**

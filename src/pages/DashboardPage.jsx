@@ -1,29 +1,59 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import StaffBookingDetailModal from '../components/dashboard/StaffBookingDetailModal'
 import {
   ApiError,
+  enrichStaffBooking,
+  fetchBookingsByLicensePlate,
+  fetchStaffLaneAssignment,
   fetchStaffTasks,
+  formatPaymentMethodLabel,
+  formatStaffStationLabel,
   normalizeStaffTask,
-  normalizeBookingStatus,
   updateStaffBookingStatus,
 } from '../api'
+import { formatDateTime, formatVnd } from '../utils/format'
 
 const CAMERA_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuClp7ADyI2iBVUMA7EIoPJsEAYC2R4QW-wLfbu4V-aXdn2Mz-TQbaCcFYwtlZAX9KsIFU7XGtg5P5AR6HmgOL12_CBKkQdCh9I-BO7ZutWni9cVeBvi07Qicp7uFO9EVhZ3lpQueRoPAmxh8p_bGfItEe3Q60cAdRRZDEUlgQ93Hj6MZEy9-MlXay4Ab63PaE6vJ6tQIlxr64EslF4K7_d4wmwqOG_XztDYgbI4RSQGLu2p4iTRecovl8-Wcs-iPQ7biJH3ov3inmPr'
 
-function formatVnd(amount) {
-  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount)
+function normalizePlate(plate) {
+  return String(plate ?? '')
+    .toUpperCase()
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
 }
 
-function formatDateTime(isoString) {
-  if (!isoString) return '—'
-  const d = new Date(isoString)
-  return d.toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function StatusBadge({ status }) {
+  const styles = {
+    Pending: 'border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container',
+    'Checked-in': 'border-primary-container/40 bg-primary-container/15 text-primary-container',
+    Processing: 'border-secondary-container/40 bg-secondary-container/15 text-secondary-container',
+    Completed: 'border-outline-variant bg-surface-variant text-on-surface-variant',
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${styles[status] ?? styles.Pending}`}
+    >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {status}
+    </span>
+  )
+}
+
+function RankBadge({ rankName, rankId }) {
+  const label = String(rankName ?? '—')
+  const isVip = label.includes('VIP') || label.includes('PLATINUM') || (rankId != null && rankId >= 4)
+  return (
+    <span
+      className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+        isVip
+          ? 'border-primary-container/30 bg-primary-container/10 text-primary-container'
+          : 'border-outline-variant bg-surface-variant text-on-surface-variant'
+      }`}
+    >
+      {label}
+    </span>
+  )
 }
 
 function Toast({ message, type, onClose }) {
@@ -49,7 +79,7 @@ function Toast({ message, type, onClose }) {
   )
 }
 
-function LoadingSpinner({ label = 'Dang xu ly...' }) {
+function LoadingSpinner({ label = 'Đang xử lý…' }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
@@ -58,33 +88,41 @@ function LoadingSpinner({ label = 'Dang xu ly...' }) {
   )
 }
 
-function PlateLookupPanel({ plateInput, onPlateChange, onSearch, loading, processingCount }) {
+function PlateLookupPanel({
+  plateInput,
+  onPlateChange,
+  onSearch,
+  loading,
+  checkedInCount,
+  processingCount,
+}) {
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="flex shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-primary">search</span>
-          <h3 className="font-sora text-xl font-semibold text-on-surface">Tra cuu bien so</h3>
+          <h3 className="font-sora text-xl font-semibold text-on-surface">Tra cứu biển số</h3>
         </div>
         <span className="rounded bg-surface-variant px-2 py-1 text-xs font-semibold text-on-surface-variant">
-          {processingCount} xe
+          {checkedInCount} chờ · {processingCount} rửa
         </span>
       </div>
       <div className="flex-1 space-y-4 p-4">
         <div className="space-y-2">
           <label className="block text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Nhap bien so xe
+            Nhập biển số xe
           </label>
           <div className="flex gap-2">
             <input
-              className="flex-1 h-12 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 text-base font-medium tracking-wider text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none uppercase"
-              placeholder="VD: 51F-123.45"
+              className="h-12 flex-1 rounded-xl border border-outline-variant bg-surface-container-lowest px-4 text-base font-medium tracking-wider text-on-surface uppercase placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none"
+              placeholder="VD: 30A12322"
               value={plateInput}
               onChange={(e) => onPlateChange(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === 'Enter' && onSearch()}
             />
             <button
-              className="shrink-0 h-12 rounded-xl bg-primary px-5 text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+              type="button"
+              className="h-12 shrink-0 rounded-xl bg-primary px-5 text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
               onClick={onSearch}
               disabled={loading || !plateInput.trim()}
             >
@@ -93,27 +131,91 @@ function PlateLookupPanel({ plateInput, onPlateChange, onSearch, loading, proces
                   <span className="h-4 w-4 animate-spin rounded-full border border-on-primary/30 border-t-on-primary" />
                 </span>
               ) : (
-                'Tra cuu'
+                'Tra cứu'
               )}
             </button>
           </div>
         </div>
-        <div className="relative overflow-hidden rounded-xl bg-black" style={{ minHeight: '180px' }}>
-          <img alt="Camera AI chua san sang" className="h-full w-full object-cover opacity-50" src={CAMERA_IMAGE} />
+        <div className="relative overflow-hidden rounded-xl bg-black" style={{ minHeight: '140px' }}>
+          <img alt="" className="h-full w-full object-cover opacity-50" src={CAMERA_IMAGE} />
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-4xl text-primary-container opacity-70">videocam_off</span>
-            <span className="text-xs text-primary-container opacity-70">Camera AI chua duoc trien khai</span>
+            <span className="material-symbols-outlined text-4xl text-primary-container opacity-70">
+              videocam_off
+            </span>
+            <span className="text-xs text-primary-container opacity-70">Camera AI chưa triển khai</span>
           </div>
         </div>
-        <p className="text-center text-xs text-on-surface-variant">Nhan Enter hoac nut "Tra cuu" de tim lich hen</p>
       </div>
     </section>
   )
 }
 
-function CustomerInfoPanel({ booking, loading, error, onStartProcessing, onSkip, confirming }) {
-  if (loading) return <LoadingSpinner label="Dang tra cuu lich hen..." />
-  if (error)
+function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
+  return (
+    <section className="glass-panel soft-shadow mt-4 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <div className="flex shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-primary">format_list_numbered</span>
+          <h3 className="font-sora text-lg font-semibold text-on-surface">Đã check-in — chờ rửa</h3>
+        </div>
+        <span className="rounded bg-primary-container/15 px-2 py-1 text-xs font-semibold text-primary-container">
+          {items.length} xe
+        </span>
+      </div>
+      <div className="max-h-72 space-y-2 overflow-y-auto p-3">
+        {items.length === 0 ? (
+          <p className="py-6 text-center text-sm text-on-surface-variant">
+            Chưa có xe check-in tại làn của bạn. Manager cần check-in trước.
+          </p>
+        ) : (
+          items.map((item) => {
+            const selected = item.bookingId === selectedBookingId
+            return (
+              <button
+                key={item.bookingId}
+                type="button"
+                onClick={() => onSelect(item)}
+                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                  selected
+                    ? 'border-primary-container bg-primary-container/10 shadow-sm'
+                    : 'border-outline-variant bg-surface-container-low hover:border-primary-container/30'
+                }`}
+              >
+                <span className="material-symbols-outlined text-2xl text-primary-container">
+                  directions_car
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-sora text-lg font-bold tracking-wide text-on-surface">
+                      {item.licensePlate}
+                    </span>
+                    <RankBadge rankName={item.rankName} rankId={item.rankId} />
+                  </div>
+                  <p className="truncate text-sm text-on-surface">{item.customerName}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {item.serviceName} · {item.slotLabel}
+                  </p>
+                </div>
+              </button>
+            )
+          })
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CustomerInfoPanel({
+  booking,
+  loading,
+  error,
+  onStartProcessing,
+  onSkip,
+  onViewDetail,
+  confirming,
+}) {
+  if (loading) return <LoadingSpinner label="Đang tra cứu lịch hẹn…" />
+  if (error && !booking) {
     return (
       <section className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
         <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
@@ -122,76 +224,136 @@ function CustomerInfoPanel({ booking, loading, error, onStartProcessing, onSkip,
         </div>
       </section>
     )
-  if (!booking)
+  }
+  if (!booking) {
     return (
       <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low p-4">
-          <h3 className="font-sora text-xl font-semibold text-on-surface">Thong tin khach hang</h3>
+          <h3 className="font-sora text-xl font-semibold text-on-surface">Thông tin khách hàng</h3>
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
           <span className="material-symbols-outlined text-5xl text-outline">info</span>
-          <p className="text-center text-sm text-on-surface-variant">Nhap bien so va bam "Tra cuu" de xem thong tin lich hen</p>
+          <p className="text-center text-sm text-on-surface-variant">
+            Chọn xe trong hàng chờ hoặc tra cứu biển số để xem thông tin
+          </p>
         </div>
       </section>
     )
+  }
+
+  const canStart = booking.status === 'Checked-in'
+  const isProcessing = booking.status === 'Processing'
 
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="border-b border-outline-variant bg-surface-container-low p-4">
-        <h3 className="font-sora text-xl font-semibold text-on-surface">Thong tin khach hang</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-sora text-xl font-semibold text-on-surface">Thông tin khách hàng</h3>
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded-lg border border-outline-variant px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-surface-variant"
+            onClick={() => onViewDetail(booking)}
+          >
+            <span className="material-symbols-outlined text-[16px]">visibility</span>
+            Xem chi tiết
+          </button>
+        </div>
       </div>
       <div className="flex-1 space-y-4 p-4">
+        {error && (
+          <div className="rounded-lg border border-tertiary-container/40 bg-tertiary-container/10 px-3 py-2 text-xs text-tertiary-container">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-sora text-2xl font-semibold text-on-surface">{booking.customerName}</p>
+            <p className="mt-1 flex items-center gap-1 text-sm text-on-surface-variant">
+              <span className="material-symbols-outlined text-[16px]">call</span>
+              {booking.phoneMasked}
+            </p>
+          </div>
+          <RankBadge rankName={booking.rankName} rankId={booking.rankId} />
+        </div>
+
         <div className="flex items-center justify-between">
-          <span className="rounded-full border border-tertiary-container/40 bg-tertiary-container/15 px-3 py-1 text-xs font-semibold uppercase text-tertiary-container">
-            <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-tertiary-container" />
-            {normalizeBookingStatus(booking.status)}
-          </span>
+          <StatusBadge status={booking.status} />
           <span className="text-xs text-on-surface-variant">#{booking.bookingId}</span>
         </div>
+
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
           <div className="mb-2 flex items-center gap-2">
             <span className="material-symbols-outlined text-primary-container">directions_car</span>
-            <span className="font-sora text-2xl font-bold tracking-widest text-primary-container">{booking.licensePlate}</span>
+            <span className="font-sora text-2xl font-bold tracking-widest text-primary-container">
+              {booking.licensePlate}
+            </span>
           </div>
-          <div className="space-y-1">
-            <p className="text-sm text-on-surface-variant">
+          <div className="space-y-1 text-sm text-on-surface-variant">
+            <p>
               <span className="font-semibold text-on-surface">{booking.serviceName}</span>
+              {booking.vehicleDisplayName !== '—' && ` · ${booking.vehicleDisplayName}`}
             </p>
-            <p className="text-sm text-on-surface-variant">
-              <span className="material-symbols-outlined mr-1 text-[14px]">schedule</span>
-              {formatDateTime(booking.scheduledTime)}
+            <p>
+              <span className="material-symbols-outlined mr-1 align-middle text-[14px]">schedule</span>
+              {booking.slotLabel} — {formatDateTime(booking.scheduledTime)}
             </p>
+            {booking.processingLaneName && (
+              <p>
+                <span className="material-symbols-outlined mr-1 align-middle text-[14px]">garage</span>
+                Làn: {booking.processingLaneName}
+              </p>
+            )}
           </div>
         </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
-            <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">Thanh toan</p>
-            <p className="font-sora text-base font-semibold text-on-surface">{formatVnd(booking.finalAmount)}</p>
+            <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Thanh toán
+            </p>
+            <p className="font-sora text-base font-semibold text-on-surface">
+              {formatVnd(booking.finalAmount)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+            <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Hình thức
+            </p>
+            <p className="text-sm font-medium text-on-surface">
+              {formatPaymentMethodLabel(booking.paymentMethod)}
+            </p>
           </div>
         </div>
+
         <div className="flex gap-3 pt-2">
-          {(booking.status === 'Pending' || booking.status === 'Checked-in') && (
+          {canStart && (
             <button
+              type="button"
               className="flex-1 rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
               onClick={onStartProcessing}
               disabled={confirming}
             >
-              {confirming ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="h-4 w-4 animate-spin rounded-full border border-on-primary/30 border-t-on-primary" />
-                  Dang xu ly...
-                </span>
-              ) : (
-                'Bat dau rua'
-              )}
+              {confirming ? 'Đang xử lý…' : 'Bắt đầu rửa'}
             </button>
           )}
+          {isProcessing && (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary-container/40 bg-secondary-container/10 px-4 py-3 text-sm font-medium text-secondary-container">
+              Xe đang rửa — hoàn thành ở cột bên phải
+            </div>
+          )}
+          {booking.status === 'Pending' && (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-tertiary-container/40 bg-tertiary-container/10 px-4 py-3 text-xs text-tertiary-container">
+              Chờ Manager check-in vào làn
+            </div>
+          )}
           <button
-            className="flex-1 rounded-xl border border-outline bg-transparent px-4 py-3 text-center text-sm font-medium tracking-wide text-on-surface uppercase transition-colors hover:bg-surface-variant"
+            type="button"
+            className="rounded-xl border border-outline bg-transparent px-4 py-3 text-sm font-medium tracking-wide text-on-surface uppercase transition-colors hover:bg-surface-variant"
             onClick={onSkip}
             disabled={confirming}
           >
-            Bo qua
+            Bỏ qua
           </button>
         </div>
       </div>
@@ -199,66 +361,60 @@ function CustomerInfoPanel({ booking, loading, error, onStartProcessing, onSkip,
   )
 }
 
-function ProcessingVehiclesPanel({ vehicles, onComplete, completingPlate }) {
-  if (vehicles.length === 0)
-    return (
-      <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        <div className="flex shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-primary">wash</span>
-            <h3 className="font-sora text-xl font-semibold text-on-surface">Dang rua</h3>
-          </div>
-          <span className="rounded bg-primary-container/20 px-2 py-1 text-xs font-semibold text-primary-container">0 xe</span>
-        </div>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
-          <span className="material-symbols-outlined text-5xl text-outline">water_drop</span>
-          <p className="text-center text-sm text-on-surface-variant">Chua co xe dang rua</p>
-        </div>
-      </section>
-    )
-
+function ProcessingVehiclesPanel({ vehicles, onComplete, onSelect, completingId }) {
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="flex shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-primary">wash</span>
-          <h3 className="font-sora text-xl font-semibold text-on-surface">Dang rua</h3>
+          <h3 className="font-sora text-xl font-semibold text-on-surface">Đang rửa</h3>
         </div>
-        <span className="rounded bg-primary-container/20 px-2 py-1 text-xs font-semibold text-primary-container">{vehicles.length} xe</span>
+        <span className="rounded bg-secondary-container/20 px-2 py-1 text-xs font-semibold text-secondary-container">
+          {vehicles.length} xe
+        </span>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
-        {vehicles.map((v) => (
-          <div key={v.bookingId} className="group relative overflow-hidden rounded-xl border border-primary-container/20 bg-surface-container-low p-4 transition-all hover:border-primary-container/40">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="font-sora text-xl font-bold tracking-wide text-primary-container">{v.licensePlate}</span>
-              <span className="flex items-center gap-1 rounded-full bg-primary-container/15 px-2 py-0.5 text-[10px] font-semibold text-primary-container uppercase">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-container" />Dang rua
-              </span>
-            </div>
-            <div className="mb-3 space-y-1">
-              <p className="text-sm text-on-surface">{v.serviceName}</p>
-              <p className="text-xs text-on-surface-variant">
-                <span className="material-symbols-outlined mr-1 text-[12px]">schedule</span>
-                {formatDateTime(v.scheduledTime)}
-              </p>
-              <p className="text-xs text-on-surface-variant">Ma lich hen: #{v.bookingId}</p>
-            </div>
-            <button
-              className="w-full rounded-xl border border-primary-container bg-primary-container/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/25 disabled:opacity-50"
-              onClick={() => onComplete(v.bookingId)}
-              disabled={completingPlate === v.licensePlate}
+      {vehicles.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8">
+          <span className="material-symbols-outlined text-5xl text-outline">water_drop</span>
+          <p className="text-center text-sm text-on-surface-variant">Chưa có xe đang rửa</p>
+        </div>
+      ) : (
+        <div className="flex-1 space-y-3 overflow-y-auto p-3">
+          {vehicles.map((v) => (
+            <div
+              key={v.bookingId}
+              className="group relative overflow-hidden rounded-xl border border-secondary-container/25 bg-surface-container-low p-4 transition-all hover:border-secondary-container/50"
             >
-              {completingPlate === v.licensePlate ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="h-3 w-3 animate-spin rounded-full border border-primary-container/30 border-t-primary-container" />Dang xu ly...
-                </span>
-              ) : (
-                'Hoan thanh'
-              )}
-            </button>
-          </div>
-        ))}
-      </div>
+              <button type="button" className="mb-3 w-full text-left" onClick={() => onSelect(v)}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="font-sora text-xl font-bold tracking-wide text-secondary-container">
+                    {v.licensePlate}
+                  </span>
+                  <span className="flex items-center gap-1 rounded-full bg-secondary-container/15 px-2 py-0.5 text-[10px] font-semibold text-secondary-container uppercase">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary-container" />
+                    Processing
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-on-surface">{v.customerName}</p>
+                  <p className="text-sm text-on-surface-variant">{v.serviceName}</p>
+                  <p className="text-xs text-on-surface-variant">
+                    {formatPaymentMethodLabel(v.paymentMethod)} · {formatVnd(v.finalAmount)}
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                className="w-full rounded-xl border border-primary-container bg-primary-container/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/25 disabled:opacity-50"
+                onClick={() => onComplete(v.bookingId)}
+                disabled={completingId === v.bookingId}
+              >
+                {completingId === v.bookingId ? 'Đang xử lý…' : 'Hoàn thành'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   )
 }
@@ -267,23 +423,21 @@ export default function DashboardPage() {
   const [staffTasks, setStaffTasks] = useState([])
   const [plateInput, setPlateInput] = useState('')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [detailBooking, setDetailBooking] = useState(null)
   const [loadingLookup, setLoadingLookup] = useState(false)
   const [lookupError, setLookupError] = useState('')
   const [confirming, setConfirming] = useState(false)
-  const [completingPlate, setCompletingPlate] = useState(null)
+  const [completingId, setCompletingId] = useState(null)
   const [initialLoading, setInitialLoading] = useState(true)
+  const [laneLabel, setLaneLabel] = useState('')
   const [toast, setToast] = useState(null)
 
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type })
-  }
+  const showToast = (message, type = 'success') => setToast({ message, type })
 
   const loadStaffTasks = useCallback(async () => {
-    setInitialLoading(true)
     try {
       const data = await fetchStaffTasks()
-      const raw = Array.isArray(data) ? data : []
-      setStaffTasks(raw.map(normalizeStaffTask))
+      setStaffTasks(Array.isArray(data) ? data : [])
     } catch (err) {
       console.warn('Failed to load staff tasks:', err)
     } finally {
@@ -293,49 +447,82 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadStaffTasks()
+    fetchStaffLaneAssignment()
+      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
+      .catch(() => setLaneLabel('Chưa phân công làn'))
+
+    const interval = setInterval(loadStaffTasks, 30_000)
+    return () => clearInterval(interval)
   }, [loadStaffTasks])
 
-  const processingVehicles = staffTasks.filter(
-    (b) => normalizeBookingStatus(b.status) === 'Processing',
+  const checkedInQueue = useMemo(
+    () => staffTasks.filter((b) => b.status === 'Checked-in'),
+    [staffTasks],
   )
 
-  const normalizeBooking = (item) => ({
-    bookingId: Number(item.bookingId ?? item.id ?? 0),
-    licensePlate: String(item.licensePlate ?? ''),
-    serviceName: String(item.serviceName ?? '—'),
-    scheduledTime: item.scheduledTime ?? item.scheduledDate ?? null,
-    status: normalizeBookingStatus(item.status ?? item.bookingStatus),
-    finalAmount: Number(item.finalAmount ?? 0),
-  })
+  const processingVehicles = useMemo(
+    () => staffTasks.filter((b) => b.status === 'Processing'),
+    [staffTasks],
+  )
+
+  const applySelectedBooking = useCallback(async (booking, options = {}) => {
+    setSelectedBooking(booking)
+    if (options.message !== undefined) setLookupError(options.message)
+    try {
+      const enriched = await enrichStaffBooking(booking)
+      setSelectedBooking(enriched)
+    } catch {
+      // keep summary booking
+    }
+  }, [])
 
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase()
     if (!plate) return
-    setSelectedBooking(null)
     setLookupError('')
     setLoadingLookup(true)
     try {
-      const found = staffTasks.find(
-        (t) => t.licensePlate.toUpperCase().replace(/\s/g, '') === plate.replace(/\s/g, ''),
-      )
+      const normalized = normalizePlate(plate)
+      const found = staffTasks.find((t) => normalizePlate(t.licensePlate) === normalized)
       if (found) {
-        setSelectedBooking(normalizeBooking(found))
-      } else {
-        setLookupError('Khong tim thay lich hen cho bien so nay trong danh sach cua ban.')
+        await applySelectedBooking(found)
+        return
       }
+
+      const list = (await fetchBookingsByLicensePlate(plate)).map(normalizeStaffTask)
+      const todayMatch = list.find(
+        (b) =>
+          normalizePlate(b.licensePlate) === normalized &&
+          (b.status === 'Checked-in' || b.status === 'Processing' || b.status === 'Pending'),
+      )
+      if (todayMatch) {
+        await applySelectedBooking(todayMatch, {
+          message:
+            todayMatch.status === 'Pending'
+              ? 'Xe đã đặt lịch nhưng chưa check-in. Liên hệ Manager.'
+              : todayMatch.status !== 'Checked-in' && todayMatch.status !== 'Processing'
+                ? 'Xe có trên hệ thống nhưng chưa check-in vào làn của bạn. Liên hệ Manager.'
+                : '',
+        })
+        return
+      }
+
+      setSelectedBooking(null)
+      setLookupError('Không tìm thấy lịch hẹn cho biển số này tại làn của bạn.')
     } catch {
-      setLookupError('Khong the tra cuu. Vui long thu lai.')
+      setLookupError('Không thể tra cứu. Vui lòng thử lại.')
+      setSelectedBooking(null)
     } finally {
       setLoadingLookup(false)
     }
-  }, [plateInput, staffTasks])
+  }, [plateInput, staffTasks, applySelectedBooking])
 
   const handleStartProcessing = useCallback(async () => {
-    if (!selectedBooking) return
+    if (!selectedBooking || selectedBooking.status !== 'Checked-in') return
     setConfirming(true)
     try {
       await updateStaffBookingStatus(selectedBooking.bookingId, 'Processing')
-      showToast(`Xe ${selectedBooking.licensePlate} bat dau rua.`)
+      showToast(`Xe ${selectedBooking.licensePlate} bắt đầu rửa.`)
       setStaffTasks((prev) =>
         prev.map((t) =>
           Number(t.bookingId) === selectedBooking.bookingId
@@ -343,16 +530,36 @@ export default function DashboardPage() {
             : t,
         ),
       )
-      setSelectedBooking(null)
-      setPlateInput('')
-      setLookupError('')
+      setSelectedBooking((prev) => (prev ? { ...prev, status: 'Processing' } : null))
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Loi khi bat dau rua. Vui long thu lai.'
+      const msg = err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.'
       showToast(msg, 'error')
     } finally {
       setConfirming(false)
     }
   }, [selectedBooking])
+
+  const handleComplete = useCallback(
+    async (bookingId) => {
+      const task = staffTasks.find((t) => Number(t.bookingId) === Number(bookingId))
+      setCompletingId(bookingId)
+      try {
+        await updateStaffBookingStatus(bookingId, 'Completed')
+        showToast(`Xe ${task?.licensePlate ?? bookingId} đã hoàn thành.`)
+        setStaffTasks((prev) => prev.filter((t) => Number(t.bookingId) !== Number(bookingId)))
+        if (selectedBooking?.bookingId === bookingId) {
+          setSelectedBooking(null)
+          setPlateInput('')
+        }
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.'
+        showToast(msg, 'error')
+      } finally {
+        setCompletingId(null)
+      }
+    },
+    [staffTasks, selectedBooking],
+  )
 
   const handleSkip = useCallback(() => {
     setSelectedBooking(null)
@@ -360,25 +567,19 @@ export default function DashboardPage() {
     setLookupError('')
   }, [])
 
-  const handleComplete = useCallback(async (bookingId) => {
-    const task = staffTasks.find((t) => Number(t.bookingId) === Number(bookingId))
-    setCompletingPlate(task?.licensePlate ?? bookingId)
-    try {
-      await updateStaffBookingStatus(bookingId, 'Completed')
-      showToast(`Xe ${task?.licensePlate ?? bookingId} da hoan thanh.`)
-      setStaffTasks((prev) => prev.filter((t) => Number(t.bookingId) !== Number(bookingId)))
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Loi khi hoan thanh. Vui long thu lai.'
-      showToast(msg, 'error')
-    } finally {
-      setCompletingPlate(null)
-    }
-  }, [staffTasks])
+  const handleSelectFromQueue = useCallback(
+    async (item) => {
+      setPlateInput(item.licensePlate)
+      setLookupError('')
+      await applySelectedBooking(item)
+    },
+    [applySelectedBooking],
+  )
 
   if (initialLoading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <LoadingSpinner label="Dang tai du lieu..." />
+        <LoadingSpinner label="Đang tải dữ liệu…" />
       </div>
     )
   }
@@ -386,15 +587,26 @@ export default function DashboardPage() {
   return (
     <div className="relative">
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {detailBooking && (
+        <StaffBookingDetailModal booking={detailBooking} onClose={() => setDetailBooking(null)} />
+      )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-sora text-2xl font-semibold text-on-surface">Bang dieu khien Staff</h1>
-          <p className="mt-1 text-sm text-on-surface-variant">Tra cuu lich hen, bat dau rua, va quan ly qua trinh rua</p>
+          <h1 className="font-sora text-2xl font-semibold text-on-surface">Bảng điều khiển Staff</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            {laneLabel || 'Đang tải làn…'} — Check-in → Rửa (Processing) → Hoàn thành (Completed)
+          </p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container-low px-4 py-2 text-xs text-on-surface-variant">
-          <span className="material-symbols-outlined text-[16px] text-primary">wash</span>
-          {processingVehicles.length} xe dang rua
+        <div className="flex flex-wrap gap-2">
+          <span className="flex items-center gap-2 rounded-full border border-primary-container/30 bg-primary-container/10 px-3 py-1.5 text-xs text-primary-container">
+            <span className="material-symbols-outlined text-[16px]">login</span>
+            {checkedInQueue.length} check-in
+          </span>
+          <span className="flex items-center gap-2 rounded-full border border-secondary-container/30 bg-secondary-container/10 px-3 py-1.5 text-xs text-secondary-container">
+            <span className="material-symbols-outlined text-[16px]">wash</span>
+            {processingVehicles.length} đang rửa
+          </span>
         </div>
       </div>
 
@@ -405,7 +617,13 @@ export default function DashboardPage() {
             onPlateChange={setPlateInput}
             onSearch={handleSearch}
             loading={loadingLookup}
+            checkedInCount={checkedInQueue.length}
             processingCount={processingVehicles.length}
+          />
+          <CheckedInQueuePanel
+            items={checkedInQueue}
+            selectedBookingId={selectedBooking?.bookingId}
+            onSelect={handleSelectFromQueue}
           />
         </div>
         <div className="lg:col-span-4">
@@ -415,6 +633,7 @@ export default function DashboardPage() {
             error={lookupError}
             onStartProcessing={handleStartProcessing}
             onSkip={handleSkip}
+            onViewDetail={setDetailBooking}
             confirming={confirming}
           />
         </div>
@@ -422,7 +641,8 @@ export default function DashboardPage() {
           <ProcessingVehiclesPanel
             vehicles={processingVehicles}
             onComplete={handleComplete}
-            completingPlate={completingPlate}
+            onSelect={handleSelectFromQueue}
+            completingId={completingId}
           />
         </div>
       </div>

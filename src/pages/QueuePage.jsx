@@ -40,6 +40,8 @@ export default function QueuePage() {
 
   useEffect(() => {
     loadBookings()
+    const interval = setInterval(loadBookings, 30_000)
+    return () => clearInterval(interval)
   }, [loadBookings])
 
   const displayedBookings = useMemo(() => {
