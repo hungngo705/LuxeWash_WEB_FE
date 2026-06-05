@@ -25,9 +25,9 @@ const VOUCHER_TYPE_OPTIONS = [
 
 const emptyForm = {
   code: '',
-  discountAmount: 50000,
-  pointsRequired: 0,
-  maxUsages: 100,
+  discountAmount: '',
+  pointsRequired: '',
+  maxUsages: '',
   expiryDate: '',
   voucherType: 0,
   imageUrl: '',
@@ -61,10 +61,13 @@ function toApiPayload(form) {
 function validateForm(form) {
   if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
   if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
+  if (form.discountAmount === '' || form.discountAmount == null) return 'Vui lòng nhập giảm giá'
   const amount = Number(form.discountAmount)
   if (amount < 0 || amount > 1_000_000_000) return 'Giảm giá phải từ 0 đến 1.000.000.000 VND'
   if (!form.expiryDate) return 'Vui lòng chọn ngày hết hạn'
+  if (form.maxUsages === '' || form.maxUsages == null) return 'Vui lòng nhập max usages'
   if (Number(form.maxUsages) < 1) return 'Max usages phải ít nhất 1'
+  if (form.pointsRequired === '' || form.pointsRequired == null) return 'Vui lòng nhập điểm đổi'
   if (Number(form.pointsRequired) < 0) return 'Điểm đổi không được âm'
   return null
 }
@@ -123,9 +126,9 @@ export default function AdminVouchersPage() {
     setEditingId(voucher.voucherId)
     setForm({
       code: voucher.code,
-      discountAmount: voucher.discountAmount,
-      pointsRequired: voucher.pointsRequired,
-      maxUsages: voucher.maxUsages,
+      discountAmount: String(voucher.discountAmount),
+      pointsRequired: String(voucher.pointsRequired),
+      maxUsages: String(voucher.maxUsages),
       expiryDate: toDatetimeLocalValue(voucher.expiryDate),
       voucherType: voucher.voucherType ?? 0,
       imageUrl: voucher.imageUrl ?? '',
@@ -301,7 +304,11 @@ export default function AdminVouchersPage() {
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.discountAmount}
                 disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, discountAmount: Number(e.target.value) }))}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value !== '' && !/^\d+$/.test(value)) return
+                  setForm((f) => ({ ...f, discountAmount: value }))
+                }}
               />
             </label>
             <label className="block space-y-1">
@@ -314,7 +321,11 @@ export default function AdminVouchersPage() {
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.pointsRequired}
                 disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, pointsRequired: Number(e.target.value) }))}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value !== '' && !/^\d+$/.test(value)) return
+                  setForm((f) => ({ ...f, pointsRequired: value }))
+                }}
               />
             </label>
           </div>
@@ -328,7 +339,11 @@ export default function AdminVouchersPage() {
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.maxUsages}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, maxUsages: Number(e.target.value) }))}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value !== '' && !/^\d+$/.test(value)) return
+                setForm((f) => ({ ...f, maxUsages: value }))
+              }}
             />
           </label>
           <label className="block space-y-1">

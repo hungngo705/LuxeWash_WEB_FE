@@ -22,9 +22,16 @@ export function normalizeBranch(item) {
   }
 }
 
-/** @returns {Promise<Branch[]>} */
+/** Chi nhánh đang hoạt động (public) — dùng cho dropdown booking, dịch vụ, v.v. */
 export async function fetchBranches() {
   const data = await apiRequest('/branches')
+  const list = Array.isArray(data) ? data : []
+  return list.map(normalizeBranch)
+}
+
+/** Tất cả chi nhánh (active + inactive) — trang quản trị chi nhánh */
+export async function fetchAdminBranches() {
+  const data = await apiRequest('/admin/branches')
   const list = Array.isArray(data) ? data : []
   return list.map(normalizeBranch)
 }

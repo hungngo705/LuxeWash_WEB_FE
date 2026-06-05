@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   createService,
@@ -22,7 +22,7 @@ function buildPricesForAllVehicleTypes(vehicleTypes, branchId) {
   return vehicleTypes.map((vt) => ({
     vehicleTypeId: vt.id,
     branchId: bid,
-    price: 0,
+    price: '',
     estimatedDurationMinutes: DEFAULT_DURATION_MINUTES,
   }))
 }
@@ -38,7 +38,7 @@ function mergePricesWithVehicleTypes(existingPrices, vehicleTypes, branchId) {
     return {
       vehicleTypeId: vt.id,
       branchId: bid,
-      price: existing?.price ?? 0,
+      price: existing?.price != null && existing.price !== '' ? String(existing.price) : '',
       estimatedDurationMinutes:
         minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
     }
@@ -85,6 +85,7 @@ function validateForm(form, vehicleTypes) {
     if (!allowedIds.has(typeId)) return 'Mức giá phải thuộc loại xe hiện có'
     if (seen.has(typeId)) return 'Mỗi loại xe chỉ được một mức giá'
     seen.add(typeId)
+    if (row.price === '' || row.price == null) return 'Vui lòng nhập giá cho tất cả loại xe'
     if (Number(row.price) < 0) return 'Giá không được âm'
   }
 
@@ -136,6 +137,12 @@ export default function AdminServicesPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  /** Chỉ hiển thị dịch vụ đang hoạt động trên bảng Admin (các trang khác không lọc). */
+  const activeServices = useMemo(
+    () => services.filter((s) => s.isActive !== false),
+    [services],
+  )
 
   const setBranchId = (branchId) => {
     setForm((f) => ({
@@ -277,7 +284,7 @@ export default function AdminServicesPage() {
 
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải danh sách dịch vụ…</p>
-      ) : services.length === 0 && !loadError ? (
+      ) : activeServices.length === 0 && !loadError ? (
         <EmptyState icon="local_car_wash" title="Chưa có dịch vụ" message="Thêm dịch vụ đầu tiên để bắt đầu." />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -295,7 +302,7 @@ export default function AdminServicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
-              {services.map((service) => (
+              {activeServices.map((service) => (
                 <tr key={service.serviceId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 text-on-surface-variant">#{service.serviceId}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{service.serviceName}</td>
@@ -421,7 +428,8 @@ export default function AdminServicesPage() {
                       value={price.price}
                       disabled={saving}
                       onChange={(e) => {
-                        const value = Number(e.target.value)
+                        const value = e.target.value
+                        if (value !== '' && !/^\d+$/.test(value)) return
                         setForm((f) => ({
                           ...f,
                           prices: f.prices.map((row) =>

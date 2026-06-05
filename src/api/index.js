@@ -47,6 +47,7 @@ export {
 
 export {
   fetchBranches,
+  fetchAdminBranches,
   fetchBranchById,
   createBranch,
   updateBranch,
@@ -95,6 +96,7 @@ export {
   reportBookingMismatch,
   updateBookingCondition,
   normalizeAdminBooking,
+  filterBookingsByBranch,
   normalizeBookingStatus,
   toApiTargetDate,
   toApiBookingStatus,
