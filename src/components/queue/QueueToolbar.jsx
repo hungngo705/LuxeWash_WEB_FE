@@ -1,7 +1,7 @@
 const FILTERS = [
   { id: 'all', label: 'Tất cả' },
-  { id: 'Pending', label: 'Pending' },
   { id: 'Checked-in', label: 'Checked-in' },
+  { id: 'Processing', label: 'Processing' },
 ]
 
 export default function QueueToolbar({

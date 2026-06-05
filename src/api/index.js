@@ -145,7 +145,9 @@ export {
 export {
   fetchStaffTasks,
   fetchStaffLaneAssignment,
+  fetchStaffServiceHistory,
   enrichStaffBooking,
+  enrichStaffTasks,
   updateStaffBookingStatus,
   recognizeVehicleByPlate,
   consumeStaffVoucher,

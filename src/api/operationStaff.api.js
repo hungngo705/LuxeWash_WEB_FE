@@ -269,6 +269,42 @@ export async function enrichStaffBooking(booking) {
   return merged
 }
 
+/** Enrich a list of staff tasks/bookings in parallel. */
+export async function enrichStaffTasks(tasks) {
+  const list = Array.isArray(tasks) ? tasks : []
+  return Promise.all(
+    list.map(async (task) => {
+      try {
+        return await enrichStaffBooking(task)
+      } catch {
+        return normalizeStaffTask(task)
+      }
+    }),
+  )
+}
+
+const STAFF_HISTORY_STATUSES = new Set(['Completed', 'Cancelled', 'No-show'])
+
+/**
+ * Staff service history — GET /admin/bookings?targetDate= (Swagger: StaffBookings).
+ * @param {string} targetDate ISO date-time from {@link toApiTargetDate}
+ * @param {{ laneId?: number | null }} [options]
+ */
+export async function fetchStaffServiceHistory(targetDate, options = {}) {
+  const { laneId } = options
+  const data = await fetchBookingsByDate(targetDate)
+  const filtered = asBookingList(data)
+    .map((item) => normalizeStaffTask(item))
+    .filter((b) => STAFF_HISTORY_STATUSES.has(b.status))
+    .filter((b) => {
+      if (!laneId) return true
+      if (b.processingLaneId == null) return true
+      return Number(b.processingLaneId) === Number(laneId)
+    })
+
+  return enrichStaffTasks(filtered)
+}
+
 /**
  * @typedef {{
  *   bookingId: number

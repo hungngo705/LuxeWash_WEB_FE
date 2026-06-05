@@ -3,14 +3,13 @@ import HistoryStats from '../components/history/HistoryStats'
 import HistoryTable from '../components/history/HistoryTable'
 import HistoryToolbar from '../components/history/HistoryToolbar'
 import {
-  fetchBookingsByDate,
   fetchStaffLaneAssignment,
-  normalizeAdminBooking,
+  fetchStaffServiceHistory,
+  formatPaymentMethodLabel,
+  formatStaffStationLabel,
   toApiTargetDate,
 } from '../api'
 import { ApiError } from '../api/client'
-
-const HISTORY_STATUSES = new Set(['Completed', 'Cancelled', 'No-show'])
 
 function todayDateValue() {
   const now = new Date()
@@ -21,6 +20,7 @@ function todayDateValue() {
 function formatCompletedDisplay(isoString) {
   if (!isoString) return '—'
   const d = new Date(isoString)
+  if (Number.isNaN(d.getTime())) return '—'
   return d.toLocaleString('vi-VN', {
     day: '2-digit',
     month: '2-digit',
@@ -30,24 +30,31 @@ function formatCompletedDisplay(isoString) {
   })
 }
 
-function mapHistoryRecord(normalized) {
+/** @param {import('../api/operationStaff.api').StaffTask} task */
+function mapHistoryRecord(task) {
+  const txOk =
+    task.paymentStatus === 'Success' ||
+    task.paymentStatus === 'Completed' ||
+    task.status === 'Completed'
+
   return {
-    bookingId: normalized.bookingId,
-    transactionId: normalized.bookingId,
-    licensePlate: normalized.licensePlate,
-    vehicleDisplay: '—',
-    customerName: normalized.customerName,
-    phoneMasked: '—',
-    rankName: normalized.rankName,
-    serviceName: normalized.serviceName,
-    completedAt: normalized.scheduledDate || null,
-    completedDisplay: formatCompletedDisplay(normalized.scheduledDate),
-    bookingStatus: normalized.status,
-    totalAmount: normalized.finalAmount,
-    pointsUsed: 0,
+    bookingId: task.bookingId,
+    transactionId: task.bookingId,
+    licensePlate: task.licensePlate,
+    vehicleDisplay: task.vehicleDisplayName !== '—' ? task.vehicleDisplayName : task.vehicleType,
+    customerName: task.customerName,
+    phoneMasked: task.phoneMasked,
+    rankName: task.rankName,
+    serviceName: task.serviceName,
+    completedAt: task.scheduledTime,
+    completedDisplay: formatCompletedDisplay(task.scheduledTime),
+    bookingStatus: task.status,
+    totalAmount: task.finalAmount,
+    pointsUsed: task.discountAmount ?? 0,
     pointsEarned: 0,
-    transactionStatus: 'Success',
-    lane: normalized.processingLaneName ?? '—',
+    transactionStatus: txOk ? 'Success' : task.paymentStatus !== '—' ? task.paymentStatus : '—',
+    paymentMethod: formatPaymentMethodLabel(task.paymentMethod),
+    lane: task.processingLaneName ?? '—',
   }
 }
 
@@ -57,15 +64,21 @@ export default function HistoryPage() {
   const [fetchError, setFetchError] = useState('')
   const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [laneId, setLaneId] = useState(null)
+  const [laneLabel, setLaneLabel] = useState('')
   const [bookingFilter, setBookingFilter] = useState('all')
   const [txFilter, setTxFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [toast, setToast] = useState(null)
 
   useEffect(() => {
     fetchStaffLaneAssignment()
-      .then((a) => setLaneId(a.laneId ?? null))
-      .catch(() => setLaneId(null))
+      .then((a) => {
+        setLaneId(a.laneId ?? null)
+        setLaneLabel(formatStaffStationLabel(a))
+      })
+      .catch(() => {
+        setLaneId(null)
+        setLaneLabel('')
+      })
   }, [])
 
   const loadRecords = useCallback(async () => {
@@ -73,18 +86,8 @@ export default function HistoryPage() {
     setFetchError('')
     try {
       const targetDate = toApiTargetDate(dateFilter)
-      const data = await fetchBookingsByDate(targetDate)
-      const raw = Array.isArray(data) ? data : []
-      const mapped = raw
-        .map(normalizeAdminBooking)
-        .filter((b) => HISTORY_STATUSES.has(b.status))
-        .filter((b) => {
-          if (!laneId) return true
-          if (b.processingLaneId == null) return true
-          return Number(b.processingLaneId) === laneId
-        })
-        .map((b) => mapHistoryRecord(b))
-      setAllRecords(mapped)
+      const tasks = await fetchStaffServiceHistory(targetDate, { laneId })
+      setAllRecords(tasks.map(mapHistoryRecord))
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -127,17 +130,12 @@ export default function HistoryPage() {
 
   return (
     <div className="relative w-full">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border border-primary-container/50 bg-primary-container/20 px-5 py-3 shadow-xl">
-          <span className="text-sm font-medium text-primary-container">{toast.message}</span>
-        </div>
-      )}
-
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-sora text-2xl font-semibold text-on-surface">Lịch sử dịch vụ</h1>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Booking Completed / Cancelled / No-show theo ngày
+            {laneLabel ? `${laneLabel} — ` : ''}
+            Completed / Cancelled / No-show theo ngày
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
