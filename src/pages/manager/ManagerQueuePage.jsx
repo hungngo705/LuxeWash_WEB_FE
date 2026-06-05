@@ -3,7 +3,7 @@ import {
   ApiError,
   fetchManagerBookings,
   fetchManagerStaffs,
-  fetchLanes,
+  fetchManagerLanes,
   normalizeManagerBooking,
   checkinAssignBooking,
   markManagerBookingNoShow,
@@ -67,7 +67,7 @@ export default function ManagerQueuePage() {
       const [bookingsResult, staffsResult, lanesResult] = await Promise.allSettled([
         fetchManagerBookings(),
         fetchManagerStaffs(),
-        fetchLanes(),
+        fetchManagerLanes(),
       ])
 
       if (bookingsResult.status === 'fulfilled') {
@@ -305,18 +305,17 @@ export default function ManagerQueuePage() {
             <div className="grid grid-cols-2 gap-3">
               {lanes.map((lane) => (
                 <button
-                  key={lane.id}
+                  key={lane.laneId}
                   type="button"
                   className={`rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all ${
-                    selectedLaneId === String(lane.id)
+                    selectedLaneId === String(lane.laneId)
                       ? 'border-secondary bg-secondary-container/30 text-on-surface'
                       : 'border-outline-variant bg-surface-container-low text-on-surface-variant hover:border-secondary'
                   }`}
-                  onClick={() => setSelectedLaneId(String(lane.id))}
+                  onClick={() => setSelectedLaneId(String(lane.laneId))}
                 >
                   <span className="material-symbols-outlined text-lg">garage</span>
                   <p className="mt-1 font-semibold">{lane.name}</p>
-                  {lane.branchName && <p className="text-xs opacity-70">{lane.branchName}</p>}
                 </button>
               ))}
             </div>

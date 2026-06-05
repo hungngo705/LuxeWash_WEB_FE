@@ -2,10 +2,11 @@ import { NavLink } from 'react-router-dom'
 
 const navItems = [
   { to: '/manager/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/manager/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
   { to: '/manager/queue', label: 'Điều phối xe', icon: 'local_shipping' },
   { to: '/manager/lanes', label: 'Làn rửa', icon: 'garage' },
   { to: '/manager/time-slots', label: 'Khung giờ', icon: 'schedule' },
-  { to: '/manager/staff', label: 'Nhân viên & Làn', icon: 'badge' },
+  { to: '/manager/staff', label: 'Phân công làn', icon: 'badge' },
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
   { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
 ]

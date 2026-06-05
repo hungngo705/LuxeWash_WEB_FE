@@ -28,6 +28,7 @@ import HistoryPage from './pages/HistoryPage'
 import LoginPage from './pages/LoginPage'
 import QueuePage from './pages/QueuePage'
 import SettingsPage from './pages/SettingsPage'
+import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
 import ManagerStaffPage from './pages/manager/ManagerStaffPage'
 import ManagerWalkInPage from './pages/manager/ManagerWalkInPage'
@@ -90,6 +91,7 @@ export default function App() {
             }
           >
             <Route path="/manager/dashboard" element={<ManagerDashboardPage />} />
+            <Route path="/manager/bookings" element={<ManagerBookingsPage />} />
             <Route path="/manager/queue" element={<ManagerQueuePage />} />
             <Route path="/manager/lanes" element={<ManagerLanesPage />} />
             <Route path="/manager/time-slots" element={<ManagerTimeSlotsPage />} />

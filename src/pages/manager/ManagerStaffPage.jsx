@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
-  fetchManagerStaffs,
+  assignStaffToLane,
+  fetchAllLaneStaffAssignments,
   fetchManagerLanes,
+  fetchManagerStaffs,
+  unassignStaffFromLane,
 } from '../../api'
+import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
@@ -17,7 +21,9 @@ function todayDateValue() {
 export default function ManagerStaffPage() {
   const [staff, setStaff] = useState([])
   const [lanes, setLanes] = useState([])
+  const [laneAssignments, setLaneAssignments] = useState([])
   const [loading, setLoading] = useState(true)
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [toast, setToast] = useState('')
 
@@ -26,10 +32,25 @@ export default function ManagerStaffPage() {
   const [selectedDate, setSelectedDate] = useState(todayDateValue)
   const [assigning, setAssigning] = useState(false)
 
+  const [unassignTarget, setUnassignTarget] = useState(null)
+  const [unassigning, setUnassigning] = useState(false)
+
   const showToast = (msg) => {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
+
+  const loadAssignments = useCallback(async () => {
+    setAssignmentsLoading(true)
+    try {
+      const data = await fetchAllLaneStaffAssignments()
+      setLaneAssignments(data)
+    } catch {
+      setLaneAssignments([])
+    } finally {
+      setAssignmentsLoading(false)
+    }
+  }, [])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -49,10 +70,11 @@ export default function ManagerStaffPage() {
         const err = staffData.reason
         setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách nhân viên.')
       }
+      await loadAssignments()
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadAssignments])
 
   useEffect(() => {
     loadData()
@@ -62,7 +84,6 @@ export default function ManagerStaffPage() {
     if (!assignTarget || !selectedLaneId || !selectedDate) return
     setAssigning(true)
     try {
-      const { assignStaffToLane } = await import('../../api')
       await assignStaffToLane({
         staffId: Number(assignTarget.userId),
         laneId: Number(selectedLaneId),
@@ -71,6 +92,7 @@ export default function ManagerStaffPage() {
       showToast(`Đã gán ${assignTarget.fullName} vào làn.`)
       setAssignTarget(null)
       setSelectedLaneId('')
+      await loadAssignments()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Lỗi khi phân công.')
     } finally {
@@ -78,11 +100,26 @@ export default function ManagerStaffPage() {
     }
   }
 
+  const handleUnassign = async () => {
+    if (!unassignTarget) return
+    setUnassigning(true)
+    try {
+      await unassignStaffFromLane(unassignTarget.laneId, unassignTarget.staff.userId)
+      showToast(`Đã gỡ ${unassignTarget.staff.fullName} khỏi ${unassignTarget.laneName}.`)
+      setUnassignTarget(null)
+      await loadAssignments()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Lỗi khi gỡ phân công.')
+    } finally {
+      setUnassigning(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <PageHeader
         title="Phân công nhân viên & Làn"
-        description="Gán nhân viên vào các làn rửa đầu ca làm việc"
+        description="Gán Staff vào làn mỗi ngày và xem lại phân công theo làn"
       />
 
       {toast && (
@@ -91,10 +128,86 @@ export default function ManagerStaffPage() {
         </div>
       )}
 
+      <section className="mb-8">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-sora text-lg font-semibold text-on-surface">Phân công theo làn (hôm nay)</h2>
+            <p className="text-sm text-on-surface-variant">Cập nhật theo phân công trong ngày</p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-outline-variant px-3 py-2 text-sm text-on-surface-variant hover:bg-surface-variant"
+            onClick={loadAssignments}
+            disabled={assignmentsLoading}
+          >
+            Làm mới
+          </button>
+        </div>
+
+        {assignmentsLoading ? (
+          <div className="flex justify-center py-10">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-secondary/30 border-t-secondary" />
+          </div>
+        ) : laneAssignments.length === 0 ? (
+          <p className="text-sm text-on-surface-variant">Chưa có làn rửa.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {laneAssignments.map(({ lane, staff: assigned }) => (
+              <div
+                key={lane.laneId}
+                className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+              >
+                <div className="mb-3 flex items-center gap-2 border-b border-outline-variant pb-3">
+                  <span className="material-symbols-outlined text-secondary">garage</span>
+                  <div>
+                    <p className="font-semibold text-on-surface">{lane.name}</p>
+                    <p className="text-xs text-on-surface-variant">Làn #{lane.laneId}</p>
+                  </div>
+                </div>
+                {assigned.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-on-surface-variant">Chưa phân công nhân viên</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {assigned.map((s) => (
+                      <li
+                        key={s.userId}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-on-surface">{s.fullName}</p>
+                          <p className="text-xs text-on-surface-variant">{s.phoneNumber}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="rounded-lg border border-outline-variant px-2 py-1 text-xs text-error hover:bg-error-container/10"
+                          onClick={() =>
+                            setUnassignTarget({
+                              laneId: lane.laneId,
+                              laneName: lane.name,
+                              staff: s,
+                            })
+                          }
+                        >
+                          Gỡ
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {loadError ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-error-container/40 bg-error-container/10 p-6 text-center">
           <p className="text-sm text-error">{loadError}</p>
-          <button className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary" onClick={loadData}>
+          <button
+            type="button"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary"
+            onClick={loadData}
+          >
             Thử lại
           </button>
         </div>
@@ -102,51 +215,48 @@ export default function ManagerStaffPage() {
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
         </div>
-      ) : staff.length === 0 && lanes.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-12 text-center">
-          <span className="material-symbols-outlined text-5xl text-outline">badge</span>
-          <p className="text-sm text-on-surface-variant">Không có dữ liệu nhân viên hoặc làn rửa.</p>
-          {loadError && <p className="text-xs text-error">{loadError}</p>}
-        </div>
       ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Họ tên</th>
-                <th className="px-4 py-3">Số điện thoại</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {staff.map((s) => (
-                <tr key={s.userId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{s.userId}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{s.fullName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{s.phoneNumber}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={s.status === 'Active' ? 'Active' : 'Inactive'} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-on-secondary hover:bg-secondary/90 disabled:opacity-50"
-                      onClick={() => {
-                        setAssignTarget(s)
-                        setSelectedLaneId('')
-                      }}
-                      disabled={lanes.length === 0}
-                    >
-                      Phân công
-                    </button>
-                  </td>
+        <section>
+          <h2 className="mb-4 font-sora text-lg font-semibold text-on-surface">Danh sách nhân viên</h2>
+          <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                  <th className="px-4 py-3">ID</th>
+                  <th className="px-4 py-3">Họ tên</th>
+                  <th className="px-4 py-3">Số điện thoại</th>
+                  <th className="px-4 py-3">Trạng thái</th>
+                  <th className="px-4 py-3">Thao tác</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/60">
+                {staff.map((s) => (
+                  <tr key={s.userId} className="hover:bg-surface-container-low/50">
+                    <td className="px-4 py-3 text-on-surface-variant">#{s.userId}</td>
+                    <td className="px-4 py-3 font-medium text-on-surface">{s.fullName}</td>
+                    <td className="px-4 py-3 text-on-surface-variant">{s.phoneNumber}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={s.status === 'Active' ? 'Active' : 'Inactive'} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-on-secondary hover:bg-secondary/90 disabled:opacity-50"
+                        onClick={() => {
+                          setAssignTarget(s)
+                          setSelectedLaneId('')
+                        }}
+                        disabled={lanes.length === 0}
+                      >
+                        Phân công
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       <FormModal
@@ -168,9 +278,7 @@ export default function ManagerStaffPage() {
             onChange={(e) => setSelectedDate(e.target.value)}
           />
           {lanes.length === 0 ? (
-            <p className="text-sm text-error">
-              Không có làn nào khả dụng. Vui lòng liên hệ Admin để tạo làn rửa.
-            </p>
+            <p className="text-sm text-error">Không có làn nào. Tạo làn tại mục Làn rửa trước.</p>
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {lanes.map((lane) => (
@@ -193,6 +301,21 @@ export default function ManagerStaffPage() {
           )}
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        open={Boolean(unassignTarget)}
+        title="Gỡ phân công"
+        message={
+          <p className="text-sm text-on-surface-variant">
+            Gỡ <strong className="text-on-surface">{unassignTarget?.staff.fullName}</strong> khỏi{' '}
+            <strong className="text-on-surface">{unassignTarget?.laneName}</strong>?
+          </p>
+        }
+        confirmLabel={unassigning ? 'Đang xử lý...' : 'Gỡ phân công'}
+        variant="danger"
+        onConfirm={handleUnassign}
+        onCancel={() => !unassigning && setUnassignTarget(null)}
+      />
     </div>
   )
 }

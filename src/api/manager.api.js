@@ -1,5 +1,7 @@
 import { apiRequest } from './client'
-import { normalizeBookingStatus } from './admin.bookings.api'
+import { normalizeBookingStatus, toApiTargetDate } from './admin.bookings.api'
+import { asManagerCollection } from './manager.lanes.api'
+import { normalizeManagerStaff } from './manager.employees.api'
 
 /**
  * @typedef {{
@@ -39,8 +41,19 @@ import { normalizeBookingStatus } from './admin.bookings.api'
  * }} ManagerBooking
  */
 
+function normalizeServiceNames(value) {
+  if (Array.isArray(value)) {
+    const names = value.map((v) => String(v ?? '').trim()).filter(Boolean)
+    return names.length ? names.join(', ') : undefined
+  }
+  if (value == null || value === '') return undefined
+  return String(value)
+}
+
+/** @param {Record<string, unknown>} item */
+export { normalizeManagerStaff } from './manager.employees.api'
+
 /**
- * Normalize a raw booking response for Manager view.
  * @param {Record<string, unknown>} item
  * @returns {ManagerBooking}
  */
@@ -60,6 +73,13 @@ export function normalizeManagerBooking(item) {
     return fmt(start) || fmt(end) || '—'
   }
 
+  const formatScheduledSlotLabel = (scheduledTime) => {
+    if (!scheduledTime) return '—'
+    const d = new Date(String(scheduledTime))
+    if (Number.isNaN(d.getTime())) return '—'
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  }
+
   const normalizeCondition = (cond) => {
     if (cond == null || cond === '') return '—'
     if (typeof cond === 'number') {
@@ -68,17 +88,31 @@ export function normalizeManagerBooking(item) {
     return String(cond)
   }
 
+  const serviceName =
+    normalizeServiceNames(item.serviceNames) ??
+    normalizeServiceNames(item.serviceName) ??
+    firstDetail?.serviceName ??
+    '—'
+
+  let slotLabel =
+    item.slotLabel ??
+    item.timeSlotLabel ??
+    formatSlotLabel(item.startTime, item.endTime)
+  if (!slotLabel || slotLabel === '—') {
+    slotLabel = formatScheduledSlotLabel(scheduledDateRaw)
+  }
+
   return {
     bookingId: Number(item.bookingId ?? item.id),
     licensePlate: String(item.licensePlate ?? firstDetail?.licensePlate ?? '—'),
-    customerName: String(item.customerName ?? item.fullName ?? '—'),
-    serviceName: String(item.serviceName ?? firstDetail?.serviceName ?? '—'),
-    slotLabel: String(
-      item.slotLabel ?? item.timeSlotLabel ?? formatSlotLabel(item.startTime, item.endTime),
-    ),
+    customerName: String(item.customerName ?? item.fullName ?? item.customerPhone ?? '—'),
+    customerPhone: String(item.customerPhone ?? item.phoneNumber ?? '—'),
+    serviceName: String(serviceName),
+    slotLabel: String(slotLabel),
     scheduledDate,
+    scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
-    finalAmount: Number(item.finalAmount ?? 0),
+    finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
     details: Array.isArray(details)
@@ -100,30 +134,32 @@ export function normalizeManagerBooking(item) {
  * @returns {Promise<ManagerBooking[]>}
  */
 export function fetchManagerBookings() {
-  return apiRequest('/manager/bookings').then((data) => {
-    const list = Array.isArray(data) ? data : []
-    return list.map(normalizeManagerBooking)
-  })
+  return apiRequest('/manager/bookings').then((data) =>
+    asManagerCollection(data).map(normalizeManagerBooking),
+  )
 }
 
 /**
  * GET /api/v1/manager/staff
  * Returns all Staff members at the Manager's branch.
- * @returns {Promise<StaffMember[]>}
+ * @returns {Promise<Array<{ userId: number; fullName: string; phoneNumber: string; status: string }>>}
  */
 export function fetchManagerStaffs() {
-  return apiRequest('/manager/staff')
+  return apiRequest('/manager/staff').then((data) => asManagerCollection(data).map(normalizeManagerStaff))
 }
 
 /**
  * POST /api/v1/manager/lanes/assign-staff
  * Assigns a Staff member to a Lane for a specific date.
- * @param {{ staffId: number; laneId: number; assignedDate: string }} payload
+ * @param {{ staffId: number; laneId: number; assignedDate: string }} payload `assignedDate`: yyyy-MM-dd or ISO
  */
 export function assignStaffToLane({ staffId, laneId, assignedDate }) {
+  const isoDate = String(assignedDate).includes('T')
+    ? assignedDate
+    : toApiTargetDate(String(assignedDate).slice(0, 10))
   return apiRequest('/manager/lanes/assign-staff', {
     method: 'POST',
-    body: JSON.stringify({ staffId, laneId, assignedDate }),
+    body: JSON.stringify({ staffId, laneId, assignedDate: isoDate }),
   })
 }
 
