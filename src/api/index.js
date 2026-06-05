@@ -129,6 +129,10 @@ export {
   fetchManagerLanes,
   createManagerLane,
   fetchLaneAssignedStaff,
+  fetchAllLaneStaffAssignments,
+  unassignStaffFromLane,
+  normalizeLaneAssignedStaff,
+  asManagerCollection,
 } from './manager.lanes.api'
 
 export {

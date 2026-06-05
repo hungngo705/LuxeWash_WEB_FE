@@ -4,6 +4,7 @@ import ManagerTopBar from './ManagerTopBar'
 
 const PAGE_TITLES = {
   '/manager/dashboard': 'Tổng quan chi nhánh',
+  '/manager/bookings': 'Lịch đặt',
   '/manager/queue': 'Điều phối xe vào làn',
   '/manager/lanes': 'Quản lý làn rửa',
   '/manager/time-slots': 'Khung giờ đặt lịch',
