@@ -89,6 +89,7 @@ export {
 export {
   fetchBookingsByDate,
   fetchBookingsByLicensePlate,
+  searchBookingsByLicensePlate,
   fetchBookingById,
   asBookingList,
   updateBookingStatus,
@@ -100,6 +101,8 @@ export {
   normalizeAdminBooking,
   filterBookingsByBranch,
   normalizeBookingStatus,
+  normalizePlateQuery,
+  plateSearchVariants,
   toApiTargetDate,
   toApiBookingStatus,
 } from './admin.bookings.api'

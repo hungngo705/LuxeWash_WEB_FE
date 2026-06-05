@@ -3,14 +3,16 @@ import {
   ApiError,
   fetchAdminBranches,
   fetchBookingsByDate,
-  fetchBookingsByLicensePlate,
   fetchTimeSlots,
   fetchVehicleTypes,
   filterBookingsByBranch,
+  findUserByLicensePlate,
   forceCancelBookings,
   markBookingNoShow,
   normalizeAdminBooking,
+  normalizePlateQuery,
   reportBookingMismatch,
+  searchBookingsByLicensePlate,
   toApiTargetDate,
   updateBookingStatus,
   updateBookingStatusByLicensePlate,
@@ -247,18 +249,43 @@ export default function AdminBookingsPage() {
   const searchByPlate = async () => {
     const plate = plateQuery.trim()
     if (!plate) return
-    if (!branchIdNum) {
-      showToast('Chọn chi nhánh trước khi tra cứu')
-      return
-    }
 
     setPlateLoading(true)
     setPlateResults([])
     try {
-      const data = await fetchBookingsByLicensePlate(plate)
-      const items = filterBookingsByBranch(data.map(normalizeAdminBooking), branchIdNum)
+      let items = (await searchBookingsByLicensePlate(plate)).map(normalizeAdminBooking)
+
+      if (branchIdNum) {
+        items = filterBookingsByBranch(items, branchIdNum)
+      }
+
+      const onSelectedDate = items.filter((b) => b.scheduledDate === dateFilter)
+      const otherDates = items.filter((b) => b.scheduledDate !== dateFilter)
+      items = [...onSelectedDate, ...otherDates]
+
+      if (items.length) {
+        const needsCustomer = items.some((b) => !b.customerName || b.customerName === '—')
+        if (needsCustomer) {
+          const lookup = await findUserByLicensePlate(items[0].licensePlate || plate)
+          if (lookup) {
+            items = items.map((b) => ({
+              ...b,
+              customerName: lookup.customer.fullName,
+              rankName: lookup.customer.rankName,
+            }))
+          }
+        }
+      }
+
       setPlateResults(items)
-      if (!items.length) showToast('Không tìm thấy booking cho biển số này')
+
+      if (!items.length) {
+        showToast('Không tìm thấy booking cho biển số này')
+      } else if (!onSelectedDate.length && otherDates.length) {
+        showToast(
+          `Tìm thấy ${items.length} booking — không có lịch trong ngày ${dateFilter}`,
+        )
+      }
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không tra cứu được theo biển số')
     } finally {
@@ -269,17 +296,14 @@ export default function AdminBookingsPage() {
   const applyPlateStatus = async () => {
     const plate = plateQuery.trim()
     if (!plate || plateActionLoading) return
-    if (!branchIdNum) {
-      showToast('Chọn chi nhánh trước khi đổi trạng thái')
-      return
-    }
 
     setPlateActionLoading(true)
     try {
-      await updateBookingStatusByLicensePlate(plate, plateStatus)
+      const apiPlate = normalizePlateQuery(plate)
+      await updateBookingStatusByLicensePlate(apiPlate, plateStatus)
       showToast('Đã cập nhật trạng thái theo biển số')
       await searchByPlate()
-      await loadBookings()
+      if (branchIdNum) await loadBookings()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không đổi trạng thái được')
     } finally {
@@ -327,7 +351,8 @@ export default function AdminBookingsPage() {
           </p>
         ) : (
           <p className="mt-2 text-sm text-on-surface-variant">
-            Chọn chi nhánh trước khi tra cứu, xem danh sách hoặc hủy hàng loạt.
+            Chọn chi nhánh để xem danh sách theo ngày hoặc hủy hàng loạt. Tra cứu biển số
+            hoạt động không cần chọn chi nhánh.
           </p>
         )}
       </div>
@@ -385,11 +410,25 @@ export default function AdminBookingsPage() {
         {plateResults.length > 0 && (
           <ul className="mt-4 space-y-2 border-t border-outline-variant/60 pt-4 text-sm">
             {plateResults.map((b) => (
-              <li key={b.bookingId} className="flex flex-wrap items-center gap-2 text-on-surface">
-                <span className="font-medium">#{b.bookingId}</span>
-                <StatusBadge status={b.status} />
-                <span className="text-on-surface-variant">{b.serviceName}</span>
-                <span className="text-on-surface-variant">{b.slotLabel}</span>
+              <li key={b.bookingId}>
+                <button
+                  type="button"
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-outline-variant/60 px-3 py-2 text-left transition-colors hover:bg-surface-container-low"
+                  onClick={() => setDetailBooking(b)}
+                >
+                  <span className="font-medium text-on-surface">#{b.bookingId}</span>
+                  <span className="font-semibold tracking-wide text-primary">{b.licensePlate}</span>
+                  <StatusBadge status={b.status} />
+                  <span className="text-on-surface">{b.customerName}</span>
+                  <span className="text-on-surface-variant">{b.serviceName}</span>
+                  <span className="text-on-surface-variant">
+                    {b.scheduledDate} · {b.slotLabel}
+                  </span>
+                  <span className="text-on-surface-variant">{formatVnd(b.finalAmount)}</span>
+                  {b.scheduledDate !== dateFilter && (
+                    <span className="text-xs text-tertiary-container">Khác ngày đang chọn</span>
+                  )}
+                </button>
               </li>
             ))}
           </ul>
