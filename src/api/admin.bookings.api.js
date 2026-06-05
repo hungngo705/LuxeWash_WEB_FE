@@ -71,6 +71,39 @@ function formatSlotLabel(start, end) {
   return fmt(start) || fmt(end) || '—'
 }
 
+function formatScheduledSlotLabel(scheduledTime) {
+  if (!scheduledTime) return '—'
+  const d = new Date(String(scheduledTime))
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function normalizeServiceNames(value) {
+  if (Array.isArray(value)) {
+    const names = value.map((v) => String(v ?? '').trim()).filter(Boolean)
+    return names.length ? names.join(', ') : undefined
+  }
+  if (value == null || value === '') return undefined
+  return String(value)
+}
+
+/** @param {string} plate */
+export function normalizePlateQuery(plate) {
+  return String(plate ?? '').trim().toUpperCase()
+}
+
+/** @param {string} plate */
+export function plateSearchVariants(plate) {
+  const raw = normalizePlateQuery(plate)
+  if (!raw) return []
+
+  const compact = raw.replace(/[\s.\-]/g, '')
+  const dotted = raw.replace(/-/g, '.').replace(/\s/g, '')
+  const dashed = raw.replace(/\./g, '-').replace(/\s/g, '')
+
+  return [...new Set([raw, compact, dotted, dashed, raw.replace(/\s/g, '')])].filter(Boolean)
+}
+
 function normalizeVehicleCondition(condition) {
   if (condition == null || condition === '') return '—'
   if (typeof condition === 'number') {
@@ -101,18 +134,34 @@ export function normalizeAdminBooking(item) {
       ? scheduledDateRaw.slice(0, 10)
       : ''
 
+  const serviceName =
+    normalizeServiceNames(item.serviceNames) ??
+    normalizeServiceNames(item.serviceName) ??
+    firstDetail?.serviceName ??
+    '—'
+
+  let slotLabel =
+    item.slotLabel ??
+    item.timeSlotLabel ??
+    formatSlotLabel(item.startTime, item.endTime)
+  if (!slotLabel || slotLabel === '—') {
+    slotLabel = formatScheduledSlotLabel(scheduledDateRaw)
+  }
+
   return {
     bookingId: Number(item.bookingId ?? item.id),
     licensePlate: String(item.licensePlate ?? firstDetail?.licensePlate ?? '—'),
-    customerName: String(item.customerName ?? item.fullName ?? item.ownerName ?? '—'),
-    serviceName: String(item.serviceName ?? firstDetail?.serviceName ?? '—'),
-    slotLabel: String(
-      item.slotLabel ?? item.timeSlotLabel ?? formatSlotLabel(item.startTime, item.endTime),
+    customerName: String(
+      item.customerName ?? item.fullName ?? item.ownerName ?? item.customerPhone ?? '—',
     ),
+    serviceName: String(serviceName),
+    slotLabel: String(slotLabel),
     scheduledDate,
+    scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
     rankName: String(item.rankName ?? item.tierName ?? '—'),
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
+    originalAmount: Number(item.originalPrice ?? item.originalAmount ?? item.finalAmount ?? 0),
     fallbackQrCode: String(item.fallbackQrCode ?? item.qrCode ?? '—'),
     slotId: item.slotId ?? item.timeSlotId ?? undefined,
     branchId: item.branchId != null ? Number(item.branchId) : undefined,
@@ -199,9 +248,22 @@ export function fetchBookingById(bookingId) {
  * Returns array of BookingResponseDTO for the given plate.
  */
 export function fetchBookingsByLicensePlate(licensePlate) {
-  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate)}`).then(
+  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate.trim())}`).then(
     asBookingList,
   )
+}
+
+/**
+ * Tra cứu biển số — thử nhiều format (BE chuẩn hóa biển số, Swagger: StaffBookings).
+ * @param {string} licensePlate
+ */
+export async function searchBookingsByLicensePlate(licensePlate) {
+  const variants = plateSearchVariants(licensePlate)
+  for (const variant of variants) {
+    const list = await fetchBookingsByLicensePlate(variant)
+    if (list.length) return list
+  }
+  return []
 }
 
 /**
