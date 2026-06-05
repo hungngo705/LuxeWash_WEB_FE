@@ -3,12 +3,12 @@ import StaffBookingDetailModal from '../components/dashboard/StaffBookingDetailM
 import {
   ApiError,
   enrichStaffBooking,
-  fetchBookingsByLicensePlate,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
   formatPaymentMethodLabel,
   formatStaffStationLabel,
   normalizeStaffTask,
+  searchBookingsByLicensePlate,
   updateStaffBookingStatus,
 } from '../api'
 import { formatDateTime, formatVnd } from '../utils/format'
@@ -21,6 +21,63 @@ function normalizePlate(plate) {
     .toUpperCase()
     .replace(/\s/g, '')
     .replace(/\./g, '')
+}
+
+/** @param {import('../api/operationStaff.api').StaffTask[]} list @param {import('../api/operationStaff.api').StaffTask} booking */
+function upsertStaffTaskList(list, booking) {
+  const id = Number(booking.bookingId)
+  if (!id) return list
+  const idx = list.findIndex((t) => Number(t.bookingId) === id)
+  if (idx >= 0) {
+    const next = [...list]
+    next[idx] = { ...next[idx], ...booking }
+    return next
+  }
+  return [...list, booking]
+}
+
+/** Giữ xe Processing tra cứu local nếu poll tasks chưa trả về. */
+function mergeStaffTasksFromApi(prev, fromApi) {
+  const apiList = Array.isArray(fromApi) ? fromApi : []
+  const localProcessing = prev.filter(
+    (b) =>
+      b.status === 'Processing' &&
+      !apiList.some((a) => Number(a.bookingId) === Number(b.bookingId)),
+  )
+  let merged = [...apiList]
+  for (const local of localProcessing) {
+    merged = upsertStaffTaskList(merged, local)
+  }
+  return merged
+}
+
+const ACTIVE_PLATE_STATUSES = new Set(['Processing', 'Checked-in', 'Pending'])
+const PLATE_STATUS_PRIORITY = { Processing: 0, 'Checked-in': 1, Pending: 2 }
+
+/** @param {import('../api/operationStaff.api').StaffTask[]} list @param {string} normalized */
+function pickBestPlateBooking(list, normalized) {
+  const samePlate = list.filter((b) => normalizePlate(b.licensePlate) === normalized)
+  if (!samePlate.length) return null
+
+  const active = samePlate.filter((b) => ACTIVE_PLATE_STATUSES.has(b.status))
+  const pool = active.length ? active : samePlate
+
+  return [...pool].sort((a, b) => {
+    const diff = (PLATE_STATUS_PRIORITY[a.status] ?? 9) - (PLATE_STATUS_PRIORITY[b.status] ?? 9)
+    if (diff !== 0) return diff
+    return (
+      new Date(b.scheduledTime ?? 0).getTime() - new Date(a.scheduledTime ?? 0).getTime()
+    )
+  })[0]
+}
+
+function plateLookupMessage(status) {
+  if (status === 'Pending') return 'Xe đã đặt lịch nhưng chưa check-in. Liên hệ Manager.'
+  if (status === 'Processing') return ''
+  if (status !== 'Checked-in') {
+    return 'Xe có trên hệ thống nhưng chưa check-in vào làn của bạn. Liên hệ Manager.'
+  }
+  return ''
 }
 
 function StatusBadge({ status }) {
@@ -437,7 +494,7 @@ export default function DashboardPage() {
   const loadStaffTasks = useCallback(async () => {
     try {
       const data = await fetchStaffTasks()
-      setStaffTasks(Array.isArray(data) ? data : [])
+      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
     } catch (err) {
       console.warn('Failed to load staff tasks:', err)
     } finally {
@@ -460,19 +517,39 @@ export default function DashboardPage() {
     [staffTasks],
   )
 
-  const processingVehicles = useMemo(
-    () => staffTasks.filter((b) => b.status === 'Processing'),
-    [staffTasks],
-  )
+  const processingVehicles = useMemo(() => {
+    const fromTasks = staffTasks.filter((b) => b.status === 'Processing')
+    if (
+      selectedBooking?.status === 'Processing' &&
+      !fromTasks.some((t) => Number(t.bookingId) === Number(selectedBooking.bookingId))
+    ) {
+      return [...fromTasks, selectedBooking]
+    }
+    return fromTasks.map((task) => {
+      if (
+        selectedBooking?.status === 'Processing' &&
+        Number(task.bookingId) === Number(selectedBooking.bookingId)
+      ) {
+        return { ...task, ...selectedBooking }
+      }
+      return task
+    })
+  }, [staffTasks, selectedBooking])
 
   const applySelectedBooking = useCallback(async (booking, options = {}) => {
     setSelectedBooking(booking)
     if (options.message !== undefined) setLookupError(options.message)
+
     try {
       const enriched = await enrichStaffBooking(booking)
+      if (enriched.status === 'Processing' || enriched.status === 'Checked-in') {
+        setStaffTasks((prev) => upsertStaffTaskList(prev, enriched))
+      }
       setSelectedBooking(enriched)
     } catch {
-      // keep summary booking
+      if (booking.status === 'Processing' || booking.status === 'Checked-in') {
+        setStaffTasks((prev) => upsertStaffTaskList(prev, booking))
+      }
     }
   }, [])
 
@@ -489,21 +566,10 @@ export default function DashboardPage() {
         return
       }
 
-      const list = (await fetchBookingsByLicensePlate(plate)).map(normalizeStaffTask)
-      const todayMatch = list.find(
-        (b) =>
-          normalizePlate(b.licensePlate) === normalized &&
-          (b.status === 'Checked-in' || b.status === 'Processing' || b.status === 'Pending'),
-      )
+      const list = (await searchBookingsByLicensePlate(plate)).map(normalizeStaffTask)
+      const todayMatch = pickBestPlateBooking(list, normalized)
       if (todayMatch) {
-        await applySelectedBooking(todayMatch, {
-          message:
-            todayMatch.status === 'Pending'
-              ? 'Xe đã đặt lịch nhưng chưa check-in. Liên hệ Manager.'
-              : todayMatch.status !== 'Checked-in' && todayMatch.status !== 'Processing'
-                ? 'Xe có trên hệ thống nhưng chưa check-in vào làn của bạn. Liên hệ Manager.'
-                : '',
-        })
+        await applySelectedBooking(todayMatch, { message: plateLookupMessage(todayMatch.status) })
         return
       }
 
@@ -522,15 +588,16 @@ export default function DashboardPage() {
     setConfirming(true)
     try {
       await updateStaffBookingStatus(selectedBooking.bookingId, 'Processing')
-      showToast(`Xe ${selectedBooking.licensePlate} bắt đầu rửa.`)
-      setStaffTasks((prev) =>
-        prev.map((t) =>
-          Number(t.bookingId) === selectedBooking.bookingId
-            ? { ...t, status: 'Processing' }
-            : t,
-        ),
-      )
-      setSelectedBooking((prev) => (prev ? { ...prev, status: 'Processing' } : null))
+      let processingBooking = { ...selectedBooking, status: 'Processing' }
+      try {
+        processingBooking = await enrichStaffBooking(processingBooking)
+      } catch {
+        // keep local processing booking
+      }
+      setStaffTasks((prev) => upsertStaffTaskList(prev, processingBooking))
+      setSelectedBooking(processingBooking)
+      showToast(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`)
+      setLookupError('')
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.'
       showToast(msg, 'error')
@@ -541,7 +608,9 @@ export default function DashboardPage() {
 
   const handleComplete = useCallback(
     async (bookingId) => {
-      const task = staffTasks.find((t) => Number(t.bookingId) === Number(bookingId))
+      const task =
+        staffTasks.find((t) => Number(t.bookingId) === Number(bookingId)) ??
+        processingVehicles.find((t) => Number(t.bookingId) === Number(bookingId))
       setCompletingId(bookingId)
       try {
         await updateStaffBookingStatus(bookingId, 'Completed')
@@ -558,7 +627,7 @@ export default function DashboardPage() {
         setCompletingId(null)
       }
     },
-    [staffTasks, selectedBooking],
+    [staffTasks, selectedBooking, processingVehicles],
   )
 
   const handleSkip = useCallback(() => {

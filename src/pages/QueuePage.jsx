@@ -117,7 +117,7 @@ export default function QueuePage() {
       )}
 
       <div className="mb-6">
-        <h1 className="font-sora text-2xl font-semibold text-on-surface">Quan ly hang doi</h1>
+        <h1 className="font-sora text-2xl font-semibold text-on-surface">Quản lý hàng đợi</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
           Danh sach xe tai lan cua ban — Bookings Checked-in va Processing
         </p>
