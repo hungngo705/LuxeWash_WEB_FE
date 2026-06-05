@@ -47,6 +47,7 @@ export {
 
 export {
   fetchBranches,
+  fetchAdminBranches,
   fetchBranchById,
   createBranch,
   updateBranch,

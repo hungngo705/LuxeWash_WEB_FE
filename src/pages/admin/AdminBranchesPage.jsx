@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   createBranch,
-  fetchBranches,
+  fetchAdminBranches,
   updateBranch,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
@@ -31,7 +31,7 @@ export default function AdminBranchesPage() {
     setLoading(true)
     setLoadError('')
     try {
-      setBranches(await fetchBranches())
+      setBranches(await fetchAdminBranches())
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách chi nhánh')
     } finally {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   createService,
@@ -136,6 +136,12 @@ export default function AdminServicesPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  /** Chỉ hiển thị dịch vụ đang hoạt động trên bảng Admin (các trang khác không lọc). */
+  const activeServices = useMemo(
+    () => services.filter((s) => s.isActive !== false),
+    [services],
+  )
 
   const setBranchId = (branchId) => {
     setForm((f) => ({
@@ -277,7 +283,7 @@ export default function AdminServicesPage() {
 
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải danh sách dịch vụ…</p>
-      ) : services.length === 0 && !loadError ? (
+      ) : activeServices.length === 0 && !loadError ? (
         <EmptyState icon="local_car_wash" title="Chưa có dịch vụ" message="Thêm dịch vụ đầu tiên để bắt đầu." />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -295,7 +301,7 @@ export default function AdminServicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
-              {services.map((service) => (
+              {activeServices.map((service) => (
                 <tr key={service.serviceId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 text-on-surface-variant">#{service.serviceId}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{service.serviceName}</td>
