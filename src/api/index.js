@@ -89,6 +89,8 @@ export {
 export {
   fetchBookingsByDate,
   fetchBookingsByLicensePlate,
+  fetchBookingById,
+  asBookingList,
   updateBookingStatus,
   updateBookingStatusByLicensePlate,
   markBookingNoShow,
@@ -139,9 +141,25 @@ export {
 
 export {
   fetchStaffTasks,
+  fetchStaffLaneAssignment,
+  enrichStaffBooking,
   updateStaffBookingStatus,
+  recognizeVehicleByPlate,
+  consumeStaffVoucher,
   normalizeStaffTask,
+  normalizeStaffLaneAssignment,
+  normalizeVehicleRecognition,
+  formatStaffStationLabel,
+  formatPaymentMethodLabel,
 } from './operationStaff.api'
+
+export {
+  mapUserDetailToCustomerView,
+  mapListUserToCustomerView,
+  maskPhoneNumber,
+  findUserByLicensePlate,
+  normalizePlateKey,
+} from './staff.customers.api'
 
 export {
   checkAvailableSlots,

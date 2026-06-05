@@ -2,9 +2,9 @@ import { NavLink } from 'react-router-dom'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
-  { to: '/queue', label: 'Queue', icon: 'format_list_numbered' },
-  { to: '/history', label: 'History', icon: 'history' },
-  { to: '/customers', label: 'Customers', icon: 'group' },
+  { to: '/queue', label: 'Hàng Chờ', icon: 'format_list_numbered' },
+  { to: '/history', label: 'Lịch sử dịch vụ', icon: 'history' },
+  { to: '/customers', label: 'Khách hàng', icon: 'group' },
 ]
 
 export default function StaffSidebar({ station }) {

@@ -15,6 +15,8 @@ import { apiRequest } from './client'
  *   slotId?: number
  *   branchId?: number
  *   branchName?: string
+ *   processingLaneId?: number
+ *   processingLaneName?: string
  *   details: Array<{
  *     detailId?: number
  *     licensePlate: string
@@ -115,6 +117,13 @@ export function normalizeAdminBooking(item) {
     slotId: item.slotId ?? item.timeSlotId ?? undefined,
     branchId: item.branchId != null ? Number(item.branchId) : undefined,
     branchName: item.branchName != null ? String(item.branchName) : undefined,
+    processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
+    processingLaneName:
+      item.processingLaneName != null
+        ? String(item.processingLaneName)
+        : item.laneName != null
+          ? String(item.laneName)
+          : undefined,
     details: Array.isArray(details) ? details.map(normalizeBookingDetail) : [],
   }
 }
@@ -173,12 +182,26 @@ export function reportBookingMismatch(detailId, { condition, actualTypeId }) {
   })
 }
 
+/** @param {unknown} data */
+export function asBookingList(data) {
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object') return [data]
+  return []
+}
+
+/** @param {number} bookingId */
+export function fetchBookingById(bookingId) {
+  return apiRequest(`/bookings/${bookingId}`)
+}
+
 /**
  * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
  * Returns array of BookingResponseDTO for the given plate.
  */
 export function fetchBookingsByLicensePlate(licensePlate) {
-  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate)}`)
+  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate)}`).then(
+    asBookingList,
+  )
 }
 
 /**

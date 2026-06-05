@@ -256,10 +256,7 @@ export default function AdminBookingsPage() {
     setPlateResults([])
     try {
       const data = await fetchBookingsByLicensePlate(plate)
-      const items = filterBookingsByBranch(
-        Array.isArray(data) ? data.map(normalizeAdminBooking) : [],
-        branchIdNum,
-      )
+      const items = filterBookingsByBranch(data.map(normalizeAdminBooking), branchIdNum)
       setPlateResults(items)
       if (!items.length) showToast('Không tìm thấy booking cho biển số này')
     } catch (err) {

@@ -104,6 +104,61 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const refreshSession = useCallback(async () => {
+    const session = getStoredSession()
+    if (!session?.token || !session?.refreshToken) return false
+    try {
+      const data = await refreshAccessToken(session.token, session.refreshToken)
+      setUser((prev) => {
+        if (!prev) return prev
+        const next = {
+          ...prev,
+          token: data.token ?? data.accessToken ?? prev.token,
+          refreshToken: data.refreshToken ?? prev.refreshToken,
+        }
+        saveSession(next)
+        return next
+      })
+      return true
+    } catch {
+      logout()
+      return false
+    }
+  }, [logout])
+
+  const refreshProfile = useCallback(async () => {
+    try {
+      const profile = await fetchCurrentUser()
+      setUser((prev) => {
+        if (!prev) return prev
+        const next = {
+          ...prev,
+          fullName: profile.fullName ?? prev.fullName,
+          phoneNumber: profile.phoneNumber ?? prev.phoneNumber,
+          email: profile.email ?? prev.email,
+        }
+        saveSession(next)
+        return next
+      })
+      return profile
+    } catch {
+      return null
+    }
+  }, [])
+
+  const patchUser = useCallback((updates) => {
+    setUser((prev) => {
+      if (!prev) return prev
+      const hasChange = Object.entries(updates).some(
+        ([key, value]) => prev[key] !== value,
+      )
+      if (!hasChange) return prev
+      const next = { ...prev, ...updates }
+      saveSession(next)
+      return next
+    })
+  }, [])
+
   const value = useMemo(
     () => ({
       user,
@@ -114,50 +169,11 @@ export function AuthProvider({ children }) {
       logout,
       error,
       setError,
-      refreshSession: async () => {
-        if (!user?.token || !user?.refreshToken) return false
-        try {
-          const data = await refreshAccessToken(user.token, user.refreshToken)
-          const next = {
-            ...user,
-            token: data.token ?? data.accessToken ?? user.token,
-            refreshToken: data.refreshToken ?? user.refreshToken,
-          }
-          saveSession(next)
-          setUser(next)
-          return true
-        } catch {
-          logout()
-          return false
-        }
-      },
-      refreshProfile: async () => {
-        if (!user) return null
-        try {
-          const profile = await fetchCurrentUser()
-          const next = {
-            ...user,
-            fullName: profile.fullName ?? user.fullName,
-            phoneNumber: profile.phoneNumber ?? user.phoneNumber,
-            email: profile.email ?? user.email,
-          }
-          saveSession(next)
-          setUser(next)
-          return profile
-        } catch {
-          return null
-        }
-      },
-      patchUser: (updates) => {
-        setUser((prev) => {
-          if (!prev) return prev
-          const next = { ...prev, ...updates }
-          saveSession(next)
-          return next
-        })
-      },
+      refreshSession,
+      refreshProfile,
+      patchUser,
     }),
-    [user, error, login, logout],
+    [user, error, login, logout, refreshSession, refreshProfile, patchUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
