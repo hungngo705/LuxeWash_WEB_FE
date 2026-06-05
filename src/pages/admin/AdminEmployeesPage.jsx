@@ -92,7 +92,7 @@ export default function AdminEmployeesPage() {
     <div className="w-full max-w-2xl">
       <PageHeader
         title="Nhân viên"
-        description="Tạo Manager/Staff và chuyển chi nhánh — danh sách staff: GET /manager/staff (role Manager)"
+        description="Tạo Manager/Staff và chuyển chi nhánh"
       />
 
       {toast && (

@@ -23,11 +23,11 @@ const emptyForm = {
 
 function toApiPayload(form, branchId) {
   return {
+    branchId: Number(branchId),
     startTime: toApiTimeValue(form.startTime),
     endTime: toApiTimeValue(form.endTime),
     maxCapacity: Number(form.maxCapacity),
     isVipOnly: Boolean(form.isVipOnly),
-    branchId: branchId ? Number(branchId) : undefined,
   }
 }
 
@@ -89,6 +89,9 @@ export default function AdminTimeSlotsPage() {
 
   const openEdit = (slot) => {
     setEditingId(slot.slotId)
+    if (slot.branchId != null) {
+      setSelectedBranchId(String(slot.branchId))
+    }
     setForm({
       startTime: toTimeInputValue(slot.startTime),
       endTime: toTimeInputValue(slot.endTime),
@@ -101,8 +104,8 @@ export default function AdminTimeSlotsPage() {
   const handleSave = async () => {
     if (saving) return
 
-    if (!selectedBranchId && !editingId) {
-      showToast('Vui lòng chọn chi nhánh trước khi thêm khung giờ')
+    if (!selectedBranchId) {
+      showToast('Vui lòng chọn chi nhánh')
       return
     }
 
@@ -152,7 +155,7 @@ export default function AdminTimeSlotsPage() {
     <div className="w-full">
       <PageHeader
         title="Khung giờ đặt lịch"
-        description="Cấu hình slot trong ngày và capacity"
+        description=""
         actionLabel="Thêm khung giờ"
         onAction={openCreate}
       />
@@ -271,13 +274,13 @@ export default function AdminTimeSlotsPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          {branches.length > 0 && !editingId && (
+          {branches.length > 0 && (
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Chi nhánh</span>
               <select
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={selectedBranchId}
-                disabled={saving}
+                disabled={saving || Boolean(editingId)}
                 onChange={(e) => setSelectedBranchId(e.target.value)}
               >
                 <option value="">Chọn chi nhánh</option>

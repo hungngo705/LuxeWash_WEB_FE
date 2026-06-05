@@ -117,7 +117,7 @@ export default function AdminTiersPage() {
     <div className="w-full">
       <PageHeader
         title="Hạng thành viên"
-        description="Cấu hình tier loyalty và quyền lợi đặt lịch"
+        description=""
         actionLabel="Thêm hạng"
         onAction={openCreate}
       />

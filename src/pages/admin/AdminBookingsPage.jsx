@@ -3,6 +3,7 @@ import {
   ApiError,
   fetchBookingsByDate,
   fetchBookingsByLicensePlate,
+  fetchBranches,
   fetchTimeSlots,
   fetchVehicleTypes,
   forceCancelBookings,
@@ -50,6 +51,7 @@ function formatSlotOption(slot) {
 export default function AdminBookingsPage() {
   const [bookings, setBookings] = useState([])
   const [timeSlots, setTimeSlots] = useState([])
+  const [branches, setBranches] = useState([])
   const [vehicleTypes, setVehicleTypes] = useState([])
   const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [statusFilter, setStatusFilter] = useState('All')
@@ -62,6 +64,7 @@ export default function AdminBookingsPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [forceCancelOpen, setForceCancelOpen] = useState(false)
   const [forceCancelForm, setForceCancelForm] = useState({
+    branchId: '',
     timeSlotId: '',
     reason: '',
   })
@@ -110,15 +113,24 @@ export default function AdminBookingsPage() {
   }, [loadBookings])
 
   useEffect(() => {
-    Promise.all([fetchTimeSlots(), fetchVehicleTypes()])
-      .then(([slots, types]) => {
-        setTimeSlots(Array.isArray(slots) ? slots : [])
+    Promise.all([fetchBranches(), fetchVehicleTypes()])
+      .then(([branchList, types]) => {
+        setBranches(Array.isArray(branchList) ? branchList : [])
         setVehicleTypes(Array.isArray(types) ? types : [])
       })
-      .catch(() => {
-        // Non-blocking — force-cancel / mismatch still work with manual ids if needed
-      })
+      .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const branchId = forceCancelForm.branchId
+    if (!branchId) {
+      setTimeSlots([])
+      return
+    }
+    fetchTimeSlots({ branchId })
+      .then((slots) => setTimeSlots(Array.isArray(slots) ? slots : []))
+      .catch(() => setTimeSlots([]))
+  }, [forceCancelForm.branchId])
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => statusFilter === 'All' || b.status === statusFilter)
@@ -163,6 +175,12 @@ export default function AdminBookingsPage() {
   const handleForceCancel = async () => {
     if (!forceCancelForm.reason.trim() || forceCancelling) return
 
+    const branchId = Number(forceCancelForm.branchId)
+    if (!branchId) {
+      showToast('Chọn chi nhánh')
+      return
+    }
+
     const timeSlotId = Number(forceCancelForm.timeSlotId)
     if (!timeSlotId) {
       showToast('Chọn khung giờ cần hủy hàng loạt')
@@ -172,12 +190,13 @@ export default function AdminBookingsPage() {
     setForceCancelling(true)
     try {
       await forceCancelBookings({
+        branchId,
         timeSlotId,
         affectedDate: toApiTargetDate(dateFilter),
         reason: forceCancelForm.reason.trim(),
       })
       setForceCancelOpen(false)
-      setForceCancelForm({ timeSlotId: '', reason: '' })
+      setForceCancelForm({ branchId: '', timeSlotId: '', reason: '' })
       showToast('Đã hủy hàng loạt booking trong khung giờ')
       await loadBookings()
     } catch (err) {
@@ -695,12 +714,36 @@ export default function AdminBookingsPage() {
           </p>
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase text-on-surface-variant">
+              Chi nhánh
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={forceCancelForm.branchId}
+              disabled={forceCancelling}
+              onChange={(e) =>
+                setForceCancelForm((f) => ({
+                  ...f,
+                  branchId: e.target.value,
+                  timeSlotId: '',
+                }))
+              }
+            >
+              <option value="">— Chọn chi nhánh —</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">
               Khung giờ
             </span>
             <select
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={forceCancelForm.timeSlotId}
-              disabled={forceCancelling}
+              disabled={forceCancelling || !forceCancelForm.branchId}
               onChange={(e) =>
                 setForceCancelForm((f) => ({ ...f, timeSlotId: e.target.value }))
               }
