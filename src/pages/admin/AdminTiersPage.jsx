@@ -13,9 +13,9 @@ const TIER_COLORS = {
 
 const emptyForm = {
   tierName: '',
-  pointMultiplier: 1,
-  bookingWindowDays: 7,
-  minAccumulatedPoints: 0,
+  pointMultiplier: '1',
+  bookingWindowDays: '7',
+  minAccumulatedPoints: '',
 }
 
 function toApiPayload(form) {
@@ -29,11 +29,18 @@ function toApiPayload(form) {
 
 function validateForm(form) {
   if (!form.tierName?.trim()) return 'Thiếu tên hạng'
+  if (form.pointMultiplier === '' || form.pointMultiplier == null) return 'Vui lòng nhập hệ số điểm'
   if (Number(form.pointMultiplier) < 1 || Number(form.pointMultiplier) > 5) {
     return 'Hệ số điểm phải từ 1–5'
   }
+  if (form.bookingWindowDays === '' || form.bookingWindowDays == null) {
+    return 'Vui lòng nhập cửa sổ đặt lịch'
+  }
   if (Number(form.bookingWindowDays) < 1 || Number(form.bookingWindowDays) > 30) {
     return 'Cửa sổ đặt lịch phải từ 1–30 ngày'
+  }
+  if (form.minAccumulatedPoints === '' || form.minAccumulatedPoints == null) {
+    return 'Vui lòng nhập điểm tích lũy tối thiểu'
   }
   if (Number(form.minAccumulatedPoints) < 0) return 'Điểm tích lũy không được âm'
   return null
@@ -79,7 +86,12 @@ export default function AdminTiersPage() {
 
   const openEdit = (tier) => {
     setEditingId(tier.tierId)
-    setForm({ ...tier })
+    setForm({
+      tierName: tier.tierName,
+      pointMultiplier: String(tier.pointMultiplier),
+      bookingWindowDays: String(tier.bookingWindowDays),
+      minAccumulatedPoints: String(tier.minAccumulatedPoints),
+    })
     setModalOpen(true)
   }
 
@@ -228,9 +240,13 @@ export default function AdminTiersPage() {
               min={1}
               max={5}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.pointMultiplier ?? ''}
+              value={form.pointMultiplier}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, pointMultiplier: Number(e.target.value) }))}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value !== '' && !/^\d*\.?\d*$/.test(value)) return
+                setForm((f) => ({ ...f, pointMultiplier: value }))
+              }}
             />
           </label>
           <label className="block space-y-1">
@@ -242,9 +258,13 @@ export default function AdminTiersPage() {
               min={1}
               max={30}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.bookingWindowDays ?? ''}
+              value={form.bookingWindowDays}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, bookingWindowDays: Number(e.target.value) }))}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value !== '' && !/^\d+$/.test(value)) return
+                setForm((f) => ({ ...f, bookingWindowDays: value }))
+              }}
             />
           </label>
           <label className="block space-y-1">
@@ -255,11 +275,13 @@ export default function AdminTiersPage() {
               type="number"
               min={0}
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.minAccumulatedPoints ?? ''}
+              value={form.minAccumulatedPoints}
               disabled={saving}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, minAccumulatedPoints: Number(e.target.value) }))
-              }
+              onChange={(e) => {
+                const value = e.target.value
+                if (value !== '' && !/^\d+$/.test(value)) return
+                setForm((f) => ({ ...f, minAccumulatedPoints: value }))
+              }}
             />
           </label>
         </div>

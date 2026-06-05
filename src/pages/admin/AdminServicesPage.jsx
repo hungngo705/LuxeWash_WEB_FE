@@ -22,7 +22,7 @@ function buildPricesForAllVehicleTypes(vehicleTypes, branchId) {
   return vehicleTypes.map((vt) => ({
     vehicleTypeId: vt.id,
     branchId: bid,
-    price: 0,
+    price: '',
     estimatedDurationMinutes: DEFAULT_DURATION_MINUTES,
   }))
 }
@@ -38,7 +38,7 @@ function mergePricesWithVehicleTypes(existingPrices, vehicleTypes, branchId) {
     return {
       vehicleTypeId: vt.id,
       branchId: bid,
-      price: existing?.price ?? 0,
+      price: existing?.price != null && existing.price !== '' ? String(existing.price) : '',
       estimatedDurationMinutes:
         minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
     }
@@ -85,6 +85,7 @@ function validateForm(form, vehicleTypes) {
     if (!allowedIds.has(typeId)) return 'Mức giá phải thuộc loại xe hiện có'
     if (seen.has(typeId)) return 'Mỗi loại xe chỉ được một mức giá'
     seen.add(typeId)
+    if (row.price === '' || row.price == null) return 'Vui lòng nhập giá cho tất cả loại xe'
     if (Number(row.price) < 0) return 'Giá không được âm'
   }
 
@@ -427,7 +428,8 @@ export default function AdminServicesPage() {
                       value={price.price}
                       disabled={saving}
                       onChange={(e) => {
-                        const value = Number(e.target.value)
+                        const value = e.target.value
+                        if (value !== '' && !/^\d+$/.test(value)) return
                         setForm((f) => ({
                           ...f,
                           prices: f.prices.map((row) =>

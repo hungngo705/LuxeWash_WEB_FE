@@ -15,8 +15,8 @@ import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 
 const emptyForm = {
-  startTime: '07:00',
-  endTime: '07:20',
+  startTime: '00:00',
+  endTime: '00:00',
   maxCapacity: 3,
   isVipOnly: false,
 }
