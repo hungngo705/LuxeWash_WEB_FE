@@ -186,7 +186,7 @@ export default function AdminVouchersPage() {
     <div className="w-full">
       <PageHeader
         title="Quản lý voucher"
-        description="Tạo và quản lý mã giảm giá loyalty"
+        description="Tạo và quản lý mã giảm giá"
         actionLabel="Thêm voucher"
         onAction={openCreate}
       />

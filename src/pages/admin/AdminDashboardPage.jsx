@@ -55,7 +55,7 @@ export default function AdminDashboardPage() {
         <div>
           <h1 className="font-sora text-2xl font-semibold text-on-surface">Dashboard</h1>
           <p className="mt-1 text-sm text-on-surface-variant">
-            KPI vận hành & loyalty overview — BR-07
+            
           </p>
         </div>
         <button

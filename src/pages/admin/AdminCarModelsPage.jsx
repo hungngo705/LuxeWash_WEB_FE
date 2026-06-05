@@ -116,7 +116,7 @@ export default function AdminCarModelsPage() {
     <div className="w-full">
       <PageHeader
         title="Mẫu xe (hãng / dòng)"
-        description="Danh mục CarModels — khác Loại xe (vehicle-types) dùng cho giá dịch vụ"
+        description="Danh mục CarModels — khác Loại xe"
         actionLabel="Thêm mẫu xe"
         onAction={openCreate}
       />

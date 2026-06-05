@@ -3,6 +3,7 @@ import { apiRequest } from './client'
 /**
  * @typedef {{
  *   slotId: number
+ *   branchId?: number
  *   startTime: string
  *   endTime: string
  *   maxCapacity: number
@@ -10,6 +11,7 @@ import { apiRequest } from './client'
  * }} TimeSlot
  *
  * @typedef {{
+ *   branchId: number
  *   startTime: string
  *   endTime: string
  *   maxCapacity: number
@@ -23,10 +25,7 @@ export function fetchTimeSlots({ branchId } = {}) {
   return apiRequest(`/admin/time-slots${params}`)
 }
 
-/**
- * @param {TimeSlotPayload & { branchId?: number }} payload
- * @returns {Promise<TimeSlot>}
- */
+/** @param {TimeSlotPayload} payload @returns {Promise<TimeSlot>} */
 export function createTimeSlot(payload) {
   return apiRequest('/admin/time-slots', {
     method: 'POST',
@@ -34,10 +33,7 @@ export function createTimeSlot(payload) {
   })
 }
 
-/**
- * @param {number} id
- * @param {TimeSlotPayload & { branchId?: number }} payload
- */
+/** @param {number} id @param {TimeSlotPayload} payload */
 export function updateTimeSlot(id, payload) {
   return apiRequest(`/admin/time-slots/${id}`, {
     method: 'PUT',

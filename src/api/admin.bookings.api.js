@@ -22,6 +22,7 @@ import { apiRequest } from './client'
  * }} AdminBooking
  *
  * @typedef {{
+ *   branchId: number
  *   timeSlotId?: number | null
  *   affectedDate?: string | null
  *   reason: string

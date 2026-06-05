@@ -3,9 +3,9 @@ import { apiRequest } from './client'
 /**
  * @typedef {{
  *   vehicleTypeId: number
+ *   branchId?: number
  *   vehicleTypeName?: string
  *   price: number
- *   capacityWeight: number
  *   estimatedDurationMinutes?: number
  * }} ServicePrice
  *
@@ -22,9 +22,9 @@ import { apiRequest } from './client'
  *   description?: string
  *   prices: Array<{
  *     vehicleTypeId: number
+ *     branchId: number
  *     price: number
- *     capacityWeight: number
- *     estimatedDurationMinutes?: number
+ *     estimatedDurationMinutes: number
  *   }>
  * }} ServicePayload
  */

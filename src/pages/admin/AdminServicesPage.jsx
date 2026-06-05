@@ -3,6 +3,7 @@ import {
   ApiError,
   createService,
   deleteService,
+  fetchBranches,
   fetchServices,
   fetchVehicleTypes,
   updateService,
@@ -16,26 +17,30 @@ import { formatVnd } from '../../utils/format'
 
 const DEFAULT_DURATION_MINUTES = 20
 
-/** Một dòng giá cho mỗi loại xe — bắt buộc khi tạo/sửa dịch vụ */
-function buildPricesForAllVehicleTypes(vehicleTypes) {
+function buildPricesForAllVehicleTypes(vehicleTypes, branchId) {
+  const bid = Number(branchId)
   return vehicleTypes.map((vt) => ({
     vehicleTypeId: vt.id,
+    branchId: bid,
     price: 0,
-    capacityWeight: 1,
+    estimatedDurationMinutes: DEFAULT_DURATION_MINUTES,
   }))
 }
 
-function mergePricesWithVehicleTypes(existingPrices, vehicleTypes) {
+function mergePricesWithVehicleTypes(existingPrices, vehicleTypes, branchId) {
   const byTypeId = new Map(
     (existingPrices ?? []).map((p) => [Number(p.vehicleTypeId), p]),
   )
+  const bid = Number(branchId || existingPrices?.[0]?.branchId)
   return vehicleTypes.map((vt) => {
     const existing = byTypeId.get(Number(vt.id))
+    const minutes = Number(existing?.estimatedDurationMinutes)
     return {
       vehicleTypeId: vt.id,
+      branchId: bid,
       price: existing?.price ?? 0,
-      capacityWeight: existing?.capacityWeight ?? 1,
-      estimatedDurationMinutes: existing?.estimatedDurationMinutes,
+      estimatedDurationMinutes:
+        minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
     }
   })
 }
@@ -45,33 +50,31 @@ function getVehicleTypeName(vehicleTypes, vehicleTypeId) {
 }
 
 function toApiPayload(form) {
+  const branchId = Number(form.branchId)
   return {
     serviceName: form.serviceName.trim(),
     description: form.description.trim(),
-    prices: form.prices.map(({ vehicleTypeId, price, capacityWeight, estimatedDurationMinutes }) => {
-      const row = {
-        vehicleTypeId: Number(vehicleTypeId),
-        price: Number(price),
-        capacityWeight: Number(capacityWeight),
-      }
+    prices: form.prices.map(({ vehicleTypeId, price, estimatedDurationMinutes }) => {
       const minutes = Number(estimatedDurationMinutes)
-      if (minutes >= 5 && minutes <= 600) {
-        row.estimatedDurationMinutes = minutes
-      } else {
-        row.estimatedDurationMinutes = DEFAULT_DURATION_MINUTES
+      return {
+        vehicleTypeId: Number(vehicleTypeId),
+        branchId,
+        price: Number(price),
+        estimatedDurationMinutes:
+          minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
       }
-      return row
     }),
   }
 }
 
 function validateForm(form, vehicleTypes) {
   if (!form.serviceName.trim()) return 'Vui lòng nhập tên dịch vụ'
+  if (!Number(form.branchId)) return 'Vui lòng chọn chi nhánh'
   if (!vehicleTypes.length) return 'Chưa có loại xe trong hệ thống'
   if (!form.prices.length) return 'Cần ít nhất một mức giá'
 
   if (form.prices.length !== vehicleTypes.length) {
-    return `Phải nhập giá và sức chứa cho đủ ${vehicleTypes.length} loại xe`
+    return `Phải nhập giá cho đủ ${vehicleTypes.length} loại xe`
   }
 
   const seen = new Set()
@@ -83,8 +86,6 @@ function validateForm(form, vehicleTypes) {
     if (seen.has(typeId)) return 'Mỗi loại xe chỉ được một mức giá'
     seen.add(typeId)
     if (Number(row.price) < 0) return 'Giá không được âm'
-    const weight = Number(row.capacityWeight)
-    if (weight < 0 || weight > 100) return 'Sức chứa phải từ 0–100'
   }
 
   if (seen.size !== vehicleTypes.length) {
@@ -97,11 +98,12 @@ function validateForm(form, vehicleTypes) {
 export default function AdminServicesPage() {
   const [services, setServices] = useState([])
   const [vehicleTypes, setVehicleTypes] = useState([])
+  const [branches, setBranches] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ serviceName: '', description: '', prices: [] })
+  const [form, setForm] = useState({ serviceName: '', description: '', branchId: '', prices: [] })
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -116,12 +118,14 @@ export default function AdminServicesPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const [servicesData, vehicleTypesData] = await Promise.all([
+      const [servicesData, vehicleTypesData, branchesData] = await Promise.all([
         fetchServices(),
         fetchVehicleTypes(),
+        fetchBranches(),
       ])
       setServices(Array.isArray(servicesData) ? servicesData : [])
       setVehicleTypes(Array.isArray(vehicleTypesData) ? vehicleTypesData : [])
+      setBranches(Array.isArray(branchesData) ? branchesData : [])
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được dữ liệu dịch vụ')
     } finally {
@@ -133,27 +137,43 @@ export default function AdminServicesPage() {
     loadData()
   }, [loadData])
 
+  const setBranchId = (branchId) => {
+    setForm((f) => ({
+      ...f,
+      branchId,
+      prices: f.prices.map((row) => ({ ...row, branchId: Number(branchId) })),
+    }))
+  }
+
   const openCreate = () => {
+    if (!branches.length) {
+      showToast('Cần tạo chi nhánh trước khi thêm dịch vụ')
+      return
+    }
     if (!vehicleTypes.length) {
       showToast('Cần tạo loại xe trước khi thêm dịch vụ')
       return
     }
 
+    const defaultBranchId = String(branches[0].id)
     setEditingId(null)
     setForm({
       serviceName: '',
       description: '',
-      prices: buildPricesForAllVehicleTypes(vehicleTypes),
+      branchId: defaultBranchId,
+      prices: buildPricesForAllVehicleTypes(vehicleTypes, defaultBranchId),
     })
     setModalOpen(true)
   }
 
   const openEdit = (service) => {
+    const branchId = String(service.prices?.[0]?.branchId ?? branches[0]?.id ?? '')
     setEditingId(service.serviceId)
     setForm({
       serviceName: service.serviceName,
       description: service.description ?? '',
-      prices: mergePricesWithVehicleTypes(service.prices, vehicleTypes),
+      branchId,
+      prices: mergePricesWithVehicleTypes(service.prices, vehicleTypes, branchId),
     })
     setModalOpen(true)
   }
@@ -198,7 +218,7 @@ export default function AdminServicesPage() {
       showToast('Đã ngừng hoạt động dịch vụ')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được dịch vụ')
+      showToast(err instanceof ApiError ? err.message : 'Không ngừng hoạt động được dịch vụ')
     } finally {
       setDeleting(false)
     }
@@ -212,11 +232,14 @@ export default function AdminServicesPage() {
     return min === max ? formatVnd(min) : `${formatVnd(min)} – ${formatVnd(max)}`
   }
 
+  const branchName = (branchId) =>
+    branches.find((b) => b.id === Number(branchId))?.name ?? (branchId ? `#${branchId}` : '—')
+
   return (
     <div className="w-full">
       <PageHeader
         title="Quản lý dịch vụ"
-        description="CRUD dịch vụ — giá và sức chứa (capacityWeight) theo từng loại xe"
+        description=""
         actionLabel="Thêm dịch vụ"
         onAction={openCreate}
       />
@@ -224,6 +247,12 @@ export default function AdminServicesPage() {
       {toast && (
         <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
           {toast}
+        </p>
+      )}
+
+      {!loading && branches.length === 0 && (
+        <p className="mb-4 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-2 text-sm text-on-surface">
+          Chưa có chi nhánh — hãy tạo chi nhánh trước khi thêm dịch vụ.
         </p>
       )}
 
@@ -252,11 +281,12 @@ export default function AdminServicesPage() {
         <EmptyState icon="local_car_wash" title="Chưa có dịch vụ" message="Thêm dịch vụ đầu tiên để bắt đầu." />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[800px] text-left text-sm">
+          <table className="w-full min-w-[900px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Tên dịch vụ</th>
+                <th className="px-4 py-3">Chi nhánh</th>
                 <th className="px-4 py-3">Mô tả</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Số mức giá</th>
@@ -269,6 +299,9 @@ export default function AdminServicesPage() {
                 <tr key={service.serviceId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 text-on-surface-variant">#{service.serviceId}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{service.serviceName}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">
+                    {branchName(service.prices?.[0]?.branchId)}
+                  </td>
                   <td className="max-w-xs truncate px-4 py-3 text-on-surface-variant">
                     {service.description || '—'}
                   </td>
@@ -315,6 +348,25 @@ export default function AdminServicesPage() {
         <div className="space-y-4">
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Chi nhánh
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-on-surface"
+              value={form.branchId}
+              disabled={saving || !branches.length}
+              onChange={(e) => setBranchId(e.target.value)}
+              required
+            >
+              <option value="">— Chọn chi nhánh —</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               Tên dịch vụ
             </span>
             <input
@@ -344,76 +396,42 @@ export default function AdminServicesPage() {
                 Bảng giá theo loại xe
               </span>
               <p className="mt-1 text-xs text-on-surface-variant">
-                Bắt buộc nhập giá và sức chứa cho{' '}
+                Bắt buộc nhập giá cho{' '}
                 <strong className="text-on-surface">tất cả {vehicleTypes.length} loại xe</strong>{' '}
-                hiện có.
+                tại chi nhánh đã chọn (thời lượng mặc định {DEFAULT_DURATION_MINUTES} phút).
               </p>
-            </div>
-            <div
-              className="mb-1 hidden gap-2 px-3 text-xs font-semibold text-on-surface-variant sm:grid sm:grid-cols-3"
-              aria-hidden
-            >
-              <span>Loại xe</span>
-              <span>Giá tiền (VNĐ)</span>
-              <span>Sức chứa (capacityWeight)</span>
             </div>
             <div className="space-y-3">
               {form.prices.map((price) => (
                 <div
                   key={price.vehicleTypeId}
-                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-3"
+                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-2"
                 >
-                  <div className="flex items-center sm:items-end">
+                  <div className="flex items-center">
                     <p className="text-sm font-medium text-on-surface">
                       {getVehicleTypeName(vehicleTypes, price.vehicleTypeId)}
                     </p>
                   </div>
-                  <label className="block space-y-1 sm:contents">
-                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
-                      Giá tiền
-                    </span>
-                  <input
-                    type="number"
-                    min={0}
-                    className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    value={price.price}
-                    disabled={saving}
-                    onChange={(e) => {
-                      const value = Number(e.target.value)
-                      setForm((f) => ({
-                        ...f,
-                        prices: f.prices.map((row) =>
-                          row.vehicleTypeId === price.vehicleTypeId
-                            ? { ...row, price: value }
-                            : row,
-                        ),
-                      }))
-                    }}
-                  />
-                  </label>
-                  <label className="block space-y-1 sm:contents">
-                    <span className="text-xs font-semibold text-on-surface-variant sm:sr-only">
-                      Sức chứa
-                    </span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    className="rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
-                    value={price.capacityWeight}
-                    disabled={saving}
-                    onChange={(e) => {
-                      const value = Number(e.target.value)
-                      setForm((f) => ({
-                        ...f,
-                        prices: f.prices.map((row) =>
-                          row.vehicleTypeId === price.vehicleTypeId
-                            ? { ...row, capacityWeight: value }
-                            : row,
-                        ),
-                      }))
-                    }}
-                  />
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold text-on-surface-variant">Giá tiền (VNĐ)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
+                      value={price.price}
+                      disabled={saving}
+                      onChange={(e) => {
+                        const value = Number(e.target.value)
+                        setForm((f) => ({
+                          ...f,
+                          prices: f.prices.map((row) =>
+                            row.vehicleTypeId === price.vehicleTypeId
+                              ? { ...row, price: value }
+                              : row,
+                          ),
+                        }))
+                      }}
+                    />
                   </label>
                 </div>
               ))}
