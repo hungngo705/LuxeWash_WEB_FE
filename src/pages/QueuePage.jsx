@@ -169,7 +169,7 @@ export default function QueuePage() {
               <span className="material-symbols-outlined mb-3 text-5xl text-outline">directions_car</span>
               <p className="font-sora text-lg font-semibold text-on-surface">Không có xe trong hàng đợi</p>
               <p className="mt-1 text-sm text-on-surface-variant">
-                Manager cần check-in xe vào làn trước khi hiển thị tại đây.
+                Vào tab Check-in để check-in xe hoặc chờ xe được check-in.
               </p>
             </div>
           ) : (

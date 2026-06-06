@@ -27,6 +27,7 @@ import DashboardPage from './pages/DashboardPage'
 import HistoryPage from './pages/HistoryPage'
 import LoginPage from './pages/LoginPage'
 import QueuePage from './pages/QueuePage'
+import StaffQueuePage from './pages/StaffQueuePage'
 import SettingsPage from './pages/SettingsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
@@ -53,7 +54,7 @@ export default function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/queue" element={<QueuePage />} />
+            <Route path="/queue" element={<StaffQueuePage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/settings" element={<SettingsPage />} />

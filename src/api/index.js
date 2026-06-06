@@ -153,6 +153,7 @@ export {
   enrichStaffBooking,
   enrichStaffTasks,
   updateStaffBookingStatus,
+  staffCheckinBooking,
   recognizeVehicleByPlate,
   consumeStaffVoucher,
   normalizeStaffTask,
