@@ -456,7 +456,7 @@ function CustomerInfoPanel({
               Xe đang rửa — hoàn thành ở cột bên phải
             </div>
           )}
-          {booking.status === "Pending" ? (
+          {booking.status === "Pending" && !isProcessing ? (
             <button
               type="button"
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
@@ -477,10 +477,6 @@ function CustomerInfoPanel({
                 </>
               )}
             </button>
-          ) : isProcessing ? (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary-container/40 bg-secondary-container/10 px-4 py-3 text-sm font-medium text-secondary-container">
-              Xe đang rửa — hoàn thành ở cột bên phải
-            </div>
           ) : null}
           <button
             type="button"
