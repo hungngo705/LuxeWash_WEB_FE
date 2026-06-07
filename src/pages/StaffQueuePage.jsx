@@ -1,0 +1,361 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ApiError,
+  enrichStaffTasks,
+  fetchStaffLaneAssignment,
+  fetchStaffTasks,
+  formatStaffStationLabel,
+  staffCheckinBooking,
+  updateStaffBookingStatus,
+} from '../api'
+
+export default function StaffQueuePage() {
+  const [allBookings, setAllBookings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState('')
+  const [laneLabel, setLaneLabel] = useState('')
+  const [tab, setTab] = useState('pending')
+  const [search, setSearch] = useState('')
+  const [toast, setToast] = useState(null)
+  const [checkingIn, setCheckingIn] = useState(null)
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  useEffect(() => {
+    fetchStaffLaneAssignment()
+      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
+      .catch(() => setLaneLabel('Chưa phân công làn'))
+  }, [])
+
+  const loadBookings = useCallback(async () => {
+    setLoading(true)
+    setFetchError('')
+    try {
+      const data = await fetchStaffTasks()
+      const enriched = await enrichStaffTasks(data)
+      setAllBookings(enriched)
+    } catch (err) {
+      const msg =
+        err instanceof ApiError
+          ? err.isForbidden
+            ? 'Không có quyền xem hàng đợi. Liên hệ quản trị viên.'
+            : err.message
+          : 'Không thể tải dữ liệu. Vui lòng thử lại.'
+      setFetchError(msg)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadBookings()
+    const interval = setInterval(loadBookings, 30_000)
+    return () => clearInterval(interval)
+  }, [loadBookings])
+
+  const filteredBookings = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return allBookings.filter((b) => {
+      const matchSearch =
+        !q ||
+        b.licensePlate.toLowerCase().includes(q) ||
+        b.customerName?.toLowerCase().includes(q) ||
+        b.serviceName.toLowerCase().includes(q)
+      return matchSearch
+    })
+  }, [allBookings, search])
+
+  const pendingBookings = useMemo(
+    () => filteredBookings.filter((b) => b.status === 'Pending'),
+    [filteredBookings],
+  )
+
+  const activeBookings = useMemo(
+    () =>
+      filteredBookings.filter(
+        (b) => b.status === 'Checked-in' || b.status === 'Processing',
+      ),
+    [filteredBookings],
+  )
+
+  const stats = useMemo(() => {
+    const pending = allBookings.filter((b) => b.status === 'Pending').length
+    const checkedIn = allBookings.filter((b) => b.status === 'Checked-in').length
+    const processing = allBookings.filter((b) => b.status === 'Processing').length
+    return { pending, checkedIn, processing }
+  }, [allBookings])
+
+  const handleCheckin = useCallback(
+    async (bookingId) => {
+      if (checkingIn) return
+      setCheckingIn(bookingId)
+      try {
+        await staffCheckinBooking(bookingId)
+        showToast(`Xe #${bookingId} đã check-in thành công.`)
+        await loadBookings()
+      } catch (err) {
+        showToast(
+          err instanceof ApiError ? err.message : 'Lỗi khi check-in. Vui lòng thử lại.',
+          'error',
+        )
+      } finally {
+        setCheckingIn(null)
+      }
+    },
+    [checkingIn, loadBookings],
+  )
+
+  const handleStartProcessing = useCallback(
+    async (bookingId) => {
+      try {
+        await updateStaffBookingStatus(bookingId, 'Processing')
+        showToast(`Xe #${bookingId} bắt đầu rửa.`)
+        setAllBookings((prev) =>
+          prev.map((b) =>
+            Number(b.bookingId) === Number(bookingId) ? { ...b, status: 'Processing' } : b,
+          ),
+        )
+      } catch (err) {
+        showToast(
+          err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.',
+          'error',
+        )
+      }
+    },
+    [],
+  )
+
+  const handleComplete = useCallback(async (bookingId) => {
+    try {
+      await updateStaffBookingStatus(bookingId, 'Completed')
+      showToast(`Xe #${bookingId} đã hoàn thành.`)
+      setAllBookings((prev) =>
+        prev.filter((b) => Number(b.bookingId) !== Number(bookingId)),
+      )
+    } catch (err) {
+      showToast(
+        err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.',
+        'error',
+      )
+    }
+  }, [])
+
+  const displayed = tab === 'pending' ? pendingBookings : activeBookings
+
+  return (
+    <div className="w-full">
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3 shadow-xl ${
+            toast.type === 'error'
+              ? 'border-error-container/50 bg-error-container/20 text-error'
+              : 'border-primary-container/50 bg-primary-container/20 text-primary'
+          }`}
+        >
+          <span className="material-symbols-outlined text-xl">
+            {toast.type === 'error' ? 'error' : 'check_circle'}
+          </span>
+          <span className="text-sm font-medium">{toast.message}</span>
+        </div>
+      )}
+
+      <div className="mb-6">
+        <h1 className="font-sora text-2xl font-semibold text-on-surface">Quản lý hàng đợi</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          {laneLabel || 'Đang tải làn…'} — {tab === 'pending' ? 'Xe chờ check-in' : 'Xe đang được xử lý'}
+        </p>
+      </div>
+
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1">
+          <button
+            onClick={() => setTab('pending')}
+            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === 'pending'
+                ? 'bg-primary text-on-primary'
+                : 'text-on-surface-variant hover:bg-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">login</span>
+            Check-in
+            {stats.pending > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-tertiary-container px-1.5 text-xs font-bold text-on-tertiary-container">
+                {stats.pending}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab('active')}
+            className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              tab === 'active'
+                ? 'bg-primary text-on-primary'
+                : 'text-on-surface-variant hover:bg-surface-variant'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">autorenew</span>
+            Đang rửa
+            {stats.checkedIn + stats.processing > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary-container px-1.5 text-xs font-bold text-on-secondary-container">
+                {stats.checkedIn + stats.processing}
+              </span>
+            )}
+          </button>
+        </div>
+
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant material-symbols-outlined text-base">
+            search
+          </span>
+          <input
+            type="text"
+            placeholder="Tìm theo biển số, tên khách, dịch vụ…"
+            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2 pl-10 pr-4 text-sm text-on-surface placeholder:text-on-surface-variant"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {fetchError ? (
+        <div className="mb-6 rounded-xl border border-error-container/40 bg-error-container/10 p-4">
+          <p className="text-sm text-error">{fetchError}</p>
+          <button
+            className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary"
+            onClick={loadBookings}
+          >
+            Thử lại
+          </button>
+        </div>
+      ) : loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
+            <span className="text-sm text-on-surface-variant">Đang tải dữ liệu…</span>
+          </div>
+        </div>
+      ) : displayed.length === 0 ? (
+        <div className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
+          <span className="material-symbols-outlined mb-3 text-5xl text-outline">
+            {tab === 'pending' ? 'login' : 'autorenew'}
+          </span>
+          <p className="font-sora text-lg font-semibold text-on-surface">
+            {tab === 'pending' ? 'Không có xe chờ check-in' : 'Không có xe đang xử lý'}
+          </p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            {tab === 'pending'
+              ? 'Tất cả xe đã được check-in hoặc chưa có lịch hẹn.'
+              : 'Chưa có xe nào được check-in vào làn của bạn.'}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                <th className="px-4 py-3">Biển số</th>
+                <th className="px-4 py-3">Khách hàng</th>
+                <th className="px-4 py-3">Dịch vụ</th>
+                <th className="px-4 py-3">Giờ hẹn</th>
+                <th className="px-4 py-3">Trạng thái</th>
+                {tab === 'active' && <th className="px-4 py-3">Giá tiền</th>}
+                <th className="px-4 py-3 text-right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/60">
+              {displayed.map((booking) => (
+                <tr key={booking.bookingId} className="hover:bg-surface-container-low/50">
+                  <td className="px-4 py-3 font-medium text-on-surface">
+                    {booking.licensePlate}
+                  </td>
+                  <td className="px-4 py-3 text-on-surface">
+                    <div className="flex flex-col">
+                      <span>{booking.customerName}</span>
+                      {booking.rankName && booking.rankName !== '—' && (
+                        <span className="text-xs text-on-surface-variant">{booking.rankName}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-on-surface-variant">{booking.serviceName}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">
+                    {booking.slotLabel || booking.scheduledTime
+                      ? booking.slotLabel ||
+                        (booking.scheduledTime
+                          ? new Date(booking.scheduledTime).toLocaleTimeString('vi-VN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—')
+                      : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${
+                        booking.status === 'Pending'
+                          ? 'border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container'
+                          : booking.status === 'Checked-in'
+                            ? 'border-primary-container/40 bg-primary-container/15 text-primary-container'
+                            : 'border-secondary-container/40 bg-secondary-container/15 text-secondary-container'
+                      }`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                      {booking.status}
+                    </span>
+                  </td>
+                  {tab === 'active' && (
+                    <td className="px-4 py-3 text-on-surface">
+                      {booking.finalAmount
+                        ? booking.finalAmount.toLocaleString('vi-VN') + ' đ'
+                        : '—'}
+                    </td>
+                  )}
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {tab === 'pending' ? (
+                        <button
+                          onClick={() => handleCheckin(booking.bookingId)}
+                          disabled={checkingIn === booking.bookingId}
+                          className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          {checkingIn === booking.bookingId ? (
+                            <>
+                              <div className="h-3.5 w-3.5 animate-spin rounded-full border border-on-primary/30 border-t-on-primary" />
+                              Đang check-in…
+                            </>
+                          ) : (
+                            <>
+                              <span className="material-symbols-outlined text-base">login</span>
+                              Check-in
+                            </>
+                          )}
+                        </button>
+                      ) : booking.status === 'Checked-in' ? (
+                        <button
+                          onClick={() => handleStartProcessing(booking.bookingId)}
+                          className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium text-on-secondary transition-colors hover:bg-secondary/90"
+                        >
+                          <span className="material-symbols-outlined text-base">autorenew</span>
+                          Bắt đầu rửa
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleComplete(booking.bookingId)}
+                          className="flex items-center gap-1 rounded-lg bg-tertiary px-3 py-1.5 text-sm font-medium text-on-tertiary transition-colors hover:bg-tertiary/90"
+                        >
+                          <span className="material-symbols-outlined text-base">check_circle</span>
+                          Hoàn thành
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}

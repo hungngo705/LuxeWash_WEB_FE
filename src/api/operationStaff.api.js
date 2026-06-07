@@ -533,3 +533,16 @@ export function updateStaffBookingStatus(bookingId, status) {
     body: JSON.stringify({ status }),
   })
 }
+
+/**
+ * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
+ * Checks in a Pending booking — assigns the staff's lane to the booking.
+ * Staff can perform check-in without a Manager.
+ * @param {number} bookingId
+ */
+export function staffCheckinBooking(bookingId) {
+  return apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
+    method: 'POST',
+    body: JSON.stringify({ bookingId }),
+  })
+}

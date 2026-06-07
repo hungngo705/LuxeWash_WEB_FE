@@ -15,15 +15,13 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { formatVnd } from '../../utils/format'
 
-const DEFAULT_DURATION_MINUTES = 20
-
-function buildPricesForAllVehicleTypes(vehicleTypes, branchId) {
+function buildPricesForAllVehicleTypes(vehicleTypes, branchId, defaultDuration) {
   const bid = Number(branchId)
   return vehicleTypes.map((vt) => ({
     vehicleTypeId: vt.id,
     branchId: bid,
     price: '',
-    estimatedDurationMinutes: DEFAULT_DURATION_MINUTES,
+    estimatedDurationMinutes: defaultDuration,
   }))
 }
 
@@ -40,7 +38,7 @@ function mergePricesWithVehicleTypes(existingPrices, vehicleTypes, branchId) {
       branchId: bid,
       price: existing?.price != null && existing.price !== '' ? String(existing.price) : '',
       estimatedDurationMinutes:
-        minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
+        minutes >= 5 && minutes <= 600 ? minutes : null,
     }
   })
 }
@@ -60,8 +58,7 @@ function toApiPayload(form) {
         vehicleTypeId: Number(vehicleTypeId),
         branchId,
         price: Number(price),
-        estimatedDurationMinutes:
-          minutes >= 5 && minutes <= 600 ? minutes : DEFAULT_DURATION_MINUTES,
+        estimatedDurationMinutes: minutes,
       }
     }),
   }
@@ -87,6 +84,10 @@ function validateForm(form, vehicleTypes) {
     seen.add(typeId)
     if (row.price === '' || row.price == null) return 'Vui lòng nhập giá cho tất cả loại xe'
     if (Number(row.price) < 0) return 'Giá không được âm'
+    const minutes = Number(row.estimatedDurationMinutes)
+    if (!minutes || minutes < 5 || minutes > 600) {
+      return `Thời lượng cho mỗi loại xe phải từ 5 đến 600 phút (loại: ${getVehicleTypeName(vehicleTypes, typeId)})`
+    }
   }
 
   if (seen.size !== vehicleTypes.length) {
@@ -168,7 +169,7 @@ export default function AdminServicesPage() {
       serviceName: '',
       description: '',
       branchId: defaultBranchId,
-      prices: buildPricesForAllVehicleTypes(vehicleTypes, defaultBranchId),
+      prices: buildPricesForAllVehicleTypes(vehicleTypes, defaultBranchId, ''),
     })
     setModalOpen(true)
   }
@@ -239,6 +240,15 @@ export default function AdminServicesPage() {
     return min === max ? formatVnd(min) : `${formatVnd(min)} – ${formatVnd(max)}`
   }
 
+  const getDurationRange = (prices) => {
+    if (!prices?.length) return '—'
+    const minutes = prices.map((p) => Number(p.estimatedDurationMinutes)).filter((m) => m > 0)
+    if (!minutes.length) return '—'
+    const min = Math.min(...minutes)
+    const max = Math.max(...minutes)
+    return min === max ? `${min} phút` : `${min} – ${max} phút`
+  }
+
   const branchName = (branchId) =>
     branches.find((b) => b.id === Number(branchId))?.name ?? (branchId ? `#${branchId}` : '—')
 
@@ -298,6 +308,7 @@ export default function AdminServicesPage() {
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Số mức giá</th>
                 <th className="px-4 py-3">Giá thấp nhất–cao nhất</th>
+                <th className="px-4 py-3">Thời lượng</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
@@ -317,6 +328,7 @@ export default function AdminServicesPage() {
                   </td>
                   <td className="px-4 py-3 text-on-surface">{service.prices?.length ?? 0}</td>
                   <td className="px-4 py-3 text-on-surface">{getPriceRange(service.prices)}</td>
+                  <td className="px-4 py-3 text-on-surface">{getDurationRange(service.prices)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button
@@ -403,16 +415,16 @@ export default function AdminServicesPage() {
                 Bảng giá theo loại xe
               </span>
               <p className="mt-1 text-xs text-on-surface-variant">
-                Bắt buộc nhập giá cho{' '}
+                Bắt buộc nhập giá và thời lượng cho{' '}
                 <strong className="text-on-surface">tất cả {vehicleTypes.length} loại xe</strong>{' '}
-                tại chi nhánh đã chọn (thời lượng mặc định {DEFAULT_DURATION_MINUTES} phút).
+                tại chi nhánh đã chọn (thời lượng: 5 – 600 phút).
               </p>
             </div>
             <div className="space-y-3">
               {form.prices.map((price) => (
                 <div
                   key={price.vehicleTypeId}
-                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-2"
+                  className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-3"
                 >
                   <div className="flex items-center">
                     <p className="text-sm font-medium text-on-surface">
@@ -435,6 +447,29 @@ export default function AdminServicesPage() {
                           prices: f.prices.map((row) =>
                             row.vehicleTypeId === price.vehicleTypeId
                               ? { ...row, price: value }
+                              : row,
+                          ),
+                        }))
+                      }}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-xs font-semibold text-on-surface-variant">Thời lượng (phút)</span>
+                    <input
+                      type="number"
+                      min={5}
+                      max={600}
+                      className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-2 py-2 text-sm"
+                      value={price.estimatedDurationMinutes ?? ''}
+                      disabled={saving}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        if (value !== '' && !/^\d+$/.test(value)) return
+                        setForm((f) => ({
+                          ...f,
+                          prices: f.prices.map((row) =>
+                            row.vehicleTypeId === price.vehicleTypeId
+                              ? { ...row, estimatedDurationMinutes: value }
                               : row,
                           ),
                         }))
