@@ -21,6 +21,7 @@ import AdminTransactionsPage from './pages/admin/AdminTransactionsPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminVehicleApprovalsPage from './pages/admin/AdminVehicleApprovalsPage'
 import AdminVehicleTypesPage from './pages/admin/AdminVehicleTypesPage'
+import AdminVoucherCampaignsPage from './pages/admin/AdminVoucherCampaignsPage'
 import AdminVouchersPage from './pages/admin/AdminVouchersPage'
 import CustomersPage from './pages/CustomersPage'
 import DashboardPage from './pages/DashboardPage'
@@ -78,6 +79,7 @@ export default function App() {
             <Route path="/admin/time-slots" element={<AdminTimeSlotsPage />} />
             <Route path="/admin/tiers" element={<AdminTiersPage />} />
             <Route path="/admin/vouchers" element={<AdminVouchersPage />} />
+            <Route path="/admin/voucher-campaigns" element={<AdminVoucherCampaignsPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/bookings" element={<AdminBookingsPage />} />
             <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
