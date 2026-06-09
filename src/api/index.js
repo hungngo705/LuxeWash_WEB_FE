@@ -46,6 +46,19 @@ export {
 } from './admin.vouchers.api'
 
 export {
+  createBirthdayCampaign,
+  createAgeCampaign,
+  createWinbackCampaign,
+  createVipCampaign,
+  createMilestoneCampaign,
+  updateCampaignActive,
+  deleteCampaign,
+  normalizeCampaignVoucher,
+  CAMPAIGN_TYPE,
+  CAMPAIGN_TYPE_LABEL,
+} from './admin.voucherCampaigns.api'
+
+export {
   fetchBranches,
   fetchAdminBranches,
   fetchBranchById,
