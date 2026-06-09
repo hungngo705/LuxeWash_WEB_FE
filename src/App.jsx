@@ -1,9 +1,11 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import AdminRoute from './components/auth/AdminRoute'
+import BusinessRoute from './components/auth/BusinessRoute'
 import ManagerRoute from './components/auth/ManagerRoute'
 import RootRedirect from './components/auth/RootRedirect'
 import StaffRoute from './components/auth/StaffRoute'
 import AdminLayout from './components/layout/AdminLayout'
+import BusinessLayout from './components/layout/BusinessLayout'
 import ManagerLayout from './components/layout/ManagerLayout'
 import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
@@ -39,13 +41,37 @@ import ManagerSettingsPage from './pages/manager/ManagerSettingsPage'
 import ManagerLanesPage from './pages/manager/ManagerLanesPage'
 import ManagerTimeSlotsPage from './pages/manager/ManagerTimeSlotsPage'
 import ManagerEmployeesPage from './pages/manager/ManagerEmployeesPage'
+import LandingPage from './pages/LandingPage'
+import BusinessRegisterPage from './pages/business/BusinessRegisterPage'
+import BusinessDashboardPage from './pages/business/BusinessDashboardPage'
+import BusinessVehiclesPage from './pages/business/BusinessVehiclesPage'
+import BusinessVehicleDetailPage from './pages/business/BusinessVehicleDetailPage'
+import BusinessImportPage from './pages/business/BusinessImportPage'
+import BusinessImportHistoryPage from './pages/business/BusinessImportHistoryPage'
+import BusinessBookingsPage from './pages/business/BusinessBookingsPage'
+import BusinessNewBookingPage from './pages/business/BusinessNewBookingPage'
+import BusinessBookingDetailPage from './pages/business/BusinessBookingDetailPage'
+import BusinessWalkInPage from './pages/business/BusinessWalkInPage'
+import BusinessFleetQueuePage from './pages/business/BusinessFleetQueuePage'
+import BusinessHistoryPage from './pages/business/BusinessHistoryPage'
+import BusinessInvoicesPage from './pages/business/BusinessInvoicesPage'
+import BusinessInvoiceDetailPage from './pages/business/BusinessInvoiceDetailPage'
+import BusinessRedInvoicePage from './pages/business/BusinessRedInvoicePage'
+import BusinessCreditPage from './pages/business/BusinessCreditPage'
+import BusinessStatementsPage from './pages/business/BusinessStatementsPage'
+import BusinessSettingsPage from './pages/business/BusinessSettingsPage'
+import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicationsPage'
+import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
+import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/business/register" element={<BusinessRegisterPage />} />
 
           <Route
             element={
@@ -84,6 +110,14 @@ export default function App() {
             <Route path="/admin/bookings" element={<AdminBookingsPage />} />
             <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route
+              path="/admin/business-applications"
+              element={<AdminBusinessApplicationsPage />}
+            />
+            <Route
+              path="/admin/business-applications/:id"
+              element={<AdminBusinessApplicationDetailPage />}
+            />
           </Route>
 
           <Route
@@ -102,9 +136,41 @@ export default function App() {
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />
             <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
+            <Route
+              path="/manager/business-applications"
+              element={<ManagerBusinessApplicationsPage />}
+            />
           </Route>
 
-          <Route path="/" element={<RootRedirect />} />
+          <Route
+            element={
+              <BusinessRoute>
+                <BusinessLayout />
+              </BusinessRoute>
+            }
+          >
+            <Route path="/business/dashboard" element={<BusinessDashboardPage />} />
+            <Route path="/business/vehicles" element={<BusinessVehiclesPage />} />
+            <Route path="/business/vehicles/import" element={<BusinessImportPage />} />
+            <Route path="/business/vehicles/history" element={<BusinessImportHistoryPage />} />
+            <Route path="/business/vehicles/:id" element={<BusinessVehicleDetailPage />} />
+            <Route path="/business/bookings" element={<BusinessBookingsPage />} />
+            <Route path="/business/bookings/new" element={<BusinessNewBookingPage />} />
+            <Route path="/business/bookings/:id" element={<BusinessBookingDetailPage />} />
+            <Route path="/business/walk-in" element={<BusinessWalkInPage />} />
+            <Route path="/business/queue" element={<BusinessFleetQueuePage />} />
+            <Route path="/business/history" element={<BusinessHistoryPage />} />
+            <Route path="/business/invoices" element={<BusinessInvoicesPage />} />
+            <Route path="/business/invoices/:id" element={<BusinessInvoiceDetailPage />} />
+            <Route
+              path="/business/invoices/:id/red-invoice"
+              element={<BusinessRedInvoicePage />}
+            />
+            <Route path="/business/credit" element={<BusinessCreditPage />} />
+            <Route path="/business/statements" element={<BusinessStatementsPage />} />
+            <Route path="/business/settings" element={<BusinessSettingsPage />} />
+          </Route>
+
           <Route path="*" element={<RootRedirect />} />
         </Routes>
       </BrowserRouter>

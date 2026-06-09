@@ -21,5 +21,6 @@ export function getHomePathForRole(role) {
   if (role === 'Admin') return '/admin/dashboard'
   if (role === 'Staff') return '/dashboard'
   if (role === 'Manager') return '/manager/dashboard'
+  if (role === 'Business') return '/business/dashboard'
   return '/login'
 }
