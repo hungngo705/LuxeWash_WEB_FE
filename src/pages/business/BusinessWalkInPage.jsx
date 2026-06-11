@@ -38,7 +38,10 @@ export default function BusinessWalkInPage() {
       setSelectedVehicle('')
       setSelectedBranch('')
     } catch (err) {
-      setError(err.message || 'Check-in thất bại. Vui lòng thử lại.')
+      const msg = err?.statusCode === 403 || err?.isForbidden
+        ? 'Check-in trực tiếp chỉ dành cho nhân viên trạm. Vui lòng đặt lịch trước hoặc liên hệ quản lý chi nhánh.'
+        : (err.message || 'Check-in thất bại. Vui lòng thử lại.')
+      setError(msg)
     } finally {
       setSubmitting(false)
     }

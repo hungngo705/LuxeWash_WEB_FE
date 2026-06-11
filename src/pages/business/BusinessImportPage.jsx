@@ -13,13 +13,12 @@ export default function BusinessImportPage() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const blob = await fetchFleetTemplate()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'fleet-template.xlsx'
-      a.click()
-      URL.revokeObjectURL(url)
+      const data = await fetchFleetTemplate()
+      const url = data?.downloadUrl
+      if (!url) {
+        throw new Error('missing downloadUrl')
+      }
+      window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
       setError('Không thể tải template. Vui lòng thử lại.')
     }

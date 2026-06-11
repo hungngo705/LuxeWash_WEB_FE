@@ -42,6 +42,10 @@ function mapLoginToSession(data) {
     return { ...session, station: 'Station 04' }
   }
 
+  if (role === 'Business') {
+    return { ...session, companyName: data.companyName ?? session.fullName }
+  }
+
   return session
 }
 

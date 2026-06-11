@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchBusinessDashboard, fetchFleetDashboard, fetchBusinessBookings } from '../../api/business.api'
+import { fetchBusinessDashboard, fetchBusinessBookings } from '../../api/business.api'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 function KpiCard({ icon, label, value, sub, color = 'text-primary', bg = 'bg-primary/10' }) {
@@ -47,12 +47,11 @@ export default function BusinessDashboardPage() {
   useEffect(() => {
     Promise.all([
       fetchBusinessDashboard().catch(() => null),
-      fetchFleetDashboard().catch(() => null),
       fetchBusinessBookings().catch(() => []),
     ])
-      .then(([dash, flt, bkgs]) => {
+      .then(([dash, bkgs]) => {
         setDashboard(dash)
-        setFleet(flt)
+        setFleet(null)
         setRecentBookings(Array.isArray(bkgs) ? bkgs.slice(0, 5) : [])
       })
       .catch(() => setError('Không thể tải dữ liệu dashboard.'))

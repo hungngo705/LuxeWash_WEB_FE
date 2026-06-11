@@ -41,14 +41,8 @@ export default function BusinessHistoryPage() {
     }
     fetchBusinessHistory(params)
       .then((data) => {
-        if (Array.isArray(data)) {
-          setHistory(data)
-        } else if (data?.items) {
-          setHistory(data.items)
-          setTotalPages(data.totalPages || 1)
-        } else {
-          setHistory([])
-        }
+        setHistory(data.items ?? [])
+        setTotalPages(data.totalPages || 1)
       })
       .catch(() => setError('Không thể tải lịch sử.'))
       .finally(() => setLoading(false))

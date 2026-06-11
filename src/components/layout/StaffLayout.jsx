@@ -10,6 +10,7 @@ const PAGE_TITLES = {
   '/queue': 'Queue Management',
   '/history': 'Service History',
   '/customers': 'Customer Lookup',
+  '/fleet-approvals': 'Duyệt xe doanh nghiệp',
   '/settings': 'Settings',
 }
 

@@ -12,6 +12,7 @@ const PAGE_TITLES = {
   '/manager/employees': 'Quản lý nhân viên',
   '/manager/walk-in': 'Tiếp nhận khách vãng lai',
   '/manager/settings': 'Cài đặt Manager',
+  '/manager/fleet-approvals': 'Duyệt xe doanh nghiệp',
 }
 
 export default function ManagerLayout() {

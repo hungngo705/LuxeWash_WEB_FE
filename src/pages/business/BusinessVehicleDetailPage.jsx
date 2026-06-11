@@ -33,7 +33,7 @@ export default function BusinessVehicleDetailPage() {
     ])
       .then(([v, h]) => {
         setVehicle(v)
-        setHistory(Array.isArray(h) ? h : h.items || [])
+        setHistory(h.items ?? [])
       })
       .catch(() => setError('Không thể tải chi tiết xe.'))
       .finally(() => setLoading(false))

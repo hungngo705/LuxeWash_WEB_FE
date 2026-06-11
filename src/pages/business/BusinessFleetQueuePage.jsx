@@ -26,6 +26,7 @@ export default function BusinessFleetQueuePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [usingBookingFallback, setUsingBookingFallback] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -35,10 +36,16 @@ export default function BusinessFleetQueuePage() {
       ])
       setQueue(Array.isArray(q) ? q : [])
       setProcessing(Array.isArray(p) ? p : [])
+      setUsingBookingFallback(false)
       setLastUpdated(new Date())
       setError('')
-    } catch {
-      setError('Không thể tải dữ liệu hàng đợi.')
+    } catch (err) {
+      if (err?.statusCode === 403 || err?.isForbidden) {
+        setUsingBookingFallback(true)
+        setError('')
+      } else {
+        setError('Không thể tải dữ liệu hàng đợi.')
+      }
     } finally {
       setLoading(false)
     }
@@ -98,6 +105,12 @@ export default function BusinessFleetQueuePage() {
           </button>
         </div>
       </div>
+
+      {usingBookingFallback && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          Đang hiển thị đặt lịch đang chờ/xử lý (Business không truy cập trực tiếp API hàng đợi Fleet).
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>

@@ -86,7 +86,12 @@ export default function BusinessImportHistoryPage() {
   useEffect(() => {
     fetchImportHistory()
       .then((data) => setImports(Array.isArray(data) ? data : []))
-      .catch(() => setError('Không thể tải lịch sử nhập xe.'))
+      .catch((err) => {
+        const msg = err?.statusCode === 403 || err?.isForbidden
+          ? err.message || 'Lịch sử nhập xe chưa khả dụng cho tài khoản doanh nghiệp trên API hiện tại.'
+          : 'Không thể tải lịch sử nhập xe.'
+        setError(msg)
+      })
       .finally(() => setLoading(false))
   }, [])
 

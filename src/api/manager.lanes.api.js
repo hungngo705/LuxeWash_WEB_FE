@@ -17,11 +17,15 @@ import { apiRequest } from './client'
  * }} LaneAssignedStaff
  */
 
-/** BE sometimes returns `{ value: T[] }` instead of a plain array. */
+/** BE sometimes returns `{ value: T[] }` or nested `data` instead of a plain array. */
 export function asManagerCollection(data) {
   if (Array.isArray(data)) return data
-  if (data && typeof data === 'object' && Array.isArray(data.value)) return data.value
-  if (data && typeof data === 'object' && Array.isArray(data.items)) return data.items
+  if (data && typeof data === 'object') {
+    const obj = /** @type {Record<string, unknown>} */ (data)
+    if (Array.isArray(obj.value)) return obj.value
+    if (Array.isArray(obj.items)) return obj.items
+    if (Array.isArray(obj.data)) return obj.data
+  }
   return []
 }
 
@@ -94,14 +98,12 @@ export function unassignStaffFromLane(laneId, staffId) {
  */
 export async function fetchAllLaneStaffAssignments() {
   const lanes = await fetchManagerLanes()
+  if (!lanes.length) return []
+
   return Promise.all(
     lanes.map(async (lane) => {
-      try {
-        const staff = await fetchLaneAssignedStaff(lane.laneId)
-        return { lane, staff }
-      } catch {
-        return { lane, staff: [] }
-      }
+      const staff = await fetchLaneAssignedStaff(lane.laneId)
+      return { lane, staff }
     }),
   )
 }

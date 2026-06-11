@@ -18,6 +18,28 @@ function todayDateValue() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+/** @param {Array<{ lane: { laneId: number }; staff: Array<Record<string, unknown>> }>} assignments @param {number} laneId @param {Record<string, unknown>} staffMember */
+function upsertLaneAssignment(assignments, laneId, staffMember) {
+  const normalized = {
+    userId: Number(staffMember.userId),
+    fullName: String(staffMember.fullName ?? '—'),
+    phoneNumber: String(staffMember.phoneNumber ?? '—'),
+    status: String(staffMember.status ?? 'Active'),
+  }
+
+  return assignments.map((item) =>
+    item.lane.laneId === laneId
+      ? {
+          lane: item.lane,
+          staff: [
+            ...item.staff.filter((s) => s.userId !== normalized.userId),
+            normalized,
+          ],
+        }
+      : item,
+  )
+}
+
 export default function ManagerStaffPage() {
   const [staff, setStaff] = useState([])
   const [lanes, setLanes] = useState([])
@@ -29,6 +51,7 @@ export default function ManagerStaffPage() {
 
   const [assignTarget, setAssignTarget] = useState(null)
   const [selectedLaneId, setSelectedLaneId] = useState('')
+  const [viewDate, setViewDate] = useState(todayDateValue)
   const [selectedDate, setSelectedDate] = useState(todayDateValue)
   const [assigning, setAssigning] = useState(false)
 
@@ -80,19 +103,40 @@ export default function ManagerStaffPage() {
     loadData()
   }, [loadData])
 
+  useEffect(() => {
+    if (viewDate === todayDateValue()) {
+      loadAssignments()
+    }
+  }, [viewDate, loadAssignments])
+
   const handleAssign = async () => {
     if (!assignTarget || !selectedLaneId || !selectedDate) return
+    const laneId = Number(selectedLaneId)
+    const isViewingToday = selectedDate === viewDate
+
     setAssigning(true)
     try {
       await assignStaffToLane({
         staffId: Number(assignTarget.userId),
-        laneId: Number(selectedLaneId),
+        laneId,
         assignedDate: selectedDate,
       })
-      showToast(`Đã gán ${assignTarget.fullName} vào làn.`)
+
+      if (isViewingToday) {
+        setLaneAssignments((prev) => upsertLaneAssignment(prev, laneId, assignTarget))
+      }
+
+      showToast(
+        isViewingToday
+          ? `Đã gán ${assignTarget.fullName} vào làn.`
+          : `Đã gán ${assignTarget.fullName} cho ngày ${selectedDate}. Bảng trên chỉ hiển thị phân công ngày ${viewDate}.`,
+      )
       setAssignTarget(null)
       setSelectedLaneId('')
-      await loadAssignments()
+
+      if (isViewingToday) {
+        await loadAssignments()
+      }
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Lỗi khi phân công.')
     } finally {
@@ -131,18 +175,37 @@ export default function ManagerStaffPage() {
       <section className="mb-8">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-sora text-lg font-semibold text-on-surface">Phân công theo làn (hôm nay)</h2>
-            <p className="text-sm text-on-surface-variant">Cập nhật theo phân công trong ngày</p>
+            <h2 className="font-sora text-lg font-semibold text-on-surface">
+              Phân công theo làn — {viewDate}
+            </h2>
+            <p className="text-sm text-on-surface-variant">
+              API chỉ trả về phân công trong ngày hôm nay (theo máy chủ). Chọn đúng ngày hôm nay khi phân công để thấy trên bảng.
+            </p>
           </div>
-          <button
-            type="button"
-            className="rounded-lg border border-outline-variant px-3 py-2 text-sm text-on-surface-variant hover:bg-surface-variant"
-            onClick={loadAssignments}
-            disabled={assignmentsLoading}
-          >
-            Làm mới
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
+              value={viewDate}
+              onChange={(e) => setViewDate(e.target.value)}
+            />
+            <button
+              type="button"
+              className="rounded-lg border border-outline-variant px-3 py-2 text-sm text-on-surface-variant hover:bg-surface-variant"
+              onClick={loadAssignments}
+              disabled={assignmentsLoading}
+            >
+              Làm mới
+            </button>
+          </div>
         </div>
+
+        {viewDate !== todayDateValue() && (
+          <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+            API hiện chỉ hỗ trợ xem phân công của <strong>hôm nay</strong> ({todayDateValue()}). Chọn lại ngày hôm nay
+            để xem bảng phân công.
+          </div>
+        )}
 
         {assignmentsLoading ? (
           <div className="flex justify-center py-10">
@@ -245,6 +308,7 @@ export default function ManagerStaffPage() {
                         onClick={() => {
                           setAssignTarget(s)
                           setSelectedLaneId('')
+                          setSelectedDate(viewDate)
                         }}
                         disabled={lanes.length === 0}
                       >
@@ -277,6 +341,12 @@ export default function ManagerStaffPage() {
             disabled={assigning}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
+          {selectedDate !== viewDate && (
+            <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+              Bạn đang phân công cho ngày {selectedDate}, trong khi bảng hiển thị ngày {viewDate}. Phân công vẫn
+              lưu thành công nhưng có thể không hiện trên bảng.
+            </p>
+          )}
           {lanes.length === 0 ? (
             <p className="text-sm text-error">Không có làn nào. Tạo làn tại mục Làn rửa trước.</p>
           ) : (

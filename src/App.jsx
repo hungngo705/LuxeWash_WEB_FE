@@ -32,6 +32,7 @@ import LoginPage from './pages/LoginPage'
 import QueuePage from './pages/QueuePage'
 import StaffQueuePage from './pages/StaffQueuePage'
 import SettingsPage from './pages/SettingsPage'
+import StaffFleetApprovalsPage from './pages/StaffFleetApprovalsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
 import ManagerStaffPage from './pages/manager/ManagerStaffPage'
@@ -63,6 +64,7 @@ import BusinessSettingsPage from './pages/business/BusinessSettingsPage'
 import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicationsPage'
 import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
 import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
+import ManagerFleetApprovalsPage from './pages/manager/ManagerFleetApprovalsPage'
 
 export default function App() {
   return (
@@ -84,6 +86,7 @@ export default function App() {
             <Route path="/queue" element={<StaffQueuePage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/fleet-approvals" element={<StaffFleetApprovalsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
@@ -140,6 +143,7 @@ export default function App() {
               path="/manager/business-applications"
               element={<ManagerBusinessApplicationsPage />}
             />
+            <Route path="/manager/fleet-approvals" element={<ManagerFleetApprovalsPage />} />
           </Route>
 
           <Route

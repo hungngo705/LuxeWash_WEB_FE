@@ -192,10 +192,29 @@ export {
 } from './customer.api'
 
 export {
+  fetchPendingFleetVehicles,
+  fetchBusinessPendingFleetVehicles,
+  fetchStaffPendingFleetVehicles,
+  approveFleetVehicle,
+  rejectFleetVehicle,
+  normalizeFleetPendingVehicle,
+  fetchFleetImportBatches,
+  fetchFleetImportBatchDetail,
+} from './fleet.api'
+
+export {
   fetchBusinessProfile,
   updateBusinessProfile,
   fetchBusinessDashboard,
   fetchFleetDashboard,
+  fetchBusinessServices,
+  asBusinessCollection,
+  normalizeBusinessVehicle,
+  normalizeBusinessBooking,
+  normalizeBusinessService,
+  getServicePriceForContext,
+  resolveVehicleTypeId,
+  normalizeBusinessSlot,
   fetchFleetVehicles,
   fetchFleetVehicleDetail,
   fetchPendingVehicles,
@@ -209,8 +228,9 @@ export {
   fetchBookingDetail,
   createBusinessBooking,
   cancelBooking,
+  getBusinessAvailableSlots,
   getAvailableSlots,
-  checkSlotCompatibility,
+  createWalkIn,
   fetchFleetQueue,
   fetchCurrentVehicles,
   fetchBusinessHistory,
@@ -218,6 +238,7 @@ export {
   fetchInvoiceDetail,
   exportInvoice,
   downloadInvoicePdf,
+  fetchBookingInvoice,
   fetchMonthlyStatement,
   registerBusinessProfile,
   fetchPendingApplications,
