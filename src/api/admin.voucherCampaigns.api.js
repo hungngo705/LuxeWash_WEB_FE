@@ -1,4 +1,10 @@
 import { apiRequest } from './client'
+import {
+  buildVoucherPayload,
+  normalizeVoucher,
+  toApiExpiryDate,
+  toApiTimeValue,
+} from './admin.vouchers.api'
 
 export const CAMPAIGN_TYPE = {
   Manual: 0,
@@ -73,12 +79,6 @@ export function normalizeCampaignVoucher(v) {
   }
 }
 
-/** @param {string} value e.g. "08:00" from `<input type="time">` */
-export function toApiTimeValue(value) {
-  if (!value) return null
-  return value.length === 5 ? `${value}:00` : value
-}
-
 /** @param {string} value e.g. "08:00:00" from API */
 export function toTimeInputValue(value) {
   if (!value) return ''
@@ -96,8 +96,8 @@ function buildBasePayload(form) {
     maxUsages: Number(form.maxUsages),
     maxUsagePerUser: Number(form.maxUsagePerUser),
     expiryDays: Number(form.expiryDays),
-    startDate: form.startDate || null,
-    endDate: form.endDate || null,
+    startDate: form.startDate ? toApiExpiryDate(form.startDate) : null,
+    endDate: form.endDate ? toApiExpiryDate(form.endDate) : null,
     minOrderAmount: Number(form.minOrderAmount) || 0,
     imageUrl: form.imageUrl?.trim() || null,
     requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
@@ -194,11 +194,21 @@ export function createMilestoneCampaign(form) {
 
 // ─── Toggle active ───────────────────────────────────────────────────────────
 
-/** @param {number} id @param {boolean} isActive */
-export function updateCampaignActive(id, isActive) {
-  return apiRequest(`/admin/vouchers/${id}`, {
+/** @param {ReturnType<typeof normalizeCampaignVoucher>} voucher @param {boolean} isActive */
+export function updateCampaignActive(voucher, isActive) {
+  return apiRequest(`/admin/vouchers/${voucher.voucherId}`, {
     method: 'PUT',
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify(
+      buildVoucherPayload(
+        {
+          ...normalizeVoucher(voucher),
+          pointsRequired: 0,
+          expiryDate: voucher.endDate || voucher.expiryDate,
+          startDate: voucher.startDate,
+        },
+        { isActive },
+      ),
+    ),
   })
 }
 

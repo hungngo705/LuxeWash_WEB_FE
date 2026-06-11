@@ -41,8 +41,14 @@ export {
   createVoucher,
   updateVoucher,
   deleteVoucher,
+  grantVoucherToUsers,
+  processVoucherCampaigns,
+  normalizeVoucher,
+  buildVoucherPayload,
   toApiExpiryDate,
   toDatetimeLocalValue,
+  VOUCHER_TYPE,
+  VOUCHER_TYPE_LABEL,
 } from './admin.vouchers.api'
 
 export {
@@ -57,6 +63,8 @@ export {
   CAMPAIGN_TYPE,
   CAMPAIGN_TYPE_LABEL,
 } from './admin.voucherCampaigns.api'
+
+export { fetchMyVouchers, redeemVoucher } from './customer.vouchers.api'
 
 export {
   fetchBranches,

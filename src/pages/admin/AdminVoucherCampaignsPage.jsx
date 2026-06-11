@@ -12,6 +12,7 @@ import {
   fetchTiers,
   fetchVouchers,
   normalizeCampaignVoucher,
+  processVoucherCampaigns,
   toTimeInputValue,
   updateCampaignActive,
 } from '../../api'
@@ -415,6 +416,7 @@ export default function AdminVoucherCampaignsPage() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [toggling, setToggling] = useState(null)
+  const [processing, setProcessing] = useState(false)
   const [toast, setToast] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const formRefs = useRef({})
@@ -517,11 +519,33 @@ export default function AdminVoucherCampaignsPage() {
     if (toggling !== null) return
     setToggling(voucher.voucherId)
     try {
-      await updateCampaignActive(voucher.voucherId, !voucher.isActive)
+      await updateCampaignActive(voucher, !voucher.isActive)
+      showToast(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
       await loadData()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
+    } finally {
       setToggling(null)
+    }
+  }
+
+  const handleProcessCampaigns = async () => {
+    if (processing) return
+    setProcessing(true)
+    try {
+      const result = await processVoucherCampaigns()
+      const rows = Array.isArray(result) ? result : []
+      const granted = rows.reduce((sum, row) => sum + Number(row.grantedCount ?? 0), 0)
+      showToast(
+        rows.length
+          ? `Đã chạy campaign — cấp ${granted} voucher cho khách đủ điều kiện.`
+          : 'Đã chạy campaign — không có khách đủ điều kiện hôm nay.',
+      )
+      await loadData()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không chạy được campaign')
+    } finally {
+      setProcessing(false)
     }
   }
 
@@ -554,6 +578,21 @@ export default function AdminVoucherCampaignsPage() {
         title="Chiến dịch Voucher tự động"
         description="Tạo rule tự động cấp voucher cho khách hàng theo điều kiện"
       />
+
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-on-secondary hover:bg-secondary/90 disabled:opacity-50"
+          onClick={handleProcessCampaigns}
+          disabled={processing}
+        >
+          <span className="material-symbols-outlined text-base">play_arrow</span>
+          {processing ? 'Đang chạy campaign…' : 'Chạy campaign hôm nay'}
+        </button>
+        <p className="text-sm text-on-surface-variant">
+          Quét và cấp voucher tự động cho khách đủ điều kiện hôm nay.
+        </p>
+      </div>
 
       {toast && (
         <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">

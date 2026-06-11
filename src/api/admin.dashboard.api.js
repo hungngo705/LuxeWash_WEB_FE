@@ -193,7 +193,7 @@ export async function fetchDashboardStats() {
     .reduce((sum, entry) => sum + Math.max(entry.points, 0), 0)
 
   const vouchersUsedMonth = vouchers.reduce(
-    (sum, voucher) => sum + Number(voucher.redeemedCount ?? 0),
+    (sum, voucher) => sum + Number(voucher.currentUsageCount ?? voucher.redeemedCount ?? 0),
     0,
   )
 
