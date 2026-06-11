@@ -1,4 +1,5 @@
 import { apiRequest, API_BASE_URL } from './client'
+import { fetchBranches } from './admin.branches.api'
 import { ApiError } from './errors'
 
 /** @param {unknown} data */
@@ -36,6 +37,73 @@ export function normalizeBusinessBooking(item) {
     licensePlate: item.licensePlate ?? item.fleetVehicle?.licensePlate ?? '',
     branchName: item.branchName ?? item.branch?.name ?? '',
     scheduledTime: item.scheduledTime ?? item.targetDate ?? item.createdAt,
+    finalAmount: item.finalAmount != null ? Number(item.finalAmount) : undefined,
+  }
+}
+
+/** @param {unknown} raw @param {number} total @param {number} count @param {number} index */
+function normalizeBookingServiceLine(raw, total, count, index) {
+  if (typeof raw === 'string') {
+    if (count === 1) return { name: raw, price: total }
+    if (total > 0 && count > 1) {
+      const share = Math.round(total / count)
+      const price = index === count - 1 ? total - share * (count - 1) : share
+      return { name: raw, price }
+    }
+    return { name: raw, price: null }
+  }
+
+  if (raw && typeof raw === 'object') {
+    const svc = /** @type {Record<string, unknown>} */ (raw)
+    return {
+      name: String(svc.serviceName ?? svc.name ?? '—'),
+      price:
+        svc.price != null
+          ? Number(svc.price)
+          : svc.amount != null
+          ? Number(svc.amount)
+          : null,
+    }
+  }
+
+  return { name: '—', price: null }
+}
+
+/** Chuẩn hóa GET /business/{id} — BE trả services là string[] và không có branch/vehicleType */
+export function normalizeBusinessBookingDetail(item) {
+  const record = /** @type {Record<string, unknown>} */ (item)
+  const finalAmount =
+    record.finalAmount != null ? Number(record.finalAmount) : null
+  const originalPrice =
+    record.originalPrice != null ? Number(record.originalPrice) : null
+  const total = finalAmount ?? originalPrice ?? 0
+  const rawServices = Array.isArray(record.services) ? record.services : []
+
+  return {
+    ...record,
+    bookingId: Number(record.bookingId ?? record.id),
+    licensePlate: String(
+      record.licensePlate ?? record.fleetVehicle?.licensePlate ?? '',
+    ),
+    vehicleType: String(
+      record.vehicleType ??
+        record.vehicleTypeName ??
+        record.fleetVehicle?.vehicleType ??
+        record.fleetVehicle?.vehicleTypeName ??
+        '',
+    ),
+    branchId: record.branchId != null ? Number(record.branchId) : null,
+    branchName: String(record.branchName ?? record.branch?.name ?? ''),
+    scheduledTime: record.scheduledTime ?? record.targetDate ?? record.createdAt,
+    status: String(record.status ?? ''),
+    originalPrice,
+    finalAmount,
+    totalAmount: total,
+    services: rawServices.map((svc, index) =>
+      normalizeBookingServiceLine(svc, total, rawServices.length, index),
+    ),
+    startTime: record.startTime ?? record.slotStartTime ?? null,
+    endTime: record.endTime ?? record.slotEndTime ?? null,
   }
 }
 
@@ -219,7 +287,41 @@ export async function fetchBusinessBookings() {
   return asBusinessCollection(data).map(normalizeBusinessBooking)
 }
 
-export const fetchBookingDetail = (id) => apiRequest(`/business/${id}`)
+export async function fetchBookingDetail(id) {
+  const data = await apiRequest(`/business/${id}`)
+  const detail = normalizeBusinessBookingDetail(data)
+
+  try {
+    const [vehicles, branches] = await Promise.all([
+      fetchFleetVehicles(),
+      fetchBranches(),
+    ])
+
+    if (!detail.vehicleType && detail.licensePlate) {
+      const plate = detail.licensePlate.toLowerCase()
+      const vehicle = vehicles.find(
+        (v) => String(v.licensePlate ?? '').toLowerCase() === plate,
+      )
+      if (vehicle) {
+        detail.vehicleType =
+          vehicle.vehicleType || vehicle.vehicleTypeName || ''
+      }
+    }
+
+    if (!detail.branchName) {
+      if (detail.branchId != null) {
+        const branch = branches.find((b) => b.id === detail.branchId)
+        if (branch) detail.branchName = branch.name
+      } else if (branches.length === 1) {
+        detail.branchName = branches[0].name
+      }
+    }
+  } catch {
+    // bổ sung từ fleet/branches là tùy chọn
+  }
+
+  return detail
+}
 
 export const createBusinessBooking = (dto) =>
   apiRequest('/business/bookings', {

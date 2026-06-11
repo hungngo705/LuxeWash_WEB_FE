@@ -53,9 +53,16 @@ export default function BusinessBookingDetailPage() {
     )
   }
 
-  const total = Array.isArray(booking.services)
-    ? booking.services.reduce((sum, s) => sum + (s.price || 0), 0)
-    : booking.totalAmount || 0
+  const total =
+    booking.totalAmount ??
+    booking.finalAmount ??
+    booking.originalPrice ??
+    (Array.isArray(booking.services)
+      ? booking.services.reduce(
+          (sum, s) => sum + (Number.isFinite(Number(s.price)) ? Number(s.price) : 0),
+          0,
+        )
+      : 0)
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -83,13 +90,13 @@ export default function BusinessBookingDetailPage() {
             <div>
               <p className="text-xs text-on-surface-variant mb-1">Loại xe</p>
               <p className="text-sm text-on-surface">
-                {booking.vehicleType || booking.fleetVehicle?.vehicleType || '—'}
+                {booking.vehicleType || booking.fleetVehicle?.vehicleType || booking.fleetVehicle?.vehicleTypeName || '—'}
               </p>
             </div>
             <div>
               <p className="text-xs text-on-surface-variant mb-1">Chi nhánh</p>
               <p className="text-sm text-on-surface">
-                {booking.branch?.name || booking.branchName || '—'}
+                {booking.branchName || booking.branch?.name || '—'}
               </p>
             </div>
             <div>
@@ -111,9 +118,11 @@ export default function BusinessBookingDetailPage() {
               <p className="text-xs text-on-surface-variant mb-2">Dịch vụ</p>
               <div className="space-y-2">
                 {booking.services.map((svc, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span className="text-on-surface">{svc.name}</span>
-                    <span className="font-medium text-primary">{formatVnd(svc.price)}</span>
+                  <div key={idx} className="flex justify-between text-sm gap-4">
+                    <span className="text-on-surface">{svc.name || '—'}</span>
+                    {svc.price != null && Number.isFinite(Number(svc.price)) ? (
+                      <span className="font-medium text-primary shrink-0">{formatVnd(svc.price)}</span>
+                    ) : null}
                   </div>
                 ))}
               </div>
