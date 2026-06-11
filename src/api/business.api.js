@@ -35,9 +35,47 @@ export function normalizeBusinessBooking(item) {
     ...item,
     bookingId: Number(item.bookingId ?? item.id),
     licensePlate: item.licensePlate ?? item.fleetVehicle?.licensePlate ?? '',
-    branchName: item.branchName ?? item.branch?.name ?? '',
+    branchId: item.branchId != null ? Number(item.branchId) : null,
+    branchName: String(item.branchName ?? item.branch?.name ?? ''),
     scheduledTime: item.scheduledTime ?? item.targetDate ?? item.createdAt,
     finalAmount: item.finalAmount != null ? Number(item.finalAmount) : undefined,
+  }
+}
+
+/** BE list/detail thường không trả branchName — map từ GET /branches */
+export function applyBusinessBranchNames(bookings, branches) {
+  const list = Array.isArray(bookings) ? bookings : []
+  const branchList = Array.isArray(branches) ? branches : []
+  const branchMap = new Map(branchList.map((b) => [b.id, b.name]))
+  const singleBranch = branchList.length === 1 ? branchList[0] : null
+
+  return list.map((booking) => {
+    if (booking.branchName) return booking
+
+    const fromId =
+      booking.branchId != null ? branchMap.get(booking.branchId) : undefined
+    if (fromId) {
+      return { ...booking, branchName: fromId }
+    }
+
+    if (singleBranch) {
+      return {
+        ...booking,
+        branchId: booking.branchId ?? singleBranch.id,
+        branchName: singleBranch.name,
+      }
+    }
+
+    return booking
+  })
+}
+
+async function enrichBusinessBookingsWithBranches(bookings) {
+  try {
+    const branches = await fetchBranches()
+    return applyBusinessBranchNames(bookings, branches)
+  } catch {
+    return bookings
   }
 }
 
@@ -284,7 +322,8 @@ export const fetchImportBatchDetail = (batchId) =>
 
 export async function fetchBusinessBookings() {
   const data = await apiRequest('/business')
-  return asBusinessCollection(data).map(normalizeBusinessBooking)
+  const bookings = asBusinessCollection(data).map(normalizeBusinessBooking)
+  return enrichBusinessBookingsWithBranches(bookings)
 }
 
 export async function fetchBookingDetail(id) {
@@ -308,14 +347,9 @@ export async function fetchBookingDetail(id) {
       }
     }
 
-    if (!detail.branchName) {
-      if (detail.branchId != null) {
-        const branch = branches.find((b) => b.id === detail.branchId)
-        if (branch) detail.branchName = branch.name
-      } else if (branches.length === 1) {
-        detail.branchName = branches[0].name
-      }
-    }
+    const [withBranch] = applyBusinessBranchNames([detail], branches)
+    detail.branchName = withBranch.branchName
+    detail.branchId = withBranch.branchId
   } catch {
     // bổ sung từ fleet/branches là tùy chọn
   }
