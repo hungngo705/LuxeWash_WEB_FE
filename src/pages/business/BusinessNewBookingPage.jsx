@@ -89,7 +89,20 @@ export default function BusinessNewBookingPage() {
     )
   }, 0)
 
+  const estimatedWashMinutes = selectedServices.reduce((sum, id) => {
+    const svc = services.find((s) => s.serviceId === id)
+    if (!svc) return sum
+    const priceRow = (svc.prices ?? []).find(
+      (p) =>
+        Number(p.branchId) === Number(selectedBranch) &&
+        Number(p.vehicleTypeId) === Number(resolvedVehicleTypeId),
+    )
+    const minutes = Number(priceRow?.estimatedDurationMinutes ?? 0)
+    return sum + (minutes > 0 ? minutes : 0)
+  }, 0)
+
   const availableSlots = slots.filter((slot) => slot.isAvailable)
+  const unavailableSlots = slots.filter((slot) => !slot.isAvailable)
 
   const canNext = () => {
     if (step === 0) return !!selectedVehicle
@@ -261,6 +274,14 @@ export default function BusinessNewBookingPage() {
             {selectedBranch && selectedDate && (
               <div>
                 <label className="block text-sm font-medium text-on-surface-variant mb-2">Chọn khung giờ</label>
+                <p className="mb-3 text-xs text-on-surface-variant rounded-lg border border-outline-variant/60 bg-surface-container-low/50 px-3 py-2">
+                  Hệ thống tính slot theo thời lượng rửa dự kiến và các lịch đặt trước — slot sau có thể bị dời nếu lịch trước kéo dài.
+                  {estimatedWashMinutes > 0 && (
+                    <span className="block mt-1 font-medium text-on-surface">
+                      Thời lượng ước tính cho dịch vụ đã chọn: ~{estimatedWashMinutes} phút
+                    </span>
+                  )}
+                </p>
                 {slotsLoading ? (
                   <div className="flex justify-center py-4">
                     <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
@@ -276,33 +297,64 @@ export default function BusinessNewBookingPage() {
                     Không còn khung giờ trống. {slots[0]?.reason ? `(${slots[0].reason})` : ''}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {slots.map((slot) => {
-                      const label =
-                        slot.timeRange ||
-                        (slot.startTime && slot.endTime
-                          ? `${slot.startTime} — ${slot.endTime}`
-                          : `Slot #${slot.slotId}`)
-                      const isSelected = selectedSlot?.slotId === slot.slotId
-                      return (
-                        <button
-                          key={slot.slotId}
-                          type="button"
-                          disabled={!slot.isAvailable}
-                          title={slot.isAvailable ? label : slot.reason || 'Không khả dụng'}
-                          onClick={() => slot.isAvailable && setSelectedSlot(slot)}
-                          className={`p-2 rounded-lg border text-xs font-medium transition-colors ${
-                            !slot.isAvailable
-                              ? 'border-outline-variant/50 text-on-surface-variant/50 cursor-not-allowed line-through'
-                              : isSelected
-                              ? 'border-primary bg-primary text-on-primary'
-                              : 'border-outline-variant text-on-surface hover:border-primary/50'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      )
-                    })}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {availableSlots.map((slot) => {
+                        const label =
+                          slot.timeRange ||
+                          (slot.startTime && slot.endTime
+                            ? `${slot.startTime} – ${slot.endTime}`
+                            : `Slot #${slot.slotId}`)
+                        const durationHint =
+                          slot.estimatedDurationMinutes != null
+                            ? ` (~${slot.estimatedDurationMinutes} phút)`
+                            : estimatedWashMinutes > 0
+                            ? ` (~${estimatedWashMinutes} phút)`
+                            : ''
+                        const isSelected = selectedSlot?.slotId === slot.slotId
+                        return (
+                          <button
+                            key={slot.slotId}
+                            type="button"
+                            title={`${label}${durationHint}`}
+                            onClick={() => setSelectedSlot(slot)}
+                            className={`p-2 rounded-lg border text-xs font-medium transition-colors ${
+                              isSelected
+                                ? 'border-primary bg-primary text-on-primary'
+                                : 'border-outline-variant text-on-surface hover:border-primary/50'
+                            }`}
+                          >
+                            {label}
+                            {durationHint && (
+                              <span className="block text-[10px] opacity-80">{durationHint.trim()}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {unavailableSlots.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-on-surface-variant mb-1">Không khả dụng</p>
+                        <div className="flex flex-wrap gap-2">
+                          {unavailableSlots.map((slot) => {
+                            const label =
+                              slot.timeRange ||
+                              (slot.startTime && slot.endTime
+                                ? `${slot.startTime} – ${slot.endTime}`
+                                : `Slot #${slot.slotId}`)
+                            return (
+                              <span
+                                key={slot.slotId}
+                                className="rounded-lg border border-outline-variant/50 px-2 py-1 text-[11px] text-on-surface-variant line-through"
+                                title={slot.reason || 'Không khả dụng'}
+                              >
+                                {label}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

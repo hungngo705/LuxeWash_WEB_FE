@@ -1,6 +1,7 @@
 import { apiRequest } from './client'
 import {
   buildVoucherPayload,
+  DISCOUNT_KIND,
   normalizeVoucher,
   toApiExpiryDate,
   toApiTimeValue,
@@ -76,6 +77,8 @@ export function normalizeCampaignVoucher(v) {
     inactiveDays: v.inactiveDays ?? v.InactiveDays ?? null,
     resendAfterDays: v.resendAfterDays ?? v.ResendAfterDays ?? null,
     milestoneUsageCount: v.milestoneUsageCount ?? v.MilestoneUsageCount ?? null,
+    discountPercent: v.discountPercent != null ? Number(v.discountPercent) : null,
+    maxDiscountAmount: v.maxDiscountAmount != null ? Number(v.maxDiscountAmount) : null,
   }
 }
 
@@ -90,9 +93,12 @@ export function toTimeInputValue(value) {
  * @param {Record<string,any>} form
  */
 function buildBasePayload(form) {
-  return {
+  const isPercent = form.discountKind === DISCOUNT_KIND.Percent
+  const payload = {
     code: form.code.trim().toUpperCase(),
-    discountAmount: Number(form.discountAmount),
+    discountAmount: isPercent
+      ? Number(form.maxDiscountAmount || form.discountAmount)
+      : Number(form.discountAmount),
     maxUsages: Number(form.maxUsages),
     maxUsagePerUser: Number(form.maxUsagePerUser),
     expiryDays: Number(form.expiryDays),
@@ -105,6 +111,11 @@ function buildBasePayload(form) {
     validEndTime: toApiTimeValue(form.validEndTime),
     isActive: Boolean(form.isActive),
   }
+  if (isPercent && Number(form.discountPercent) > 0) {
+    payload.discountPercent = Number(form.discountPercent)
+    payload.maxDiscountAmount = Number(form.maxDiscountAmount || form.discountAmount)
+  }
+  return payload
 }
 
 // ─── Birthday ────────────────────────────────────────────────────────────────

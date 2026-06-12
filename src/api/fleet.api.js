@@ -69,3 +69,61 @@ export async function fetchFleetImportBatches() {
 export function fetchFleetImportBatchDetail(batchId) {
   return apiRequest(`/fleet/staff/imports/${batchId}`)
 }
+
+/** POST /fleet/check-in */
+export function fleetCheckIn(bookingId) {
+  return apiRequest('/fleet/check-in', {
+    method: 'POST',
+    body: JSON.stringify({ bookingId: Number(bookingId) }),
+  })
+}
+
+/** POST /fleet/walk-out/{washLogId} */
+export function fleetWalkOut(washLogId) {
+  return apiRequest(`/fleet/walk-out/${washLogId}`, { method: 'POST' })
+}
+
+/** POST /fleet/{washLogId}/start-processing */
+export function fleetStartProcessing(washLogId, laneId) {
+  return apiRequest(`/fleet/${washLogId}/start-processing`, {
+    method: 'POST',
+    body: JSON.stringify(laneId != null ? { laneId: Number(laneId) } : {}),
+  })
+}
+
+/** POST /fleet/checkout/{washLogId} */
+export function fleetCheckout(washLogId) {
+  return apiRequest(`/fleet/checkout/${washLogId}`, { method: 'POST' })
+}
+
+/** GET /fleet/queue */
+export async function fetchFleetQueue(branchId) {
+  const qs = branchId != null ? `?branchId=${Number(branchId)}` : ''
+  const data = await apiRequest(`/fleet/queue${qs}`)
+  return asFleetCollection(data)
+}
+
+/** GET /fleet/current */
+export async function fetchFleetCurrent(branchId) {
+  const qs = branchId != null ? `?branchId=${Number(branchId)}` : ''
+  const data = await apiRequest(`/fleet/current${qs}`)
+  return asFleetCollection(data)
+}
+
+/** GET /fleet/history */
+export async function fetchFleetHistory(filter = {}) {
+  const params = new URLSearchParams()
+  if (filter.page) params.set('Page', String(filter.page))
+  if (filter.pageSize) params.set('PageSize', String(filter.pageSize))
+  if (filter.fromDate) params.set('FromDate', filter.fromDate)
+  if (filter.toDate) params.set('ToDate', filter.toDate)
+  if (filter.branchId) params.set('BranchId', String(filter.branchId))
+  const qs = params.toString()
+  const data = await apiRequest(`/fleet/history${qs ? `?${qs}` : ''}`)
+  return asFleetCollection(data)
+}
+
+/** GET /fleet/dashboard */
+export function fetchFleetOperationsDashboard() {
+  return apiRequest('/fleet/dashboard')
+}

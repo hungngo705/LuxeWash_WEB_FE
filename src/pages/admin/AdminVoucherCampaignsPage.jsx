@@ -9,6 +9,7 @@ import {
   createVipCampaign,
   createWinbackCampaign,
   deleteCampaign,
+  DISCOUNT_KIND,
   fetchTiers,
   fetchVouchers,
   normalizeCampaignVoucher,
@@ -17,16 +18,27 @@ import {
   updateCampaignActive,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
+import DiscountFields from '../../components/admin/shared/DiscountFields'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import TimeRangeField from '../../components/admin/shared/TimeRangeField'
+import {
+  describeVoucherUsability,
+  formatVoucherDailyWindow,
+  formatVoucherDiscount,
+  formatVoucherValidityWindow,
+} from '../../utils/voucherDisplay'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 // ─── Shared form field helpers ────────────────────────────────────────────────
 
 const emptyBase = {
   code: '',
+  discountKind: DISCOUNT_KIND.Fixed,
   discountAmount: '',
+  discountPercent: '',
+  maxDiscountAmount: '',
   maxUsages: '',
   maxUsagePerUser: '1',
   expiryDays: '7',
@@ -76,10 +88,20 @@ function getCreateFn(tab) {
 // ─── Validation ───────────────────────────────────────────────────────────────
 
 function validateBase(form) {
-  if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
+  if (!form.code.trim()) return 'Vui lòng nhập mã voucher campaign'
   if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
-  if (!form.discountAmount || Number(form.discountAmount) <= 0) return 'Giảm giá phải lớn hơn 0'
-  if (Number(form.discountAmount) > 1_000_000_000) return 'Giảm giá tối đa 1.000.000.000 VND'
+  if (form.discountKind === DISCOUNT_KIND.Percent) {
+    if (!form.discountPercent || Number(form.discountPercent) < 1 || Number(form.discountPercent) > 100) {
+      return 'Phần trăm giảm phải từ 1–100'
+    }
+    if (!form.maxDiscountAmount || Number(form.maxDiscountAmount) < 1) {
+      return 'Vui lòng nhập trần giảm tối đa (VND)'
+    }
+  } else if (!form.discountAmount || Number(form.discountAmount) <= 0) {
+    return 'Giảm giá phải lớn hơn 0'
+  } else if (Number(form.discountAmount) > 1_000_000_000) {
+    return 'Giảm giá tối đa 1.000.000.000 VND'
+  }
   if (!form.maxUsages || Number(form.maxUsages) < 1) return 'Tổng lượt dùng phải ít nhất 1'
   if (!form.maxUsagePerUser || Number(form.maxUsagePerUser) < 1) return 'Lượt dùng mỗi user phải ít nhất 1'
   if (!form.expiryDays || Number(form.expiryDays) < 1) return 'Số ngày hết hạn phải ít nhất 1'
@@ -142,9 +164,14 @@ function Toggle({ checked, onChange, disabled }) {
 function BaseFields({ form, setForm, saving, tiers }) {
   return (
     <>
+      <div className="rounded-lg border border-secondary/20 bg-secondary-container/10 px-3 py-2 text-xs text-on-surface-variant">
+        <strong className="text-on-surface">Campaign</strong> = quy tắc tự động cấp voucher.
+        <strong className="ml-1 text-on-surface">Mã voucher</strong> bên dưới là mã sẽ cấp cho khách (khác trang Voucher thủ công).
+      </div>
+
       <label className="block space-y-1">
         <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          Mã voucher <span className="text-error">*</span>
+          Mã voucher cấp cho khách <span className="text-error">*</span>
         </span>
         <input
           className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono uppercase placeholder:normal-case"
@@ -155,21 +182,9 @@ function BaseFields({ form, setForm, saving, tiers }) {
         />
       </label>
 
+      <DiscountFields form={form} setForm={setForm} saving={saving} />
+
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Giảm giá (VND) <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.discountAmount}
-            disabled={saving}
-            placeholder="20000"
-            onChange={(e) => num(setForm, 'discountAmount', e.target.value)}
-          />
-        </label>
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
             Tổng lượt dùng <span className="text-error">*</span>
@@ -184,9 +199,6 @@ function BaseFields({ form, setForm, saving, tiers }) {
             onChange={(e) => num(setForm, 'maxUsages', e.target.value)}
           />
         </label>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
             Lượt/user <span className="text-error">*</span>
@@ -200,9 +212,12 @@ function BaseFields({ form, setForm, saving, tiers }) {
             onChange={(e) => num(setForm, 'maxUsagePerUser', e.target.value)}
           />
         </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Hạn voucher (ngày) <span className="text-error">*</span>
+            Thời hạn voucher (ngày) <span className="text-error">*</span>
           </span>
           <input
             type="number"
@@ -213,21 +228,9 @@ function BaseFields({ form, setForm, saving, tiers }) {
             disabled={saving}
             onChange={(e) => num(setForm, 'expiryDays', e.target.value)}
           />
-        </label>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Ngày kết thúc campaign
-          </span>
-          <input
-            type="datetime-local"
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.endDate}
-            disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-          />
+          <p className="text-xs text-on-surface-variant">
+            Số ngày voucher có hiệu lực kể từ lúc được cấp cho khách (không phải ngày tạo campaign).
+          </p>
         </label>
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
@@ -248,29 +251,39 @@ function BaseFields({ form, setForm, saving, tiers }) {
       <div className="grid grid-cols-2 gap-4">
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Giờ bắt đầu dùng
+            Ngày bắt đầu campaign
           </span>
           <input
-            type="time"
+            type="datetime-local"
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.validStartTime}
+            value={form.startDate}
             disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, validStartTime: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
           />
         </label>
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Giờ kết thúc dùng
+            Ngày kết thúc campaign
           </span>
           <input
-            type="time"
+            type="datetime-local"
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.validEndTime}
+            value={form.endDate}
             disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, validEndTime: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
           />
         </label>
       </div>
+
+      <TimeRangeField
+        label="Thời gian (trong ngày)"
+        startValue={form.validStartTime}
+        endValue={form.validEndTime}
+        disabled={saving}
+        hint="Khung giờ khách được dùng voucher sau khi nhận."
+        onStartChange={(value) => setForm((f) => ({ ...f, validStartTime: value }))}
+        onEndChange={(value) => setForm((f) => ({ ...f, validEndTime: value }))}
+      />
 
       <label className="block space-y-1">
         <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
@@ -710,12 +723,13 @@ export default function AdminVoucherCampaignsPage() {
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                  <th className="px-4 py-3">Mã</th>
-                  <th className="px-4 py-3">Loại</th>
+                  <th className="px-4 py-3">Mã voucher</th>
+                  <th className="px-4 py-3">Loại campaign</th>
                   <th className="px-4 py-3">Giảm giá</th>
-                  <th className="px-4 py-3">Đã dùng / Max</th>
+                  <th className="px-4 py-3">Thời gian hiệu lực</th>
+                  <th className="px-4 py-3">Thời gian</th>
                   <th className="px-4 py-3">Hạn (ngày)</th>
-                  <th className="px-4 py-3">Hết hạn</th>
+                  <th className="px-4 py-3">Dùng được?</th>
                   <th className="px-4 py-3">Hoạt động</th>
                   <th className="px-4 py-3">Thao tác</th>
                 </tr>
@@ -727,15 +741,18 @@ export default function AdminVoucherCampaignsPage() {
                     <td className="px-4 py-3">
                       <StatusBadge status={CAMPAIGN_TYPE_LABEL[c.campaignType] ?? '—'} />
                     </td>
-                    <td className="px-4 py-3 text-on-surface">{formatVnd(c.discountAmount)}</td>
-                    <td className="px-4 py-3 text-on-surface">
-                      {c.currentUsageCount} / {c.maxUsages}
+                    <td className="px-4 py-3 text-on-surface">{formatVoucherDiscount(c)}</td>
+                    <td className="px-4 py-3 text-xs text-on-surface-variant">
+                      {formatVoucherValidityWindow(c)}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-on-surface-variant">
+                      {formatVoucherDailyWindow(c)}
                     </td>
                     <td className="px-4 py-3 text-on-surface-variant">
-                      {c.expiryDays ?? '—'}
+                      {c.expiryDays ?? '—'} (từ lúc cấp)
                     </td>
-                    <td className="px-4 py-3 text-on-surface-variant">
-                      {c.endDate ? formatDateTime(c.endDate) : '—'}
+                    <td className="px-4 py-3">
+                      <StatusBadge status={describeVoucherUsability(c)} />
                     </td>
                     <td className="px-4 py-3">
                       <Toggle

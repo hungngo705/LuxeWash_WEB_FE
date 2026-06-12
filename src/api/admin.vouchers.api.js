@@ -5,6 +5,11 @@ export const VOUCHER_TYPE = {
   Gift: 1,
 }
 
+export const DISCOUNT_KIND = {
+  Fixed: 'fixed',
+  Percent: 'percent',
+}
+
 export const VOUCHER_TYPE_LABEL = {
   [VOUCHER_TYPE.Discount]: 'Giảm tiền',
   [VOUCHER_TYPE.Gift]: 'Quà tặng',
@@ -47,6 +52,18 @@ export function normalizeVoucher(item) {
     validStartTime: item.validStartTime != null ? String(item.validStartTime) : null,
     validEndTime: item.validEndTime != null ? String(item.validEndTime) : null,
     vehicleTypeId: item.vehicleTypeId != null ? Number(item.vehicleTypeId) : null,
+    discountPercent:
+      item.discountPercent != null
+        ? Number(item.discountPercent)
+        : item.discountRate != null
+        ? Number(item.discountRate)
+        : null,
+    maxDiscountAmount:
+      item.maxDiscountAmount != null
+        ? Number(item.maxDiscountAmount)
+        : item.discountPercent != null || item.discountRate != null
+        ? Number(item.discountAmount ?? 0)
+        : null,
   }
 }
 
@@ -81,9 +98,15 @@ export function toTimeInputValue(value) {
 /** @param {Record<string, unknown>} voucher @param {Record<string, unknown>} [overrides] */
 export function buildVoucherPayload(voucher, overrides = {}) {
   const merged = { ...voucher, ...overrides }
-  return {
+  const isPercent =
+    merged.discountKind === DISCOUNT_KIND.Percent ||
+    Number(merged.discountPercent ?? 0) > 0
+
+  const payload = {
     code: String(merged.code ?? '').trim().toUpperCase(),
-    discountAmount: Number(merged.discountAmount ?? 0),
+    discountAmount: isPercent
+      ? Number(merged.maxDiscountAmount ?? merged.discountAmount ?? 0)
+      : Number(merged.discountAmount ?? 0),
     maxUsages: Number(merged.maxUsages ?? 0),
     maxUsagePerUser: Number(merged.maxUsagePerUser ?? 1),
     expiryDate: String(merged.expiryDate ?? '').includes('T')
@@ -108,6 +131,13 @@ export function buildVoucherPayload(voucher, overrides = {}) {
       : null,
     vehicleTypeId: merged.vehicleTypeId != null ? Number(merged.vehicleTypeId) : null,
   }
+
+  if (isPercent && Number(merged.discountPercent ?? 0) > 0) {
+    payload.discountPercent = Number(merged.discountPercent)
+    payload.maxDiscountAmount = Number(merged.maxDiscountAmount ?? merged.discountAmount ?? 0)
+  }
+
+  return payload
 }
 
 /** @returns {Promise<ReturnType<typeof normalizeVoucher>[]>} */

@@ -92,6 +92,11 @@ export function updateUserStatus(id, status) {
   })
 }
 
+/** POST /admin/users/sync-points */
+export function syncUserPoints() {
+  return apiRequest('/admin/users/sync-points', { method: 'POST' })
+}
+
 /** @param {UserListItem} item */
 export function normalizeListUser(item) {
   return {

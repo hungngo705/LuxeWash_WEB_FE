@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
+  buildVoucherPayload,
   createVoucher,
   deleteVoucher,
+  DISCOUNT_KIND,
   fetchTiers,
   fetchVehicleTypes,
   fetchVouchers,
+  grantVoucherToUsers,
   toApiExpiryDate,
-  toApiTimeValue,
   toDatetimeLocalValue,
   toTimeInputValue,
   updateVoucher,
@@ -15,12 +17,18 @@ import {
   VOUCHER_TYPE_LABEL,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
+import DiscountFields from '../../components/admin/shared/DiscountFields'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import { formatDateTime, formatVnd } from '../../utils/format'
-
+import TimeRangeField from '../../components/admin/shared/TimeRangeField'
+import {
+  describeVoucherUsability,
+  formatVoucherDailyWindow,
+  formatVoucherDiscount,
+  formatVoucherValidityWindow,
+} from '../../utils/voucherDisplay'
 const VOUCHER_TYPE_OPTIONS = [
   { value: VOUCHER_TYPE.Discount, label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Discount] },
   { value: VOUCHER_TYPE.Gift, label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Gift] },
@@ -28,7 +36,10 @@ const VOUCHER_TYPE_OPTIONS = [
 
 const emptyForm = {
   code: '',
+  discountKind: DISCOUNT_KIND.Fixed,
   discountAmount: '',
+  discountPercent: '',
+  maxDiscountAmount: '',
   pointsRequired: '',
   maxUsages: '',
   maxUsagePerUser: '1',
@@ -44,41 +55,22 @@ const emptyForm = {
   isActive: true,
 }
 
-function getVoucherStatus(voucher) {
-  if (voucher.isActive === false) return 'Inactive'
-  const expiry = new Date(voucher.expiryDate)
-  if (expiry < new Date()) return 'Expired'
-  const used = voucher.currentUsageCount ?? voucher.redeemedCount ?? 0
-  if (used >= voucher.maxUsages) return 'Expired'
-  return 'Active'
-}
-
-function toApiPayload(form) {
-  return {
-    code: form.code.trim().toUpperCase(),
-    discountAmount: Number(form.discountAmount),
-    maxUsages: Number(form.maxUsages),
-    maxUsagePerUser: Number(form.maxUsagePerUser || 1),
-    minOrderAmount: Number(form.minOrderAmount || 0),
-    expiryDate: toApiExpiryDate(form.expiryDate),
-    startDate: form.startDate ? toApiExpiryDate(form.startDate) : null,
-    pointsRequired: Number(form.pointsRequired),
-    voucherType: Number(form.voucherType),
-    imageUrl: form.imageUrl.trim() || null,
-    requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
-    vehicleTypeId: form.vehicleTypeId ? Number(form.vehicleTypeId) : null,
-    validStartTime: form.validStartTime ? toApiTimeValue(form.validStartTime) : null,
-    validEndTime: form.validEndTime ? toApiTimeValue(form.validEndTime) : null,
-    isActive: Boolean(form.isActive),
-  }
-}
-
 function validateForm(form) {
   if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
   if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
-  if (form.discountAmount === '' || form.discountAmount == null) return 'Vui lòng nhập giảm giá'
-  const amount = Number(form.discountAmount)
-  if (amount < 0 || amount > 1_000_000_000) return 'Giảm giá phải từ 0 đến 1.000.000.000 VND'
+  if (form.discountKind === DISCOUNT_KIND.Percent) {
+    if (!form.discountPercent || Number(form.discountPercent) < 1 || Number(form.discountPercent) > 100) {
+      return 'Phần trăm giảm phải từ 1–100'
+    }
+    if (!form.maxDiscountAmount || Number(form.maxDiscountAmount) < 1) {
+      return 'Vui lòng nhập trần giảm tối đa (VND)'
+    }
+  } else if (form.discountAmount === '' || form.discountAmount == null) {
+    return 'Vui lòng nhập giảm giá'
+  } else {
+    const amount = Number(form.discountAmount)
+    if (amount < 0 || amount > 1_000_000_000) return 'Giảm giá phải từ 0 đến 1.000.000.000 VND'
+  }
   if (!form.expiryDate) return 'Vui lòng chọn ngày hết hạn'
   if (form.maxUsages === '' || form.maxUsages == null) return 'Vui lòng nhập max usages'
   if (Number(form.maxUsages) < 1) return 'Max usages phải ít nhất 1'
@@ -99,6 +91,9 @@ export default function AdminVouchersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [grantTarget, setGrantTarget] = useState(null)
+  const [grantUserIds, setGrantUserIds] = useState('')
+  const [granting, setGranting] = useState(false)
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -145,7 +140,17 @@ export default function AdminVouchersPage() {
     setEditingId(voucher.voucherId)
     setForm({
       code: voucher.code,
+      discountKind:
+        voucher.discountPercent != null && Number(voucher.discountPercent) > 0
+          ? DISCOUNT_KIND.Percent
+          : DISCOUNT_KIND.Fixed,
       discountAmount: String(voucher.discountAmount),
+      discountPercent:
+        voucher.discountPercent != null ? String(voucher.discountPercent) : '',
+      maxDiscountAmount:
+        voucher.maxDiscountAmount != null
+          ? String(voucher.maxDiscountAmount)
+          : String(voucher.discountAmount),
       pointsRequired: String(voucher.pointsRequired),
       maxUsages: String(voucher.maxUsages),
       maxUsagePerUser: String(voucher.maxUsagePerUser ?? 1),
@@ -172,7 +177,7 @@ export default function AdminVouchersPage() {
       return
     }
 
-    const payload = toApiPayload(form)
+    const payload = buildVoucherPayload(form)
 
     setSaving(true)
     try {
@@ -209,11 +214,35 @@ export default function AdminVouchersPage() {
     }
   }
 
+  const handleGrant = async () => {
+    if (!grantTarget || granting) return
+    const userIds = grantUserIds
+      .split(/[,;\s]+/)
+      .map((v) => Number(v.trim()))
+      .filter((id) => id > 0)
+    if (!userIds.length) {
+      showToast('Nhập ít nhất một User ID')
+      return
+    }
+    setGranting(true)
+    try {
+      await grantVoucherToUsers(grantTarget.voucherId, userIds)
+      showToast(`Đã cấp voucher ${grantTarget.code} cho ${userIds.length} khách`)
+      setGrantTarget(null)
+      setGrantUserIds('')
+      await loadVouchers()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không cấp được voucher')
+    } finally {
+      setGranting(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <PageHeader
-        title="Quản lý voucher"
-        description="Tạo và quản lý mã giảm giá"
+        title="Voucher thủ công"
+        description="Tạo mã giảm giá cố định (khác chiến dịch tự động tại Voucher Campaign). Thiết lập ngày bắt đầu, khung thời gian và hình thức giảm giá."
         actionLabel="Thêm voucher"
         onAction={openCreate}
       />
@@ -243,40 +272,38 @@ export default function AdminVouchersPage() {
         <EmptyState icon="confirmation_number" title="Chưa có voucher" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[800px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">Code</th>
+                <th className="px-4 py-3">Mã voucher</th>
                 <th className="px-4 py-3">Giảm giá</th>
-                <th className="px-4 py-3">Điểm đổi</th>
-                <th className="px-4 py-3">Đã dùng / Max</th>
-                <th className="px-4 py-3">Đơn tối thiểu</th>
-                <th className="px-4 py-3">Hết hạn</th>
+                <th className="px-4 py-3">Thời gian hiệu lực</th>
+                <th className="px-4 py-3">Thời gian</th>
+                <th className="px-4 py-3">Dùng được?</th>
+                <th className="px-4 py-3">Đã dùng</th>
                 <th className="px-4 py-3">Loại</th>
-                <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
-              {vouchers.map((voucher) => (
+              {vouchers.filter((v) => !v.campaignType).map((voucher) => (
                 <tr key={voucher.voucherId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 font-mono font-medium text-on-surface">{voucher.code}</td>
-                  <td className="px-4 py-3 text-on-surface">{formatVnd(voucher.discountAmount)}</td>
-                  <td className="px-4 py-3 text-on-surface">{voucher.pointsRequired}</td>
+                  <td className="px-4 py-3 text-on-surface">{formatVoucherDiscount(voucher)}</td>
+                  <td className="px-4 py-3 text-xs text-on-surface-variant">
+                    {formatVoucherValidityWindow(voucher)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-on-surface-variant">
+                    {formatVoucherDailyWindow(voucher)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={describeVoucherUsability(voucher)} />
+                  </td>
                   <td className="px-4 py-3 text-on-surface">
                     {voucher.currentUsageCount ?? voucher.redeemedCount ?? 0} / {voucher.maxUsages}
                   </td>
                   <td className="px-4 py-3 text-on-surface-variant">
-                    {formatVnd(voucher.minOrderAmount ?? 0)}
-                  </td>
-                  <td className="px-4 py-3 text-on-surface-variant">
-                    {formatDateTime(voucher.expiryDate)}
-                  </td>
-                  <td className="px-4 py-3 text-on-surface-variant">
                     {VOUCHER_TYPE_LABEL[voucher.voucherType] ?? voucher.voucherType}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={getVoucherStatus(voucher)} />
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
@@ -286,6 +313,16 @@ export default function AdminVouchersPage() {
                         onClick={() => openEdit(voucher)}
                       >
                         Sửa
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-secondary hover:bg-secondary-container/20"
+                        onClick={() => {
+                          setGrantTarget(voucher)
+                          setGrantUserIds('')
+                        }}
+                      >
+                        Cấp
                       </button>
                       <button
                         type="button"
@@ -313,7 +350,25 @@ export default function AdminVouchersPage() {
         <div className="space-y-4">
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Mã voucher
+              Loại voucher
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.voucherType}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, voucherType: Number(e.target.value) }))}
+            >
+              {VOUCHER_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Mã voucher (tên hiển thị)
             </span>
             <input
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono uppercase"
@@ -323,24 +378,10 @@ export default function AdminVouchersPage() {
               required
             />
           </label>
+
+          <DiscountFields form={form} setForm={setForm} saving={saving} />
+
           <div className="grid grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Giảm giá (VND)
-              </span>
-              <input
-                type="number"
-                min={1}
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.discountAmount}
-                disabled={saving}
-                onChange={(e) => {
-                  const value = e.target.value
-                  if (value !== '' && !/^\d+$/.test(value)) return
-                  setForm((f) => ({ ...f, discountAmount: value }))
-                }}
-              />
-            </label>
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 Điểm đổi
@@ -355,6 +396,23 @@ export default function AdminVouchersPage() {
                   const value = e.target.value
                   if (value !== '' && !/^\d+$/.test(value)) return
                   setForm((f) => ({ ...f, pointsRequired: value }))
+                }}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Đơn tối thiểu (VND)
+              </span>
+              <input
+                type="number"
+                min={0}
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.minOrderAmount}
+                disabled={saving}
+                onChange={(e) => {
+                  const value = e.target.value
+                  if (value !== '' && !/^\d+$/.test(value)) return
+                  setForm((f) => ({ ...f, minOrderAmount: value }))
                 }}
               />
             </label>
@@ -395,27 +453,10 @@ export default function AdminVouchersPage() {
               />
             </label>
           </div>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Đơn tối thiểu (VND)
-            </span>
-            <input
-              type="number"
-              min={0}
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.minOrderAmount}
-              disabled={saving}
-              onChange={(e) => {
-                const value = e.target.value
-                if (value !== '' && !/^\d+$/.test(value)) return
-                setForm((f) => ({ ...f, minOrderAmount: value }))
-              }}
-            />
-          </label>
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Ngày bắt đầu (tùy chọn)
+                Ngày bắt đầu hiệu lực
               </span>
               <input
                 type="datetime-local"
@@ -424,6 +465,7 @@ export default function AdminVouchersPage() {
                 disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
               />
+              <p className="text-xs text-on-surface-variant">Để trống = có hiệu lực ngay khi kích hoạt.</p>
             </label>
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -438,23 +480,16 @@ export default function AdminVouchersPage() {
               />
             </label>
           </div>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Loại voucher
-            </span>
-            <select
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.voucherType}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, voucherType: Number(e.target.value) }))}
-            >
-              {VOUCHER_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
+
+          <TimeRangeField
+            label="Thời gian (trong ngày)"
+            startValue={form.validStartTime}
+            endValue={form.validEndTime}
+            disabled={saving}
+            hint="Khung giờ trong ngày khách được dùng voucher. Để trống = cả ngày."
+            onStartChange={(value) => setForm((f) => ({ ...f, validStartTime: value }))}
+            onEndChange={(value) => setForm((f) => ({ ...f, validEndTime: value }))}
+          />
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               Hạng yêu cầu (tùy chọn)
@@ -500,32 +535,6 @@ export default function AdminVouchersPage() {
             />
             Đang kích hoạt
           </label>
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Giờ bắt đầu (tùy chọn)
-              </span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.validStartTime}
-                disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, validStartTime: e.target.value }))}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Giờ kết thúc (tùy chọn)
-              </span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.validEndTime}
-                disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, validEndTime: e.target.value }))}
-              />
-            </label>
-          </div>
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               URL ảnh (tùy chọn)
@@ -538,6 +547,28 @@ export default function AdminVouchersPage() {
               onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
             />
           </label>
+        </div>
+      </FormModal>
+
+      <FormModal
+        open={Boolean(grantTarget)}
+        title={`Cấp voucher ${grantTarget?.code ?? ''}`}
+        submitLabel={granting ? 'Đang cấp…' : 'Cấp voucher'}
+        onClose={() => !granting && setGrantTarget(null)}
+        onSubmit={handleGrant}
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-on-surface-variant">
+            Nhập User ID (cách nhau bởi dấu phẩy). Có tra cứu ID tại trang Người dùng.
+          </p>
+          <textarea
+            className="w-full rounded-lg border border-outline-variant px-3 py-2 font-mono text-sm"
+            rows={4}
+            placeholder="VD: 12, 45, 78"
+            value={grantUserIds}
+            disabled={granting}
+            onChange={(e) => setGrantUserIds(e.target.value)}
+          />
         </div>
       </FormModal>
 

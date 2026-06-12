@@ -12,7 +12,7 @@ import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const emptyForm = { brand: '', name: '', isActive: true }
+const emptyForm = { brand: '', name: '', productionYear: '', version: '', isActive: true }
 
 export default function AdminCarModelsPage() {
   const [models, setModels] = useState([])
@@ -58,6 +58,8 @@ export default function AdminCarModelsPage() {
     setForm({
       brand: model.brand ?? '',
       name: model.name ?? '',
+      productionYear: model.productionYear != null ? String(model.productionYear) : '',
+      version: model.version ?? '',
       isActive: model.isActive !== false,
     })
     setModalOpen(true)
@@ -80,7 +82,12 @@ export default function AdminCarModelsPage() {
 
     setSaving(true)
     try {
-      const payload = { brand: trimmedBrand, name: trimmedName }
+      const payload = {
+        brand: trimmedBrand,
+        name: trimmedName,
+        productionYear: form.productionYear ? Number(form.productionYear) : null,
+        version: form.version.trim() || null,
+      }
       if (editingId) {
         await updateCarModel(editingId, { ...payload, isActive: form.isActive })
         showToast('Đã cập nhật mẫu xe')
@@ -116,7 +123,7 @@ export default function AdminCarModelsPage() {
     <div className="w-full">
       <PageHeader
         title="Mẫu xe (hãng / dòng)"
-        description="Danh mục CarModels — khác Loại xe"
+        description="Quản lý CarModels cho khách chọn khi đăng ký xe. Mẫu mới do user gửi cần Staff xác minh tại Duyệt loại xe trước khi dùng chính thức."
         actionLabel="Thêm mẫu xe"
         onAction={openCreate}
       />
@@ -148,6 +155,8 @@ export default function AdminCarModelsPage() {
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Hãng</th>
                 <th className="px-4 py-3">Dòng xe</th>
+                <th className="px-4 py-3">Năm SX</th>
+                <th className="px-4 py-3">Phiên bản</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
@@ -158,6 +167,8 @@ export default function AdminCarModelsPage() {
                   <td className="px-4 py-3 text-on-surface-variant">#{model.id}</td>
                   <td className="px-4 py-3 text-on-surface">{model.brand || '—'}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{model.name || '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{model.productionYear ?? '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{model.version || '—'}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={model.isActive !== false ? 'Active' : 'Inactive'} />
                   </td>
@@ -212,6 +223,31 @@ export default function AdminCarModelsPage() {
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             />
           </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Năm sản xuất</span>
+              <input
+                type="number"
+                min={1980}
+                max={2100}
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.productionYear}
+                disabled={saving}
+                placeholder="2024"
+                onChange={(e) => setForm((f) => ({ ...f, productionYear: e.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Phiên bản</span>
+              <input
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.version}
+                disabled={saving}
+                placeholder="VD: 2.5Q, XLE"
+                onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
+              />
+            </label>
+          </div>
           {editingId && (
             <label className="flex items-center gap-2 text-sm text-on-surface">
               <input

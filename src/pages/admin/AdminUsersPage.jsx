@@ -4,6 +4,7 @@ import {
   fetchUserById,
   fetchUsers,
   normalizeListUser,
+  syncUserPoints,
   updateUserStatus,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
@@ -32,6 +33,7 @@ export default function AdminUsersPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [statusTarget, setStatusTarget] = useState(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [syncingPoints, setSyncingPoints] = useState(false)
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -143,11 +145,28 @@ export default function AdminUsersPage() {
     }
   }
 
+  const handleSyncPoints = async () => {
+    if (syncingPoints) return
+    setSyncingPoints(true)
+    try {
+      await syncUserPoints()
+      showToast('Đã đồng bộ điểm thành viên')
+      await loadUsers()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không đồng bộ được điểm')
+    } finally {
+      setSyncingPoints(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <PageHeader
         title="Người dùng hệ thống"
         description="Quản lý khách hàng — tìm kiếm, xem chi tiết, khóa/mở khóa tài khoản"
+        actionLabel={syncingPoints ? 'Đang đồng bộ…' : 'Đồng bộ điểm'}
+        actionIcon="sync"
+        onAction={handleSyncPoints}
       />
 
       {toast && (

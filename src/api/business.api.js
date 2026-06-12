@@ -36,7 +36,12 @@ export function normalizeBusinessBooking(item) {
     bookingId: Number(item.bookingId ?? item.id),
     licensePlate: item.licensePlate ?? item.fleetVehicle?.licensePlate ?? '',
     branchId: item.branchId != null ? Number(item.branchId) : null,
-    branchName: String(item.branchName ?? item.branch?.name ?? ''),
+    branchName:
+      item.branchName != null && String(item.branchName).trim()
+        ? String(item.branchName)
+        : item.branch?.name != null && String(item.branch.name).trim()
+          ? String(item.branch.name)
+          : '',
     scheduledTime: item.scheduledTime ?? item.targetDate ?? item.createdAt,
     finalAmount: item.finalAmount != null ? Number(item.finalAmount) : undefined,
   }
@@ -50,7 +55,7 @@ export function applyBusinessBranchNames(bookings, branches) {
   const singleBranch = branchList.length === 1 ? branchList[0] : null
 
   return list.map((booking) => {
-    if (booking.branchName) return booking
+    if (booking.branchName?.trim()) return booking
 
     const fromId =
       booking.branchId != null ? branchMap.get(booking.branchId) : undefined
@@ -70,10 +75,124 @@ export function applyBusinessBranchNames(bookings, branches) {
   })
 }
 
+const BOOKING_BRANCH_CACHE_KEY = 'luxewash:business:bookingBranches'
+
+/** @returns {Record<string, { branchId?: number; branchName?: string }>} */
+function loadBookingBranchCache() {
+  try {
+    const raw = localStorage.getItem(BOOKING_BRANCH_CACHE_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** @param {number | string} bookingId @param {{ branchId?: number; branchName?: string }} meta */
+function saveBookingBranchCache(bookingId, meta) {
+  try {
+    const cache = loadBookingBranchCache()
+    cache[String(bookingId)] = meta
+    localStorage.setItem(BOOKING_BRANCH_CACHE_KEY, JSON.stringify(cache))
+  } catch {
+    // localStorage có thể không khả dụng
+  }
+}
+
+/**
+ * Suy luận chi nhánh từ giá dịch vụ + loại xe khi BE không trả branchId.
+ * @param {ReturnType<typeof normalizeBusinessBooking>} booking
+ * @param {ReturnType<typeof normalizeBusinessVehicle>[]} vehicles
+ * @param {ReturnType<typeof normalizeBusinessService>[]} services
+ * @param {Awaited<ReturnType<typeof fetchBranches>>} branches
+ */
+function inferBookingBranch(booking, vehicles, services, branches) {
+  const amount = booking.finalAmount
+  if (amount == null || !Number.isFinite(Number(amount))) return null
+
+  const plate = String(booking.licensePlate ?? '').toLowerCase()
+  const vehicle = vehicles.find(
+    (v) => String(v.licensePlate ?? '').toLowerCase() === plate,
+  )
+  const vehicleTypeId = vehicle?.vehicleTypeId
+  const vehicleTypeName = String(vehicle?.vehicleType || vehicle?.vehicleTypeName || '')
+    .trim()
+    .toLowerCase()
+
+  /** @type {{ branchId: number; branchName: string } | null} */
+  let match = null
+
+  for (const service of services) {
+    for (const priceRow of service.prices ?? []) {
+      if (Number(priceRow.price) !== Number(amount)) continue
+
+      const typeMatches =
+        vehicleTypeId != null
+          ? Number(priceRow.vehicleTypeId) === Number(vehicleTypeId)
+          : vehicleTypeName &&
+            String(priceRow.vehicleTypeName ?? '').trim().toLowerCase() === vehicleTypeName
+
+      if (!typeMatches) continue
+
+      const branchId = Number(priceRow.branchId)
+      const branch = branches.find((b) => b.id === branchId)
+      if (!branch) continue
+
+      if (match && match.branchId !== branchId) {
+        return null
+      }
+      match = { branchId, branchName: branch.name }
+    }
+  }
+
+  return match
+}
+
+/**
+ * @param {ReturnType<typeof normalizeBusinessBooking>[]} bookings
+ */
 async function enrichBusinessBookingsWithBranches(bookings) {
   try {
-    const branches = await fetchBranches()
-    return applyBusinessBranchNames(bookings, branches)
+    const [branches, vehicles, services] = await Promise.all([
+      fetchBranches(),
+      fetchFleetVehicles().catch(() => []),
+      fetchBusinessServices().catch(() => []),
+    ])
+
+    const cache = loadBookingBranchCache()
+
+    const enriched = bookings.map((booking) => {
+      if (booking.branchName?.trim()) return booking
+
+      const bookingId = booking.bookingId ?? booking.id
+      const cached = cache[String(bookingId)]
+      if (cached?.branchName?.trim()) {
+        return {
+          ...booking,
+          branchId: cached.branchId ?? booking.branchId,
+          branchName: cached.branchName,
+        }
+      }
+
+      if (booking.branchId != null) {
+        const branch = branches.find((b) => b.id === booking.branchId)
+        if (branch) {
+          return { ...booking, branchName: branch.name }
+        }
+      }
+
+      const inferred = inferBookingBranch(booking, vehicles, services, branches)
+      if (inferred) {
+        return {
+          ...booking,
+          branchId: inferred.branchId,
+          branchName: inferred.branchName,
+        }
+      }
+
+      return booking
+    })
+
+    return applyBusinessBranchNames(enriched, branches)
   } catch {
     return bookings
   }
@@ -131,7 +250,12 @@ export function normalizeBusinessBookingDetail(item) {
         '',
     ),
     branchId: record.branchId != null ? Number(record.branchId) : null,
-    branchName: String(record.branchName ?? record.branch?.name ?? ''),
+    branchName:
+      record.branchName != null && String(record.branchName).trim()
+        ? String(record.branchName)
+        : record.branch?.name != null && String(record.branch.name).trim()
+          ? String(/** @type {{ name?: string }} */ (record.branch).name)
+          : '',
     scheduledTime: record.scheduledTime ?? record.targetDate ?? record.createdAt,
     status: String(record.status ?? ''),
     originalPrice,
@@ -224,6 +348,13 @@ export function normalizeBusinessSlot(item) {
     endTime: String(item.endTime ?? end).trim(),
     isAvailable: item.isAvailable === true,
     reason: item.reason != null ? String(item.reason) : '',
+    estimatedDurationMinutes:
+      item.estimatedDurationMinutes != null
+        ? Number(item.estimatedDurationMinutes)
+        : item.estimatedWashMinutes != null
+        ? Number(item.estimatedWashMinutes)
+        : null,
+    estimatedEndTime: item.estimatedEndTime != null ? String(item.estimatedEndTime) : null,
   }
 }
 
@@ -331,34 +462,32 @@ export async function fetchBookingDetail(id) {
   const detail = normalizeBusinessBookingDetail(data)
 
   try {
-    const [vehicles, branches] = await Promise.all([
+    const [vehicles, enriched] = await Promise.all([
       fetchFleetVehicles(),
-      fetchBranches(),
+      enrichBusinessBookingsWithBranches([detail]),
     ])
 
-    if (!detail.vehicleType && detail.licensePlate) {
-      const plate = detail.licensePlate.toLowerCase()
+    const withBranch = enriched[0] ?? detail
+
+    if (!withBranch.vehicleType && withBranch.licensePlate) {
+      const plate = withBranch.licensePlate.toLowerCase()
       const vehicle = vehicles.find(
         (v) => String(v.licensePlate ?? '').toLowerCase() === plate,
       )
       if (vehicle) {
-        detail.vehicleType =
+        withBranch.vehicleType =
           vehicle.vehicleType || vehicle.vehicleTypeName || ''
       }
     }
 
-    const [withBranch] = applyBusinessBranchNames([detail], branches)
-    detail.branchName = withBranch.branchName
-    detail.branchId = withBranch.branchId
+    return withBranch
   } catch {
-    // bổ sung từ fleet/branches là tùy chọn
+    return detail
   }
-
-  return detail
 }
 
-export const createBusinessBooking = (dto) =>
-  apiRequest('/business/bookings', {
+export async function createBusinessBooking(dto) {
+  const result = await apiRequest('/business/bookings', {
     method: 'POST',
     body: JSON.stringify({
       ...dto,
@@ -367,6 +496,30 @@ export const createBusinessBooking = (dto) =>
         : `${dto.scheduledTime}T00:00:00.000Z`,
     }),
   })
+
+  const bookingId =
+    result && typeof result === 'object'
+      ? Number(
+          /** @type {Record<string, unknown>} */ (result).bookingId ??
+            /** @type {Record<string, unknown>} */ (result).id,
+        )
+      : NaN
+
+  if (Number.isFinite(bookingId) && dto.branchId != null) {
+    try {
+      const branches = await fetchBranches()
+      const branch = branches.find((b) => b.id === Number(dto.branchId))
+      saveBookingBranchCache(bookingId, {
+        branchId: Number(dto.branchId),
+        branchName: branch?.name ?? '',
+      })
+    } catch {
+      saveBookingBranchCache(bookingId, { branchId: Number(dto.branchId) })
+    }
+  }
+
+  return result
+}
 
 export const cancelBooking = (id) =>
   apiRequest(`/business/${id}/cancel`, { method: 'POST' })
@@ -439,31 +592,207 @@ export async function fetchCurrentVehicles(branchId) {
 
 // === History ===
 
-export function fetchBusinessHistory(filter = {}) {
+/** @param {Record<string, unknown>} item */
+function normalizeBusinessHistoryItem(item) {
+  const amount = item.totalAmount ?? item.cost ?? item.finalAmount
+
+  return {
+    fleetWashLogId: item.fleetWashLogId ?? item.id ?? item.bookingId,
+    id: item.fleetWashLogId ?? item.id ?? item.bookingId,
+    bookingId: item.bookingId != null ? Number(item.bookingId) : undefined,
+    licensePlate: String(item.licensePlate ?? ''),
+    vehicleType: String(item.vehicleType ?? item.vehicleTypeName ?? ''),
+    branchName: String(item.branchName ?? ''),
+    branchId: item.branchId != null ? Number(item.branchId) : null,
+    fleetVehicleId: item.fleetVehicleId != null ? Number(item.fleetVehicleId) : null,
+    checkInTime:
+      item.checkInTime ?? item.checkedInAt ?? item.scheduledTime ?? item.createdAt ?? null,
+    completedTime:
+      item.completedTime ??
+      item.completedAt ??
+      (item.status === 'Completed' ? item.scheduledTime : null),
+    createdAt: item.createdAt ?? item.scheduledTime ?? null,
+    completedAt:
+      item.completedAt ??
+      item.completedTime ??
+      (item.status === 'Completed' ? item.scheduledTime : null),
+    status: String(item.status ?? ''),
+    totalAmount: amount != null ? Number(amount) : 0,
+    cost: amount != null ? Number(amount) : 0,
+  }
+}
+
+/** @param {string | undefined} value @param {boolean} [endOfDay] */
+function parseHistoryFilterDate(value, endOfDay = false) {
+  if (!value) return null
+  const iso = value.includes('T') ? value : `${value}T${endOfDay ? '23:59:59' : '00:00:00'}`
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+/** @param {ReturnType<typeof normalizeBusinessHistoryItem>[]} items @param {Record<string, unknown>} filter @param {ReturnType<typeof normalizeBusinessVehicle>[]} [vehicles] */
+function applyBusinessHistoryFilters(items, filter, vehicles = []) {
+  let list = [...items]
+
+  if (filter.fleetVehicleId) {
+    const vehicle = vehicles.find(
+      (v) => String(v.fleetVehicleId) === String(filter.fleetVehicleId),
+    )
+    if (vehicle?.licensePlate) {
+      const plate = vehicle.licensePlate.toLowerCase()
+      list = list.filter(
+        (item) => String(item.licensePlate ?? '').toLowerCase() === plate,
+      )
+    } else {
+      list = list.filter(
+        (item) => String(item.fleetVehicleId) === String(filter.fleetVehicleId),
+      )
+    }
+  }
+
+  if (filter.branchId) {
+    list = list.filter(
+      (item) => item.branchId != null && String(item.branchId) === String(filter.branchId),
+    )
+  }
+
+  if (filter.status) {
+    list = list.filter((item) => String(item.status) === String(filter.status))
+  }
+
+  const from = parseHistoryFilterDate(
+    typeof filter.fromDate === 'string' ? filter.fromDate : undefined,
+  )
+  const to = parseHistoryFilterDate(
+    typeof filter.toDate === 'string' ? filter.toDate : undefined,
+    true,
+  )
+
+  if (from || to) {
+    list = list.filter((item) => {
+      const raw = item.completedTime ?? item.checkInTime ?? item.createdAt
+      if (!raw) return !from && !to
+      const date = new Date(raw)
+      if (Number.isNaN(date.getTime())) return false
+      if (from && date < from) return false
+      if (to && date > to) return false
+      return true
+    })
+  }
+
+  return list
+}
+
+/** @param {ReturnType<typeof normalizeBusinessHistoryItem>[]} items @param {Record<string, unknown>} filter */
+function paginateBusinessHistory(items, filter) {
+  const page = Math.max(1, Number(filter.page) || 1)
+  const pageSize = Math.max(1, Number(filter.pageSize) || 20)
+  const sorted = [...items].sort((a, b) => {
+    const left = new Date(a.completedTime ?? a.checkInTime ?? 0).getTime()
+    const right = new Date(b.completedTime ?? b.checkInTime ?? 0).getTime()
+    return right - left
+  })
+  const totalItems = sorted.length
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const start = (page - 1) * pageSize
+
+  return {
+    items: sorted.slice(start, start + pageSize),
+    totalPages,
+    totalItems,
+  }
+}
+
+/**
+ * BE thường trả GET /business/history rỗng — dựng lịch sử từ GET /business (bookings).
+ * @param {Record<string, unknown>} [filter]
+ */
+async function fetchBusinessHistoryFromBookings(filter = {}) {
+  const [bookings, vehicles, branches] = await Promise.all([
+    fetchBusinessBookings(),
+    fetchFleetVehicles().catch(() => []),
+    fetchBranches().catch(() => []),
+  ])
+
+  const vehicleByPlate = new Map(
+    vehicles.map((vehicle) => [String(vehicle.licensePlate ?? '').toLowerCase(), vehicle]),
+  )
+
+  const historyStatuses = filter.status
+    ? [String(filter.status)]
+    : ['Completed', 'Processing', 'Cancelled']
+
+  const items = bookings
+    .filter((booking) => historyStatuses.includes(String(booking.status)))
+    .map((booking) => {
+      const plate = String(booking.licensePlate ?? '').toLowerCase()
+      const vehicle = vehicleByPlate.get(plate)
+      const [withBranch] = applyBusinessBranchNames([booking], branches)
+
+      return normalizeBusinessHistoryItem({
+        ...withBranch,
+        bookingId: booking.bookingId,
+        licensePlate: booking.licensePlate,
+        vehicleType:
+          vehicle?.vehicleType || vehicle?.vehicleTypeName || booking.vehicleType,
+        fleetVehicleId: vehicle?.fleetVehicleId,
+        scheduledTime: booking.scheduledTime,
+        status: booking.status,
+        finalAmount: booking.finalAmount,
+      })
+    })
+
+  return paginateBusinessHistory(
+    applyBusinessHistoryFilters(items, filter, vehicles),
+    filter,
+  )
+}
+
+/**
+ * @param {Record<string, unknown>} [filter]
+ * @returns {Promise<{ items: ReturnType<typeof normalizeBusinessHistoryItem>[]; totalPages: number; totalItems?: number }>}
+ */
+export async function fetchBusinessHistory(filter = {}) {
   const params = new URLSearchParams()
   if (filter.page) params.set('Page', String(filter.page))
   if (filter.pageSize) params.set('PageSize', String(filter.pageSize))
   if (filter.fleetVehicleId) params.set('FleetVehicleId', String(filter.fleetVehicleId))
-  if (filter.fromDate) params.set('FromDate', filter.fromDate)
-  if (filter.toDate) params.set('ToDate', filter.toDate)
+  if (filter.fromDate) params.set('FromDate', String(filter.fromDate))
+  if (filter.toDate) params.set('ToDate', String(filter.toDate))
   if (filter.branchId) params.set('BranchId', String(filter.branchId))
-  if (filter.status) params.set('Status', filter.status)
+  if (filter.status) params.set('Status', String(filter.status))
 
   const qs = params.toString()
-  return apiRequest(`/business/history${qs ? `?${qs}` : ''}`).then((data) => {
+
+  try {
+    const data = await apiRequest(`/business/history${qs ? `?${qs}` : ''}`)
+    let items = []
+
     if (Array.isArray(data)) {
-      return { items: data, totalPages: 1 }
-    }
-    if (data && typeof data === 'object') {
+      items = data.map((item) =>
+        normalizeBusinessHistoryItem(/** @type {Record<string, unknown>} */ (item)),
+      )
+    } else if (data && typeof data === 'object') {
       const obj = /** @type {Record<string, unknown>} */ (data)
-      return {
-        items: asBusinessCollection(obj.items ?? obj),
-        totalPages: Number(obj.totalPages ?? 1),
-        totalItems: Number(obj.totalItems ?? asBusinessCollection(obj.items ?? obj).length),
-      }
+      items = asBusinessCollection(obj.items ?? obj).map((item) =>
+        normalizeBusinessHistoryItem(/** @type {Record<string, unknown>} */ (item)),
+      )
     }
-    return { items: [], totalPages: 1 }
-  })
+
+    if (items.length > 0) {
+      const [vehicles] = await Promise.all([fetchFleetVehicles().catch(() => [])])
+      return paginateBusinessHistory(
+        applyBusinessHistoryFilters(items, filter, vehicles),
+        filter,
+      )
+    }
+  } catch (err) {
+    if (!(err instanceof ApiError)) {
+      throw err
+    }
+  }
+
+  return fetchBusinessHistoryFromBookings(filter)
 }
 
 // === Invoices ===
@@ -517,3 +846,14 @@ export const reviewApplication = (dto) =>
     method: 'POST',
     body: JSON.stringify(dto),
   })
+
+/** POST /business/washlogs/{washLogId}/assign-lane */
+export function assignWashLogLane(washLogId, { laneId, staffUserId }) {
+  return apiRequest(`/business/washlogs/${washLogId}/assign-lane`, {
+    method: 'POST',
+    body: JSON.stringify({
+      laneId: Number(laneId),
+      staffUserId: staffUserId != null ? Number(staffUserId) : null,
+    }),
+  })
+}

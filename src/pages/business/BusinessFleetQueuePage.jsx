@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { fetchFleetQueue, fetchCurrentVehicles } from '../../api/business.api'
+import { assignWashLogLane, fetchFleetQueue, fetchCurrentVehicles } from '../../api/business.api'
 import { fetchBranches } from '../../api/admin.branches.api'
+import FormModal from '../../components/admin/shared/FormModal'
 import { formatDateTime } from '../../utils/format'
 
 function StatusBadge({ status }) {
@@ -27,6 +28,11 @@ export default function BusinessFleetQueuePage() {
   const [error, setError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [usingBookingFallback, setUsingBookingFallback] = useState(false)
+  const [assignTarget, setAssignTarget] = useState(null)
+  const [laneId, setLaneId] = useState('')
+  const [staffUserId, setStaffUserId] = useState('')
+  const [assigning, setAssigning] = useState(false)
+  const [toast, setToast] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +68,27 @@ export default function BusinessFleetQueuePage() {
     const interval = setInterval(load, 10000)
     return () => clearInterval(interval)
   }, [load])
+
+  const handleAssignLane = async () => {
+    if (!assignTarget || !laneId || assigning) return
+    setAssigning(true)
+    try {
+      await assignWashLogLane(assignTarget.fleetWashLogId ?? assignTarget.id, {
+        laneId: Number(laneId),
+        staffUserId: staffUserId ? Number(staffUserId) : null,
+      })
+      setToast('Đã gán làn thành công')
+      setAssignTarget(null)
+      setLaneId('')
+      setStaffUserId('')
+      await load()
+    } catch {
+      setToast('Không gán được làn. Kiểm tra ID làn và quyền truy cập.')
+    } finally {
+      setAssigning(false)
+      setTimeout(() => setToast(''), 2500)
+    }
+  }
 
   if (loading) {
     return (
@@ -112,6 +139,12 @@ export default function BusinessFleetQueuePage() {
         </div>
       )}
 
+      {toast && (
+        <p className="rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
       )}
@@ -132,12 +165,13 @@ export default function BusinessFleetQueuePage() {
                   <th className="px-4 py-2 text-left text-xs font-semibold text-on-surface-variant">Loại</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-on-surface-variant">Trạng thái</th>
                   <th className="px-4 py-2 text-left text-xs font-semibold text-on-surface-variant">Thời gian</th>
+                  <th className="px-4 py-2 text-left text-xs font-semibold text-on-surface-variant">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">
                 {queue.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-xs text-on-surface-variant">Không có xe trong hàng đợi.</td>
+                    <td colSpan={5} className="px-4 py-6 text-center text-xs text-on-surface-variant">Không có xe trong hàng đợi.</td>
                   </tr>
                 ) : (
                   queue.map((item) => (
@@ -148,6 +182,21 @@ export default function BusinessFleetQueuePage() {
                       </td>
                       <td className="px-4 py-2"><StatusBadge status={item.status} /></td>
                       <td className="px-4 py-2 text-xs text-on-surface-variant">{formatDateTime(item.queuedAt || item.createdAt)}</td>
+                      <td className="px-4 py-2">
+                        {(item.fleetWashLogId || item.id) && !usingBookingFallback && (
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => {
+                              setAssignTarget(item)
+                              setLaneId('')
+                              setStaffUserId('')
+                            }}
+                          >
+                            Gán làn
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -193,6 +242,35 @@ export default function BusinessFleetQueuePage() {
           </div>
         </div>
       </div>
+
+      <FormModal
+        open={Boolean(assignTarget)}
+        title={`Gán làn — ${assignTarget?.licensePlate ?? ''}`}
+        submitLabel={assigning ? 'Đang gán…' : 'Gán làn'}
+        onClose={() => !assigning && setAssignTarget(null)}
+        onSubmit={handleAssignLane}
+      >
+        <div className="space-y-4">
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Lane ID</span>
+            <input
+              type="number"
+              className="w-full rounded-lg border border-outline-variant px-3 py-2"
+              value={laneId}
+              onChange={(e) => setLaneId(e.target.value)}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Staff User ID (tùy chọn)</span>
+            <input
+              type="number"
+              className="w-full rounded-lg border border-outline-variant px-3 py-2"
+              value={staffUserId}
+              onChange={(e) => setStaffUserId(e.target.value)}
+            />
+          </label>
+        </div>
+      </FormModal>
     </div>
   )
 }

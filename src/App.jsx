@@ -33,6 +33,7 @@ import QueuePage from './pages/QueuePage'
 import StaffQueuePage from './pages/StaffQueuePage'
 import SettingsPage from './pages/SettingsPage'
 import StaffFleetApprovalsPage from './pages/StaffFleetApprovalsPage'
+import StaffShiftsPage from './pages/StaffShiftsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
 import ManagerStaffPage from './pages/manager/ManagerStaffPage'
@@ -65,6 +66,7 @@ import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicatio
 import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
 import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
 import ManagerFleetApprovalsPage from './pages/manager/ManagerFleetApprovalsPage'
+import ManagerShiftsPage from './pages/manager/ManagerShiftsPage'
 
 export default function App() {
   return (
@@ -87,6 +89,7 @@ export default function App() {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/fleet-approvals" element={<StaffFleetApprovalsPage />} />
+            <Route path="/shifts" element={<StaffShiftsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
 
@@ -144,6 +147,7 @@ export default function App() {
               element={<ManagerBusinessApplicationsPage />}
             />
             <Route path="/manager/fleet-approvals" element={<ManagerFleetApprovalsPage />} />
+            <Route path="/manager/shifts" element={<ManagerShiftsPage />} />
           </Route>
 
           <Route

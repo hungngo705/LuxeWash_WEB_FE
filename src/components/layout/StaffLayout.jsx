@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   '/history': 'Service History',
   '/customers': 'Customer Lookup',
   '/fleet-approvals': 'Duyệt xe doanh nghiệp',
+  '/shifts': 'Ca làm của tôi',
   '/settings': 'Settings',
 }
 

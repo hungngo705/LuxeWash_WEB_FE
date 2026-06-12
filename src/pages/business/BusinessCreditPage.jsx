@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchBusinessProfile, fetchMonthlyStatement } from '../../api/business.api'
+import { createWalletTopUp, fetchMyWallet } from '../../api/wallet.api'
 import { formatVnd } from '../../utils/format'
 
 export default function BusinessCreditPage() {
@@ -9,6 +10,9 @@ export default function BusinessCreditPage() {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1)
   const [statement, setStatement] = useState(null)
+  const [wallet, setWallet] = useState(null)
+  const [topUpAmount, setTopUpAmount] = useState('')
+  const [topUpLoading, setTopUpLoading] = useState(false)
 
   useEffect(() => {
     fetchBusinessProfile()
@@ -18,10 +22,41 @@ export default function BusinessCreditPage() {
   }, [])
 
   useEffect(() => {
+    fetchMyWallet()
+      .then(setWallet)
+      .catch(() => setWallet(null))
+  }, [])
+
+  useEffect(() => {
     fetchMonthlyStatement(selectedYear, selectedMonth)
       .then(setStatement)
       .catch(() => setStatement(null))
   }, [selectedYear, selectedMonth])
+
+  const handleTopUp = async () => {
+    const amount = Number(topUpAmount)
+    if (!amount || amount < 1) return
+    setTopUpLoading(true)
+    try {
+      const base = `${window.location.origin}/business/credit`
+      const result = await createWalletTopUp({
+        amount,
+        returnUrl: base,
+        cancelUrl: base,
+      })
+      const checkoutUrl =
+        result?.checkoutUrl ?? result?.paymentUrl ?? result?.url ?? result?.data?.checkoutUrl
+      if (checkoutUrl) {
+        window.location.href = String(checkoutUrl)
+      } else {
+        setError('Không nhận được link thanh toán. Vui lòng thử lại.')
+      }
+    } catch {
+      setError('Không tạo được yêu cầu nạp ví.')
+    } finally {
+      setTopUpLoading(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -61,6 +96,37 @@ export default function BusinessCreditPage() {
       )}
 
       <div className="grid lg:grid-cols-3 gap-6">
+        {wallet && (
+          <div className="lg:col-span-3 bg-surface-container-lowest rounded-2xl border border-outline-variant p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h3 className="font-medium text-on-surface text-sm">Ví điện tử</h3>
+                <p className="text-2xl font-bold text-primary mt-1">{formatVnd(wallet.balance)}</p>
+              </div>
+              <div className="flex items-end gap-2">
+                <label className="block">
+                  <span className="text-xs text-on-surface-variant">Nạp tiền (VND)</span>
+                  <input
+                    type="number"
+                    min={1000}
+                    className="mt-1 block w-40 rounded-lg border border-outline-variant px-3 py-2 text-sm"
+                    value={topUpAmount}
+                    onChange={(e) => setTopUpAmount(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={topUpLoading}
+                  onClick={handleTopUp}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
+                >
+                  {topUpLoading ? 'Đang xử lý…' : 'Nạp ví'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="lg:col-span-2 bg-surface-container-lowest rounded-2xl border border-outline-variant p-6">
           <h3 className="font-medium text-on-surface mb-4 text-sm">Sử dụng tháng này</h3>
 
