@@ -249,34 +249,34 @@ function BaseFields({ form, setForm, saving, tiers }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Ngày bắt đầu campaign
-          </span>
-          <input
-            type="datetime-local"
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.startDate}
-            disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Ngày kết thúc campaign
-          </span>
-          <input
-            type="datetime-local"
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.endDate}
-            disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-          />
-        </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
+              Thời gian bắt đầu
+            </span>
+            <input
+              type="datetime-local"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.startDate}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
+              Thời gian kết thúc
+            </span>
+            <input
+              type="datetime-local"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.endDate}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+            />
+          </label>
       </div>
 
       <TimeRangeField
-        label="Thời gian (trong ngày)"
+        label="Khung giờ sử dụng"
         startValue={form.validStartTime}
         endValue={form.validEndTime}
         disabled={saving}

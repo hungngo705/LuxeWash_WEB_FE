@@ -456,7 +456,7 @@ export default function AdminVouchersPage() {
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Ngày bắt đầu hiệu lực
+                Thời gian bắt đầu
               </span>
               <input
                 type="datetime-local"
@@ -469,7 +469,7 @@ export default function AdminVouchersPage() {
             </label>
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Ngày hết hạn
+                Thời gian kết thúc
               </span>
               <input
                 type="datetime-local"
@@ -482,7 +482,7 @@ export default function AdminVouchersPage() {
           </div>
 
           <TimeRangeField
-            label="Thời gian (trong ngày)"
+            label="Khung giờ sử dụng"
             startValue={form.validStartTime}
             endValue={form.validEndTime}
             disabled={saving}

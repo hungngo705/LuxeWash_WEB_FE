@@ -41,6 +41,24 @@ export function formatVoucherValidityWindow(voucher) {
   return parts.length ? parts.join(' ') : '—'
 }
 
+/** @param {{ receivedDate?: string | null; expiryDate?: string | null; expiryDays?: number | null; startDate?: string | null }} voucher
+ *  Format user-specific voucher window — when the voucher was received and when it expires for this user.
+ *  Used for VoucherResponseDTO (from /vouchers/me).
+ */
+export function formatUserVoucherWindow(voucher) {
+  const parts = []
+  if (voucher.receivedDate) {
+    parts.push(`Nhận lúc ${formatDateTime(voucher.receivedDate)}`)
+  }
+  if (voucher.expiryDate) {
+    parts.push(`Hết hạn ${formatDateTime(voucher.expiryDate)}`)
+  }
+  if (!parts.length && voucher.expiryDays) {
+    parts.push(`Có hiệu lực ${voucher.expiryDays} ngày từ lúc nhận`)
+  }
+  return parts.length ? parts.join(' · ') : '—'
+}
+
 /** @param {{ validStartTime?: string | null; validEndTime?: string | null }} voucher */
 export function formatVoucherDailyWindow(voucher) {
   return formatVoucherTimeRange(voucher.validStartTime, voucher.validEndTime)
@@ -74,4 +92,33 @@ export function describeVoucherUsability(voucher) {
   }
 
   return 'Có thể dùng'
+}
+
+/** @param {{ isUsed?: boolean; remainingUsage?: number; maxUsagePerUser?: number; expiryDate?: string | null; receivedDate?: string | null; validStartTime?: string | null; validEndTime?: string | null }} voucher
+ *  Describe usability for UserVoucher (from /vouchers/me).
+ *  Uses BE-provided IsUsed, RemainingUsage fields.
+ */
+export function describeUserVoucherUsability(voucher) {
+  const now = new Date()
+
+  if (voucher.isUsed) return 'Đã dùng'
+  if (voucher.remainingUsage === 0) return 'Hết lượt dùng'
+
+  if (voucher.expiryDate) {
+    const expiry = new Date(voucher.expiryDate)
+    if (expiry < now) return 'Đã hết hạn'
+  }
+
+  const from = clipTime(voucher.validStartTime)
+  const to = clipTime(voucher.validEndTime)
+  if (from || to) {
+    const hh = String(now.getHours()).padStart(2, '0')
+    const mm = String(now.getMinutes()).padStart(2, '0')
+    const current = `${hh}:${mm}`
+    if (from && current < from) return `Ngoài giờ (từ ${from})`
+    if (to && current > to) return `Ngoài giờ (đến ${to})`
+  }
+
+  const left = voucher.remainingUsage ?? voucher.maxUsagePerUser
+  return `Còn ${left} lượt`
 }

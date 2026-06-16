@@ -339,13 +339,16 @@ export function resolveVehicleTypeId(vehicle, services = []) {
 
 /** @param {Record<string, unknown>} item */
 export function normalizeBusinessSlot(item) {
+  // timeRange = "08:00 - 09:00" → extract start time for display
   const timeRange = String(item.timeRange ?? '')
-  const [start = '', end = ''] = timeRange.split(/\s*-\s*/)
+  const match = timeRange.match(/^(\d{2}:\d{2})\s*-\s*/)
+  const startTime = match ? match[1] : ''
+
   return {
     slotId: Number(item.slotId),
     timeRange,
-    startTime: String(item.startTime ?? start).trim(),
-    endTime: String(item.endTime ?? end).trim(),
+    startTime: String(item.startTime ?? startTime).trim(),
+    endTime: String(item.endTime ?? '').trim(),
     isAvailable: item.isAvailable === true,
     reason: item.reason != null ? String(item.reason) : '',
     estimatedDurationMinutes:
@@ -355,6 +358,9 @@ export function normalizeBusinessSlot(item) {
         ? Number(item.estimatedWashMinutes)
         : null,
     estimatedEndTime: item.estimatedEndTime != null ? String(item.estimatedEndTime) : null,
+    estimatedLastEndMinutesIntoSlot: item.estimatedLastEndMinutesIntoSlot != null
+      ? Number(item.estimatedLastEndMinutesIntoSlot)
+      : null,
   }
 }
 
@@ -487,34 +493,38 @@ export async function fetchBookingDetail(id) {
 }
 
 export async function createBusinessBooking(dto) {
+  // New bulk format: { vehicles: [{fleetVehicleId, serviceIds}], branchId, slotId, scheduledTime }
+  const payload = {
+    vehicles: dto.vehicles.map((v) => ({
+      fleetVehicleId: v.fleetVehicleId,
+      serviceIds: v.serviceIds,
+    })),
+    branchId: Number(dto.branchId),
+    slotId: Number(dto.slotId ?? dto.slotId),
+    scheduledTime: dto.scheduledTime?.includes('T')
+      ? dto.scheduledTime
+      : `${dto.scheduledTime}T00:00:00.000Z`,
+  }
+
   const result = await apiRequest('/business/bookings', {
     method: 'POST',
-    body: JSON.stringify({
-      ...dto,
-      scheduledTime: dto.scheduledTime?.includes('T')
-        ? dto.scheduledTime
-        : `${dto.scheduledTime}T00:00:00.000Z`,
-    }),
+    body: JSON.stringify(payload),
   })
 
-  const bookingId =
-    result && typeof result === 'object'
-      ? Number(
-          /** @type {Record<string, unknown>} */ (result).bookingId ??
-            /** @type {Record<string, unknown>} */ (result).id,
-        )
-      : NaN
-
-  if (Number.isFinite(bookingId) && dto.branchId != null) {
-    try {
-      const branches = await fetchBranches()
-      const branch = branches.find((b) => b.id === Number(dto.branchId))
-      saveBookingBranchCache(bookingId, {
-        branchId: Number(dto.branchId),
-        branchName: branch?.name ?? '',
-      })
-    } catch {
-      saveBookingBranchCache(bookingId, { branchId: Number(dto.branchId) })
+  // Handle MultiVehicleBookingResponseDTO — bookingGroupId points to the first booking
+  if (result && typeof result === 'object') {
+    const groupId = Number(result.bookingGroupId ?? result.bookingId ?? result.id)
+    if (Number.isFinite(groupId) && dto.branchId != null) {
+      try {
+        const branches = await fetchBranches()
+        const branch = branches.find((b) => b.id === Number(dto.branchId))
+        saveBookingBranchCache(groupId, {
+          branchId: Number(dto.branchId),
+          branchName: branch?.name ?? '',
+        })
+      } catch {
+        saveBookingBranchCache(groupId, { branchId: Number(dto.branchId) })
+      }
     }
   }
 
@@ -525,14 +535,16 @@ export const cancelBooking = (id) =>
   apiRequest(`/business/${id}/cancel`, { method: 'POST' })
 
 /**
- * GET /business/available-slots — không yêu cầu hạng thành viên
- * @param {{ branchId: number; fleetVehicleId: number; targetDate: string; serviceIds: number[] }} params
+ * GET /business/available-slots — simulation endpoint for checking slot availability
+ * @param {{ branchId: number; fleetVehicleId: number; targetDate: string; serviceIds: number[]; vehicleCount?: number }} params
+ *   vehicleCount = number of vehicles to simulate (for bulk booking capacity planning)
  */
 export async function getBusinessAvailableSlots({
   branchId,
   fleetVehicleId,
   targetDate,
   serviceIds,
+  vehicleCount = 1,
 }) {
   const params = new URLSearchParams()
   params.set('BranchId', String(branchId))
@@ -541,6 +553,9 @@ export async function getBusinessAvailableSlots({
   params.set('TargetDate', dateIso)
   for (const id of serviceIds) {
     params.append('ServiceIds', String(id))
+  }
+  if (vehicleCount > 1) {
+    params.set('VehicleCount', String(vehicleCount))
   }
 
   const data = await apiRequest(`/business/available-slots?${params}`)
