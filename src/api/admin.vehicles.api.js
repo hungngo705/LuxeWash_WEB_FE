@@ -48,18 +48,17 @@ export function rejectNewVehicleType(licensePlate) {
 
 /** @param {Record<string, unknown>} item @returns {PendingVehicleApproval} */
 export function normalizePendingApproval(item) {
-  const phone = item.phoneMasked ?? item.phoneNumber
-  const requestedType =
-    item.requestedTypeName ?? item.customizedTypeName ?? item.customTypeName
-  const note = item.userNote ?? item.description
-
   return {
     licensePlate: String(item.licensePlate ?? ''),
-    customerName: String(item.customerName ?? item.fullName ?? item.ownerName ?? '—'),
-    phoneMasked: phone ? String(phone) : '—',
-    requestedTypeName: requestedType ? String(requestedType) : '—',
-    userNote: note ? String(note) : '—',
-    submittedAt: item.submittedAt ?? item.createdAt ?? null,
+    vehicleTypeId: item.vehicleTypeId != null ? Number(item.vehicleTypeId) : null,
+    vehicleTypeName: String(item.vehicleTypeName ?? item.requestedTypeName ?? '—'),
+    ownerName: String(item.ownerName ?? item.customerName ?? item.fullName ?? '—'),
+    ownerPhone: item.ownerPhone ?? item.phoneNumber ?? null,
+    registrationPhotoUrl: item.registrationPhotoUrl ?? null,
+    userNote: String(item.userNote ?? item.carModel ?? ''),
+    carModel: String(item.carModel ?? ''),
+    userId: item.userId != null ? Number(item.userId) : null,
+    submittedAt: item.createdAt ?? item.submittedAt ?? null,
     status: String(item.status ?? 'Pending'),
   }
 }

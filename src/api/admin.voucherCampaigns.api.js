@@ -1,4 +1,11 @@
 import { apiRequest } from './client'
+import {
+  buildVoucherPayload,
+  DISCOUNT_KIND,
+  normalizeVoucher,
+  toApiExpiryDate,
+  toApiTimeValue,
+} from './admin.vouchers.api'
 
 export const CAMPAIGN_TYPE = {
   Manual: 0,
@@ -70,13 +77,9 @@ export function normalizeCampaignVoucher(v) {
     inactiveDays: v.inactiveDays ?? v.InactiveDays ?? null,
     resendAfterDays: v.resendAfterDays ?? v.ResendAfterDays ?? null,
     milestoneUsageCount: v.milestoneUsageCount ?? v.MilestoneUsageCount ?? null,
+    discountPercent: v.discountPercent != null ? Number(v.discountPercent) : null,
+    maxDiscountAmount: v.maxDiscountAmount != null ? Number(v.maxDiscountAmount) : null,
   }
-}
-
-/** @param {string} value e.g. "08:00" from `<input type="time">` */
-export function toApiTimeValue(value) {
-  if (!value) return null
-  return value.length === 5 ? `${value}:00` : value
 }
 
 /** @param {string} value e.g. "08:00:00" from API */
@@ -90,14 +93,17 @@ export function toTimeInputValue(value) {
  * @param {Record<string,any>} form
  */
 function buildBasePayload(form) {
-  return {
+  const isPercent = form.discountKind === DISCOUNT_KIND.Percent
+  const payload = {
     code: form.code.trim().toUpperCase(),
-    discountAmount: Number(form.discountAmount),
+    discountAmount: isPercent
+      ? Number(form.maxDiscountAmount || form.discountAmount)
+      : Number(form.discountAmount),
     maxUsages: Number(form.maxUsages),
     maxUsagePerUser: Number(form.maxUsagePerUser),
     expiryDays: Number(form.expiryDays),
-    startDate: form.startDate || null,
-    endDate: form.endDate || null,
+    startDate: form.startDate ? toApiExpiryDate(form.startDate) : null,
+    endDate: form.endDate ? toApiExpiryDate(form.endDate) : null,
     minOrderAmount: Number(form.minOrderAmount) || 0,
     imageUrl: form.imageUrl?.trim() || null,
     requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
@@ -105,6 +111,11 @@ function buildBasePayload(form) {
     validEndTime: toApiTimeValue(form.validEndTime),
     isActive: Boolean(form.isActive),
   }
+  if (isPercent && Number(form.discountPercent) > 0) {
+    payload.discountPercent = Number(form.discountPercent)
+    payload.maxDiscountAmount = Number(form.maxDiscountAmount || form.discountAmount)
+  }
+  return payload
 }
 
 // ─── Birthday ────────────────────────────────────────────────────────────────
@@ -194,11 +205,21 @@ export function createMilestoneCampaign(form) {
 
 // ─── Toggle active ───────────────────────────────────────────────────────────
 
-/** @param {number} id @param {boolean} isActive */
-export function updateCampaignActive(id, isActive) {
-  return apiRequest(`/admin/vouchers/${id}`, {
+/** @param {ReturnType<typeof normalizeCampaignVoucher>} voucher @param {boolean} isActive */
+export function updateCampaignActive(voucher, isActive) {
+  return apiRequest(`/admin/vouchers/${voucher.voucherId}`, {
     method: 'PUT',
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify(
+      buildVoucherPayload(
+        {
+          ...normalizeVoucher(voucher),
+          pointsRequired: 0,
+          expiryDate: voucher.endDate || voucher.expiryDate,
+          startDate: voucher.startDate,
+        },
+        { isActive },
+      ),
+    ),
   })
 }
 

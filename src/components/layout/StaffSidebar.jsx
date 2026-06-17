@@ -5,6 +5,8 @@ const navItems = [
   { to: '/queue', label: 'Hàng Chờ', icon: 'format_list_numbered' },
   { to: '/history', label: 'Lịch sử dịch vụ', icon: 'history' },
   { to: '/customers', label: 'Khách hàng', icon: 'group' },
+  { to: '/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
+  { to: '/shifts', label: 'Ca làm', icon: 'calendar_month' },
 ]
 
 export default function StaffSidebar({ station }) {

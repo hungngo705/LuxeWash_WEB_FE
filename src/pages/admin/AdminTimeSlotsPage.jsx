@@ -33,7 +33,7 @@ function toApiPayload(form, branchId) {
 
 function validateForm(form) {
   if (!form.startTime || !form.endTime) return 'Vui lòng chọn giờ bắt đầu và kết thúc'
-  if (form.startTime >= form.endTime) return 'Giờ kết thúc phải sau giờ bắt đầu'
+  if (form.startTime >= form.endTime) return 'Thời gian kết thúc phải sau thời gian bắt đầu'
   if (Number(form.maxCapacity) < 1) return 'Sức chứa phải ít nhất 1'
   return null
 }
@@ -217,8 +217,8 @@ export default function AdminTimeSlotsPage() {
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Chi nhánh</th>
-                <th className="px-4 py-3">Giờ bắt đầu</th>
-                <th className="px-4 py-3">Giờ kết thúc</th>
+                <th className="px-4 py-3">Thời gian bắt đầu</th>
+                <th className="px-4 py-3">Thời gian kết thúc</th>
                 <th className="px-4 py-3">Sức chứa</th>
                 <th className="px-4 py-3">Phân loại</th>
                 <th className="px-4 py-3">Thao tác</th>
@@ -294,8 +294,8 @@ export default function AdminTimeSlotsPage() {
           )}
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-                Giờ bắt đầu
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Thời gian bắt đầu
               </span>
               <input
                 type="time"
@@ -306,8 +306,8 @@ export default function AdminTimeSlotsPage() {
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-                Giờ kết thúc
+              <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                Thời gian kết thúc
               </span>
               <input
                 type="time"

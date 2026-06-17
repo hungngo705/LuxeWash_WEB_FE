@@ -8,7 +8,7 @@ const AuthContext = createContext(null)
 const DEFAULT_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuClp7ADyI2iBVUMA7EIoPJsEAYC2R4QW-wLfbu4V-aXdn2Mz-TQbaCcFYwtlZAX9KsIFU7XGtg5P5AR6HmgOL12_CBKkQdCh9I-BO7ZutWni9cVeBvi07Qicp7uFO9EVhZ3lpQueRoPAmxh8p_bGfItEe3Q60cAdRRZDEUlgQ93Hj6MZEy9-MlXay4Ab63PaE6vJ6tQIlxr64EslF4K7_d4wmwqOG_XztDYgbI4RSQGLu2p4iTRecovl8-Wcs-iPQ7biJH3ov3inmPr'
 
-const PORTAL_ROLES = new Set(['Admin', 'Staff', 'Manager'])
+const PORTAL_ROLES = new Set(['Admin', 'Staff', 'Manager', 'Business'])
 
 function isPortalSession(session) {
   return Boolean(
@@ -42,6 +42,10 @@ function mapLoginToSession(data) {
     return { ...session, station: 'Station 04' }
   }
 
+  if (role === 'Business') {
+    return { ...session, companyName: data.companyName ?? session.fullName }
+  }
+
   return session
 }
 
@@ -73,7 +77,7 @@ export function AuthProvider({ children }) {
       }
 
       if (!PORTAL_ROLES.has(role)) {
-        setError('Tài khoản không có quyền truy cập portal Staff/Admin/Manager.')
+        setError('Tài khoản không có quyền truy cập portal.')
         return null
       }
 
@@ -164,6 +168,7 @@ export function AuthProvider({ children }) {
       user,
       staff: user,
       manager: user,
+      business: user,
       isAuthenticated: isPortalSession(user),
       login,
       logout,

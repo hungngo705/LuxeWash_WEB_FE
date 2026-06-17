@@ -16,6 +16,7 @@ const navItems = [
   { to: '/admin/users', label: 'Người dùng', icon: 'group' },
   { to: '/admin/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
   { to: '/admin/transactions', label: 'Giao dịch', icon: 'payments' },
+  { to: '/admin/business-applications', label: 'Đơn DN', icon: 'business' },
 ]
 
 export default function AdminSidebar() {

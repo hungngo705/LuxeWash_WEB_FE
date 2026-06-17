@@ -7,8 +7,11 @@ const navItems = [
   { to: '/manager/lanes', label: 'Làn rửa', icon: 'garage' },
   { to: '/manager/time-slots', label: 'Khung giờ', icon: 'schedule' },
   { to: '/manager/staff', label: 'Phân công làn', icon: 'badge' },
+  { to: '/manager/shifts', label: 'Ca làm', icon: 'schedule' },
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
   { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
+  { to: '/manager/business-applications', label: 'Đơn DN', icon: 'business' },
+  { to: '/manager/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
 ]
 
 export default function ManagerSidebar({ station }) {

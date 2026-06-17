@@ -17,8 +17,8 @@ const emptyForm = {
 }
 
 function validateForm(form) {
-  if (!form.startTime || !form.endTime) return 'Vui lòng chọn giờ bắt đầu và kết thúc'
-  if (form.startTime >= form.endTime) return 'Giờ kết thúc phải sau giờ bắt đầu'
+  if (!form.startTime || !form.endTime) return 'Vui lòng chọn thời gian bắt đầu và kết thúc'
+  if (form.startTime >= form.endTime) return 'Thời gian kết thúc phải sau thời gian bắt đầu'
   if (Number(form.maxCapacity) < 1) return 'Sức chứa phải ít nhất 1'
   return null
 }
@@ -127,8 +127,8 @@ export default function ManagerTimeSlotsPage() {
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Giờ bắt đầu</th>
-                <th className="px-4 py-3">Giờ kết thúc</th>
+                <th className="px-4 py-3">Thời gian bắt đầu</th>
+                <th className="px-4 py-3">Thời gian kết thúc</th>
                 <th className="px-4 py-3">Sức chứa</th>
                 <th className="px-4 py-3">Phân loại</th>
               </tr>
@@ -166,7 +166,7 @@ export default function ManagerTimeSlotsPage() {
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Giờ bắt đầu</span>
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Thời gian bắt đầu</span>
               <input
                 type="time"
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
@@ -176,7 +176,7 @@ export default function ManagerTimeSlotsPage() {
               />
             </label>
             <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Giờ kết thúc</span>
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Thời gian kết thúc</span>
               <input
                 type="time"
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"

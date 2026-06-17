@@ -41,13 +41,13 @@ export function normalizeManagerStaff(item) {
 }
 
 /**
- * GET /api/v1/branches/{branchId}/employees
+ * GET /api/v1/admin/branches/{branchId}/employees
  * Returns a summary of all managers and staff at a specific branch.
  * @param {number} branchId
  * @returns {Promise<BranchEmployeesSummary>}
  */
 export function fetchBranchEmployeesSummary(branchId) {
-  return apiRequest(`/branches/${branchId}/employees`)
+  return apiRequest(`/admin/branches/${branchId}/employees`)
 }
 
 /**
