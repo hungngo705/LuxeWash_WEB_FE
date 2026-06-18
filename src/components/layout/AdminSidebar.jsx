@@ -9,6 +9,7 @@ const navItems = [
   { to: '/admin/lanes', label: 'Làn rửa', icon: 'garage' },
   { to: '/admin/employees', label: 'Nhân viên', icon: 'badge' },
   { to: '/admin/car-models', label: 'Mẫu xe', icon: 'commute' },
+  { to: '/admin/pending-car-models', label: 'Duyệt mẫu xe', icon: 'fact_check' },
   { to: '/admin/time-slots', label: 'Khung giờ', icon: 'schedule' },
   { to: '/admin/tiers', label: 'Hạng thành viên', icon: 'workspace_premium' },
   { to: '/admin/vouchers', label: 'Voucher', icon: 'confirmation_number' },
