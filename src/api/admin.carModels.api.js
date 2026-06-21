@@ -55,8 +55,8 @@ export function formatCarModelName(name, productionYear, version) {
  *   isActive?: boolean
  * }} CarModel
  *
- * @typedef {{ brand?: string; name?: string; productionYear?: number | null; version?: string | null }} CreateCarModelPayload
- * @typedef {{ brand?: string; name?: string; productionYear?: number | null; version?: string | null; isActive?: boolean }} UpdateCarModelPayload
+ * @typedef {{ brand?: string; name?: string; productionYear?: number | null; version?: string | null; vehicleTypeId?: number | null }} CreateCarModelPayload
+ * @typedef {{ brand?: string; name?: string; productionYear?: number | null; version?: string | null; isActive?: boolean; vehicleTypeId?: number | null }} UpdateCarModelPayload
  * @typedef {{ brand: string; name: string; vehicleTypeId?: number | null }} RequestCarModelPayload
  * @typedef {{ vehicleTypeId: number }} ApproveCarModelPayload
  */
@@ -94,6 +94,9 @@ function buildCarModelPayload(payload) {
   }
   if (payload.isActive != null) {
     body.isActive = Boolean(payload.isActive)
+  }
+  if (payload.vehicleTypeId !== undefined) {
+    body.vehicleTypeId = payload.vehicleTypeId != null ? Number(payload.vehicleTypeId) : null
   }
   return body
 }
