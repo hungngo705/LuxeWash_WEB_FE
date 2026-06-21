@@ -12,6 +12,7 @@ import { AuthProvider } from './context/AuthContext'
 import AdminBookingsPage from './pages/admin/AdminBookingsPage'
 import AdminBranchesPage from './pages/admin/AdminBranchesPage'
 import AdminCarModelsPage from './pages/admin/AdminCarModelsPage'
+import AdminPendingCarModelsPage from './pages/admin/AdminPendingCarModelsPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminEmployeesPage from './pages/admin/AdminEmployeesPage'
 import AdminLanesPage from './pages/admin/AdminLanesPage'
@@ -108,6 +109,7 @@ export default function App() {
             <Route path="/admin/lanes" element={<AdminLanesPage />} />
             <Route path="/admin/employees" element={<AdminEmployeesPage />} />
             <Route path="/admin/car-models" element={<AdminCarModelsPage />} />
+            <Route path="/admin/pending-car-models" element={<AdminPendingCarModelsPage />} />
             <Route path="/admin/time-slots" element={<AdminTimeSlotsPage />} />
             <Route path="/admin/tiers" element={<AdminTiersPage />} />
             <Route path="/admin/vouchers" element={<AdminVouchersPage />} />

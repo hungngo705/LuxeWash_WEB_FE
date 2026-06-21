@@ -5,6 +5,7 @@ import {
   deleteCarModel,
   fetchCarModels,
   updateCarModel,
+  fetchVehicleTypes,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
@@ -12,10 +13,11 @@ import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const emptyForm = { brand: '', name: '', productionYear: '', version: '', isActive: true }
+const emptyForm = { brand: '', name: '', productionYear: '', version: '', isActive: true, vehicleTypeId: '' }
 
 export default function AdminCarModelsPage() {
   const [models, setModels] = useState([])
+  const [vehicleTypes, setVehicleTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -31,21 +33,26 @@ export default function AdminCarModelsPage() {
     setTimeout(() => setToast(''), 2500)
   }
 
-  const loadModels = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
-      setModels(await fetchCarModels())
+      const [fetchedModels, fetchedTypes] = await Promise.all([
+        fetchCarModels(),
+        fetchVehicleTypes(),
+      ])
+      setModels(fetchedModels)
+      setVehicleTypes(Array.isArray(fetchedTypes) ? fetchedTypes : [])
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Không tải được mẫu xe')
+      setLoadError(err instanceof ApiError ? err.message : 'Không tải được dữ liệu')
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadModels()
-  }, [loadModels])
+    loadData()
+  }, [loadData])
 
   const openCreate = () => {
     setEditingId(null)
@@ -61,6 +68,7 @@ export default function AdminCarModelsPage() {
       productionYear: model.productionYear != null ? String(model.productionYear) : '',
       version: model.version ?? '',
       isActive: model.isActive !== false,
+      vehicleTypeId: model.vehicleTypeId != null ? String(model.vehicleTypeId) : '',
     })
     setModalOpen(true)
   }
@@ -87,6 +95,7 @@ export default function AdminCarModelsPage() {
         name: trimmedName,
         productionYear: form.productionYear ? Number(form.productionYear) : null,
         version: form.version.trim() || null,
+        vehicleTypeId: form.vehicleTypeId ? Number(form.vehicleTypeId) : null,
       }
       if (editingId) {
         await updateCarModel(editingId, { ...payload, isActive: form.isActive })
@@ -96,7 +105,7 @@ export default function AdminCarModelsPage() {
         showToast('Đã thêm mẫu xe')
       }
       setModalOpen(false)
-      await loadModels()
+      await loadData()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không lưu được mẫu xe')
     } finally {
@@ -111,7 +120,7 @@ export default function AdminCarModelsPage() {
       await deleteCarModel(deleteTarget)
       setDeleteTarget(null)
       showToast('Đã xóa mẫu xe')
-      await loadModels()
+      await loadData()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không xóa được mẫu xe')
     } finally {
@@ -137,7 +146,7 @@ export default function AdminCarModelsPage() {
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
-          <button type="button" className="text-sm text-error" onClick={loadModels}>
+          <button type="button" className="text-sm text-error" onClick={loadData}>
             Thử lại
           </button>
         </div>
@@ -157,6 +166,7 @@ export default function AdminCarModelsPage() {
                 <th className="px-4 py-3">Dòng xe</th>
                 <th className="px-4 py-3">Năm SX</th>
                 <th className="px-4 py-3">Phiên bản</th>
+                <th className="px-4 py-3">Loại xe</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
@@ -169,6 +179,9 @@ export default function AdminCarModelsPage() {
                   <td className="px-4 py-3 font-medium text-on-surface">{model.name || '—'}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{model.productionYear ?? '—'}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{model.version || '—'}</td>
+                  <td className="px-4 py-3 text-on-surface">
+                    {model.vehicleTypeId ? vehicleTypes.find(t => t.id === model.vehicleTypeId)?.name || '—' : '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={model.isActive !== false ? 'Active' : 'Inactive'} />
                   </td>
@@ -248,6 +261,22 @@ export default function AdminCarModelsPage() {
               />
             </label>
           </div>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Loại xe</span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.vehicleTypeId}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, vehicleTypeId: e.target.value }))}
+            >
+              <option value="">— Chưa chọn —</option>
+              {vehicleTypes.map((vt) => (
+                <option key={vt.id} value={vt.id}>
+                  {vt.name} {vt.description ? `— ${vt.description}` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
           {editingId && (
             <label className="flex items-center gap-2 text-sm text-on-surface">
               <input

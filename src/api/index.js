@@ -92,6 +92,10 @@ export {
   updateCarModel,
   deleteCarModel,
   normalizeCarModel,
+  requestCarModel,
+  fetchPendingCarModels,
+  approveCarModelRequest,
+  rejectCarModelRequest,
 } from './admin.carModels.api'
 
 export {
