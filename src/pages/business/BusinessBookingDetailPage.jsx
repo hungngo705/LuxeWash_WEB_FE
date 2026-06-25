@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { fetchBookingDetail } from '../../api/business.api'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 function StatusBadge({ status }) {
   const map = {
-    Pending: { label: 'Chờ xác nhận', className: 'bg-yellow-100 text-yellow-800' },
-    Confirmed: { label: 'Đã xác nhận', className: 'bg-blue-100 text-blue-800' },
+    Pending: { label: 'Đã đặt lịch', className: 'bg-blue-100 text-blue-800' },
     CheckedIn: { label: 'Đã check-in', className: 'bg-purple-100 text-purple-800' },
     Processing: { label: 'Đang rửa', className: 'bg-orange-100 text-orange-800' },
     Completed: { label: 'Hoàn tất', className: 'bg-green-100 text-green-800' },
@@ -23,6 +22,7 @@ function StatusBadge({ status }) {
 export default function BusinessBookingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [booking, setBooking] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -66,6 +66,11 @@ export default function BusinessBookingDetailPage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      {location.state?.successMessage && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
+          {location.state.successMessage}
+        </div>
+      )}
       <button onClick={() => navigate('/business/bookings')} className="text-sm text-on-surface-variant hover:text-on-surface flex items-center gap-1">
         <span className="material-symbols-outlined text-base">arrow_back</span>
         Quay lại danh sách
@@ -76,7 +81,18 @@ export default function BusinessBookingDetailPage() {
           <h2 className="font-sora text-lg font-semibold text-on-surface">
             Đặt lịch #{id}
           </h2>
-          <StatusBadge status={booking.status} />
+          <div className="flex items-center gap-3">
+            {booking.status === 'Pending' && (
+              <Link
+                to={`/business/bookings/${id}/reschedule`}
+                className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary/90"
+              >
+                <span className="material-symbols-outlined text-sm">event_repeat</span>
+                Đổi lịch
+              </Link>
+            )}
+            <StatusBadge status={booking.status} />
+          </div>
         </div>
 
         <div className="p-6 space-y-4">

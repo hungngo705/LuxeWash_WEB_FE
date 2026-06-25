@@ -22,8 +22,7 @@ function KpiCard({ icon, label, value, sub, color = 'text-primary', bg = 'bg-pri
 
 function StatusBadge({ status }) {
   const map = {
-    Pending: { label: 'Chờ xác nhận', className: 'bg-yellow-100 text-yellow-800' },
-    Confirmed: { label: 'Đã xác nhận', className: 'bg-blue-100 text-blue-800' },
+    Pending: { label: 'Đã đặt lịch', className: 'bg-blue-100 text-blue-800' },
     CheckedIn: { label: 'Đã check-in', className: 'bg-purple-100 text-purple-800' },
     Processing: { label: 'Đang rửa', className: 'bg-orange-100 text-orange-800' },
     Completed: { label: 'Hoàn tất', className: 'bg-green-100 text-green-800' },

@@ -341,14 +341,15 @@ export function resolveVehicleTypeId(vehicle, services = []) {
 export function normalizeBusinessSlot(item) {
   // timeRange = "08:00 - 09:00" → extract start time for display
   const timeRange = String(item.timeRange ?? '')
-  const match = timeRange.match(/^(\d{2}:\d{2})\s*-\s*/)
+  const match = timeRange.match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/)
   const startTime = match ? match[1] : ''
+  const endTime = match ? match[2] : ''
 
   return {
     slotId: Number(item.slotId),
     timeRange,
     startTime: String(item.startTime ?? startTime).trim(),
-    endTime: String(item.endTime ?? '').trim(),
+    endTime: String(item.endTime ?? endTime).trim(),
     isAvailable: item.isAvailable === true,
     reason: item.reason != null ? String(item.reason) : '',
     estimatedDurationMinutes:
@@ -483,6 +484,7 @@ export async function fetchBookingDetail(id) {
       if (vehicle) {
         withBranch.vehicleType =
           vehicle.vehicleType || vehicle.vehicleTypeName || ''
+        withBranch.fleetVehicleId = vehicle.fleetVehicleId
       }
     }
 
@@ -534,6 +536,15 @@ export async function createBusinessBooking(dto) {
 export const cancelBooking = (id) =>
   apiRequest(`/business/${id}/cancel`, { method: 'POST' })
 
+export const rescheduleBusinessBooking = (id, { newScheduledDate, newSlotId }) =>
+  apiRequest(`/business/reschedule/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      newScheduledDate,
+      newSlotId: Number(newSlotId),
+    }),
+  })
+
 /**
  * GET /business/available-slots — simulation endpoint for checking slot availability
  * @param {{ branchId: number; fleetVehicleId: number; targetDate: string; serviceIds: number[]; vehicleCount?: number }} params
@@ -554,9 +565,7 @@ export async function getBusinessAvailableSlots({
   for (const id of serviceIds) {
     params.append('ServiceIds', String(id))
   }
-  if (vehicleCount > 1) {
-    params.set('VehicleCount', String(vehicleCount))
-  }
+  params.set('VehicleCount', String(vehicleCount))
 
   const data = await apiRequest(`/business/available-slots?${params}`)
   return asBusinessCollection(data).map(normalizeBusinessSlot)
@@ -582,7 +591,7 @@ export async function fetchFleetQueue(branchId) {
   } catch (err) {
     if (err instanceof ApiError && err.isForbidden) {
       return fetchBusinessBookings().then((bookings) =>
-        bookings.filter((b) => ['Pending', 'Confirmed', 'CheckedIn'].includes(String(b.status))),
+        bookings.filter((b) => ['Pending', 'CheckedIn'].includes(String(b.status))),
       )
     }
     throw err

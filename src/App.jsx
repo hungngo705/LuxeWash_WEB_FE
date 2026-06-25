@@ -30,7 +30,6 @@ import CustomersPage from './pages/CustomersPage'
 import DashboardPage from './pages/DashboardPage'
 import HistoryPage from './pages/HistoryPage'
 import LoginPage from './pages/LoginPage'
-import QueuePage from './pages/QueuePage'
 import StaffQueuePage from './pages/StaffQueuePage'
 import SettingsPage from './pages/SettingsPage'
 import StaffFleetApprovalsPage from './pages/StaffFleetApprovalsPage'
@@ -54,6 +53,7 @@ import BusinessImportHistoryPage from './pages/business/BusinessImportHistoryPag
 import BusinessBookingsPage from './pages/business/BusinessBookingsPage'
 import BusinessNewBookingPage from './pages/business/BusinessNewBookingPage'
 import BusinessBookingDetailPage from './pages/business/BusinessBookingDetailPage'
+import BusinessRescheduleBookingPage from './pages/business/BusinessRescheduleBookingPage'
 import BusinessWalkInPage from './pages/business/BusinessWalkInPage'
 import BusinessFleetQueuePage from './pages/business/BusinessFleetQueuePage'
 import BusinessHistoryPage from './pages/business/BusinessHistoryPage'
@@ -167,6 +167,10 @@ export default function App() {
             <Route path="/business/bookings" element={<BusinessBookingsPage />} />
             <Route path="/business/bookings/new" element={<BusinessNewBookingPage />} />
             <Route path="/business/bookings/:id" element={<BusinessBookingDetailPage />} />
+            <Route
+              path="/business/bookings/:id/reschedule"
+              element={<BusinessRescheduleBookingPage />}
+            />
             <Route path="/business/walk-in" element={<BusinessWalkInPage />} />
             <Route path="/business/queue" element={<BusinessFleetQueuePage />} />
             <Route path="/business/history" element={<BusinessHistoryPage />} />
