@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { fetchBusinessBookings, cancelBooking } from '../../api/business.api'
-import { formatVnd, formatDateTime } from '../../utils/format'
+import { formatDateTime } from '../../utils/format'
 
 function StatusBadge({ status }) {
   const map = {
-    Pending: { label: 'Chờ xác nhận', className: 'bg-yellow-100 text-yellow-800' },
-    Confirmed: { label: 'Đã xác nhận', className: 'bg-blue-100 text-blue-800' },
+    Pending: { label: 'Đã đặt lịch', className: 'bg-blue-100 text-blue-800' },
     CheckedIn: { label: 'Đã check-in', className: 'bg-purple-100 text-purple-800' },
     Processing: { label: 'Đang rửa', className: 'bg-orange-100 text-orange-800' },
     Completed: { label: 'Hoàn tất', className: 'bg-green-100 text-green-800' },
@@ -21,7 +20,6 @@ function StatusBadge({ status }) {
 }
 
 export default function BusinessBookingsPage() {
-  const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -56,8 +54,7 @@ export default function BusinessBookingsPage() {
 
   const filterOptions = [
     { value: 'All', label: 'Tất cả' },
-    { value: 'Pending', label: 'Chờ xác nhận' },
-    { value: 'Confirmed', label: 'Đã xác nhận' },
+    { value: 'Pending', label: 'Đã đặt lịch' },
     { value: 'CheckedIn', label: 'Đã check-in' },
     { value: 'Processing', label: 'Đang rửa' },
     { value: 'Completed', label: 'Hoàn tất' },
@@ -148,6 +145,14 @@ export default function BusinessBookingsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
+                        {booking.status === 'Pending' && (
+                          <Link
+                            to={`/business/bookings/${booking.bookingId || booking.id}/reschedule`}
+                            className="px-2 py-1 text-xs text-primary hover:underline"
+                          >
+                            Đổi lịch
+                          </Link>
+                        )}
                         <Link
                           to={`/business/bookings/${booking.bookingId || booking.id}`}
                           className="px-2 py-1 text-xs text-primary hover:underline"

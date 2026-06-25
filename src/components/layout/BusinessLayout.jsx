@@ -6,6 +6,7 @@ import BusinessSidebar from './BusinessSidebar'
 import BusinessTopBar from './BusinessTopBar'
 
 const PAGE_TITLES = {
+  '/business/bookings/:id/reschedule': 'Đổi lịch đặt',
   '/business/dashboard': 'Dashboard',
   '/business/vehicles': 'Quản lý xe',
   '/business/vehicles/import': 'Nhập danh sách xe',
