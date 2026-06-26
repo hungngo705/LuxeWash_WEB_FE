@@ -339,6 +339,9 @@ function CustomerInfoPanel({
   const canStart = booking.status === "Checked-in";
   const isProcessing = booking.status === "Processing";
 
+  const safeText = (v, fallback = "—") =>
+    v == null || v === "" ? fallback : v;
+
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="border-b border-outline-variant bg-surface-container-low p-4">
@@ -368,13 +371,13 @@ function CustomerInfoPanel({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-sora text-2xl font-semibold text-on-surface">
-              {booking.customerName}
+              {safeText(booking.customerName, "Khách lẻ")}
             </p>
-            <p className="mt-1 flex items-center gap-1 text-sm text-on-surface-variant">
+            <p className="mt-1 flex items-center gap-1 text-sm font-medium text-on-surface-variant">
               <span className="material-symbols-outlined text-[16px]">
                 call
               </span>
-              {booking.phoneMasked}
+              {safeText(booking.phoneMasked, "Chưa có SĐT")}
             </p>
           </div>
           <RankBadge rankName={booking.rankName} rankId={booking.rankId} />
@@ -382,40 +385,45 @@ function CustomerInfoPanel({
 
         <div className="flex items-center justify-between">
           <StatusBadge status={booking.status} />
-          <span className="text-xs text-on-surface-variant">
+          <span className="text-xs font-medium text-on-surface-variant">
             #{booking.bookingId}
           </span>
         </div>
 
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
           <div className="mb-2 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary-container">
+            <span className="material-symbols-outlined text-primary">
               directions_car
             </span>
-            <span className="font-sora text-2xl font-bold tracking-widest text-primary-container">
-              {booking.licensePlate}
+            <span className="font-sora text-2xl font-bold tracking-widest text-on-surface">
+              {safeText(booking.licensePlate, "—")}
             </span>
           </div>
-          <div className="space-y-1 text-sm text-on-surface-variant">
+          <div className="space-y-1 text-sm text-on-surface">
             <p>
               <span className="font-semibold text-on-surface">
-                {booking.serviceName}
+                {safeText(booking.serviceName, "Chưa rõ dịch vụ")}
               </span>
-              {booking.vehicleDisplayName !== "—" &&
+              {booking.vehicleDisplayName &&
+                booking.vehicleDisplayName !== "—" &&
                 ` · ${booking.vehicleDisplayName}`}
             </p>
-            <p>
+            <p className="text-on-surface-variant">
               <span className="material-symbols-outlined mr-1 align-middle text-[14px]">
                 schedule
               </span>
-              {booking.slotLabel} — {formatDateTime(booking.scheduledTime)}
+              {safeText(booking.slotLabel, "")}
+              {booking.slotLabel && booking.scheduledTime ? " — " : ""}
+              {booking.scheduledTime
+                ? formatDateTime(booking.scheduledTime)
+                : ""}
             </p>
             {booking.processingLaneName && (
-              <p>
+              <p className="text-on-surface-variant">
                 <span className="material-symbols-outlined mr-1 align-middle text-[14px]">
                   garage
                 </span>
-                Làn: {booking.processingLaneName}
+                Làn: {safeText(booking.processingLaneName)}
               </p>
             )}
           </div>
@@ -427,7 +435,9 @@ function CustomerInfoPanel({
               Thanh toán
             </p>
             <p className="font-sora text-base font-semibold text-on-surface">
-              {formatVnd(booking.finalAmount)}
+              {booking.finalAmount != null
+                ? formatVnd(booking.finalAmount)
+                : "—"}
             </p>
           </div>
           <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
@@ -435,7 +445,10 @@ function CustomerInfoPanel({
               Hình thức
             </p>
             <p className="text-sm font-medium text-on-surface">
-              {formatPaymentMethodLabel(booking.paymentMethod)}
+              {safeText(
+                formatPaymentMethodLabel(booking.paymentMethod),
+                "Chưa chọn",
+              )}
             </p>
           </div>
         </div>
@@ -586,26 +599,41 @@ export default function DashboardPage() {
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
-  const loadStaffTasks = useCallback(async () => {
+  const loadStaffTasks = useCallback(async ({ signal } = {}) => {
     try {
-      const data = await fetchStaffTasks();
-      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data));
+      const data = await fetchStaffTasks({ signal })
+      if (signal?.aborted) return
+      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
     } catch (err) {
-      console.warn("Failed to load staff tasks:", err);
+      if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
+      console.warn('Failed to load staff tasks:', err)
     } finally {
-      setInitialLoading(false);
+      if (!signal?.aborted) setInitialLoading(false)
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
-    loadStaffTasks();
-    fetchStaffLaneAssignment()
-      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
-      .catch(() => setLaneLabel("Chưa phân công làn"));
+    const controller = new AbortController()
+    loadStaffTasks({ signal: controller.signal })
+    fetchStaffLaneAssignment({ signal: controller.signal })
+      .then((a) => {
+        if (!controller.signal.aborted) {
+          setLaneLabel(formatStaffStationLabel(a))
+        }
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
+        if (!controller.signal.aborted) setLaneLabel('Chưa phân công làn')
+      })
 
-    const interval = setInterval(loadStaffTasks, 30_000);
-    return () => clearInterval(interval);
-  }, [loadStaffTasks]);
+    const interval = setInterval(() => {
+      loadStaffTasks({ signal: controller.signal })
+    }, 30_000)
+    return () => {
+      controller.abort()
+      clearInterval(interval)
+    }
+  }, [loadStaffTasks])
 
   const checkedInQueue = useMemo(
     () => staffTasks.filter((b) => b.status === "Checked-in"),
@@ -638,7 +666,7 @@ export default function DashboardPage() {
     if (options.message !== undefined) setLookupError(options.message);
 
     try {
-      const enriched = await enrichStaffBooking(booking);
+      const enriched = await enrichStaffBooking(booking, { allowStandaloneFetch: true });
       if (
         enriched.status === "Processing" ||
         enriched.status === "Checked-in"
@@ -698,7 +726,7 @@ export default function DashboardPage() {
       await updateStaffBookingStatus(selectedBooking.bookingId, "Processing");
       let processingBooking = { ...selectedBooking, status: "Processing" };
       try {
-        processingBooking = await enrichStaffBooking(processingBooking);
+        processingBooking = await enrichStaffBooking(processingBooking, { allowStandaloneFetch: true });
       } catch {
         // keep local processing booking
       }
@@ -731,7 +759,7 @@ export default function DashboardPage() {
         setSelectedBooking(updated);
       } else {
         try {
-          const enriched = await enrichStaffBooking(selectedBooking);
+          const enriched = await enrichStaffBooking(selectedBooking, { allowStandaloneFetch: true });
           setSelectedBooking(enriched);
           setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
         } catch {

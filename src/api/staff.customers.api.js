@@ -18,7 +18,7 @@ const userByPlateCache = new Map()
  * @param {string} licensePlate
  * @returns {Promise<{ customer: ReturnType<typeof mapUserDetailToCustomerView>, vehicle: Record<string, unknown> } | null>}
  */
-export async function findUserByLicensePlate(licensePlate) {
+export async function findUserByLicensePlate(licensePlate, options = {}) {
   const key = normalizePlateKey(licensePlate)
   if (!key) return null
   if (userByPlateCache.has(key)) return userByPlateCache.get(key)
@@ -29,7 +29,7 @@ export async function findUserByLicensePlate(licensePlate) {
   while (page <= 8) {
     let data
     try {
-      data = await fetchUsers({ page, pageSize, status: 'Active' })
+      data = await fetchUsers({ page, pageSize, status: 'Active' }, options)
     } catch {
       break
     }
@@ -39,7 +39,7 @@ export async function findUserByLicensePlate(licensePlate) {
 
     for (const item of items) {
       try {
-        const detail = await fetchUserById(item.userId)
+        const detail = await fetchUserById(item.userId, options)
         const vehicles = Array.isArray(detail.vehicles) ? detail.vehicles : []
         const vehicle = vehicles.find((v) => normalizePlateKey(v.licensePlate) === key)
         if (vehicle) {

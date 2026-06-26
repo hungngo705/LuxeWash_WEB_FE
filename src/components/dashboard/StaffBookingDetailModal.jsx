@@ -23,18 +23,23 @@ export default function StaffBookingDetailModal({ booking, onClose }) {
 
   useEffect(() => {
     if (!booking) return
+    const controller = new AbortController()
     let cancelled = false
     setDisplayBooking(booking)
     setLoadingDetail(true)
-    enrichStaffBooking(booking)
+    enrichStaffBooking(booking, { allowStandaloneFetch: true, signal: controller.signal })
       .then((enriched) => {
         if (!cancelled) setDisplayBooking(enriched)
+      })
+      .catch(() => {
+        // ignore abort / optional fetch failures
       })
       .finally(() => {
         if (!cancelled) setLoadingDetail(false)
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [booking])
 
@@ -44,13 +49,15 @@ export default function StaffBookingDetailModal({ booking, onClose }) {
       setCustomerExtra(null)
       return
     }
+    const controller = new AbortController()
     let cancelled = false
     setLoadingExtra(true)
-    fetchUserById(userId)
+    fetchUserById(userId, { signal: controller.signal })
       .then((data) => {
         if (!cancelled) setCustomerExtra(mapUserDetailToCustomerView(data))
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
         if (!cancelled) setCustomerExtra(null)
       })
       .finally(() => {
@@ -58,6 +65,7 @@ export default function StaffBookingDetailModal({ booking, onClose }) {
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
   }, [displayBooking?.userId])
 

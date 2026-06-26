@@ -267,19 +267,21 @@ export default function StaffQueuePage() {
             <tbody className="divide-y divide-outline-variant/60">
               {displayed.map((booking) => (
                 <tr key={booking.bookingId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 font-medium text-on-surface">
+                  <td className="px-4 py-3 font-mono text-base font-bold text-primary">
                     {booking.licensePlate}
                   </td>
-                  <td className="px-4 py-3 text-on-surface">
+                  <td className="px-4 py-3">
                     <div className="flex flex-col">
-                      <span>{booking.customerName}</span>
+                      <span className="font-medium text-on-surface">{booking.customerName}</span>
                       {booking.rankName && booking.rankName !== '—' && (
-                        <span className="text-xs text-on-surface-variant">{booking.rankName}</span>
+                        <span className="text-xs font-medium text-on-surface-variant">
+                          {booking.rankName}
+                        </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-on-surface-variant">{booking.serviceName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">
+                  <td className="px-4 py-3 text-on-surface">{booking.serviceName}</td>
+                  <td className="px-4 py-3 font-medium text-on-surface">
                     {booking.slotLabel || booking.scheduledTime
                       ? booking.slotLabel ||
                         (booking.scheduledTime
@@ -305,7 +307,7 @@ export default function StaffQueuePage() {
                     </span>
                   </td>
                   {tab === 'active' && (
-                    <td className="px-4 py-3 text-on-surface">
+                    <td className="px-4 py-3 font-semibold text-on-surface">
                       {booking.finalAmount
                         ? booking.finalAmount.toLocaleString('vi-VN') + ' đ'
                         : '—'}

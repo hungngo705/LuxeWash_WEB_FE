@@ -181,10 +181,11 @@ export function normalizeAdminBooking(item) {
  * GET /api/v1/admin/bookings?targetDate= — Swagger chỉ có targetDate.
  * Lọc theo chi nhánh thực hiện ở FE qua {@link filterBookingsByBranch}.
  * @param {string} targetDate ISO date-time
+ * @param {{ signal?: AbortSignal }} [options]
  */
-export function fetchBookingsByDate(targetDate) {
+export function fetchBookingsByDate(targetDate, options = {}) {
   const params = new URLSearchParams({ targetDate })
-  return apiRequest(`/admin/bookings?${params}`)
+  return apiRequest(`/admin/bookings?${params}`, options)
 }
 
 /** @param {AdminBooking[]} bookings @param {number | string} branchId */

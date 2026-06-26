@@ -73,6 +73,14 @@ export async function apiRequest(path, options = {}) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
+  // Chain caller's signal (so React effect cleanup can cancel in-flight requests).
+  const externalSignal = fetchOptions.signal
+  const onExternalAbort = () => controller.abort()
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort()
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
+  }
+
   let response
   try {
     response = await fetch(buildUrl(path), {
@@ -81,7 +89,13 @@ export async function apiRequest(path, options = {}) {
       signal: controller.signal,
     })
   } catch (err) {
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
     if (err instanceof Error && err.name === 'AbortError') {
+      if (externalSignal?.aborted) {
+        const abortErr = new Error('Aborted')
+        abortErr.name = 'AbortError'
+        throw abortErr
+      }
       throw new ApiError('Request timed out. Backend may be waking up — try again.', 408)
     }
     throw new ApiError(
@@ -90,6 +104,7 @@ export async function apiRequest(path, options = {}) {
     )
   } finally {
     clearTimeout(timeoutId)
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
   }
 
   const body = await parseResponseBody(response)

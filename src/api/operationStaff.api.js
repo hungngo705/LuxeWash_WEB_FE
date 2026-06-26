@@ -173,23 +173,26 @@ function needsCustomerLookup(task) {
   return !task.customerName || task.customerName === '—' || !task.userId
 }
 
-async function attachPaymentFromTransactions(booking) {
+async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
   if (booking.paymentMethod && booking.paymentMethod !== '—') return booking
 
-  try {
-    const txs = await fetchTransactions()
-    const list = (Array.isArray(txs) ? txs : []).map(normalizeTransaction)
-    const tx = list.find((t) => Number(t.bookingId) === Number(booking.bookingId))
-    if (tx) {
-      return {
-        ...booking,
-        paymentMethod: tx.paymentMethod,
-        paymentStatus: tx.status,
-        customerName: booking.customerName === '—' ? tx.customerName : booking.customerName,
-      }
+  let tx = txIndex.get(Number(booking.bookingId))
+  if (!tx && txIndex.size === 0) {
+    try {
+      const txs = await fetchTransactions(fetchOpts)
+      const list = (Array.isArray(txs) ? txs : []).map(normalizeTransaction)
+      tx = list.find((t) => Number(t.bookingId) === Number(booking.bookingId))
+    } catch {
+      // optional
     }
-  } catch {
-    // optional
+  }
+  if (tx) {
+    return {
+      ...booking,
+      paymentMethod: tx.paymentMethod,
+      paymentStatus: tx.status,
+      customerName: booking.customerName === '—' ? tx.customerName : booking.customerName,
+    }
   }
 
   if (booking.status === 'Pending') {
@@ -222,29 +225,58 @@ function attachDetailsFromSummary(task) {
  * Load full booking detail for Staff UI.
  * StaffBookings summary DTO lacks customer — resolved via /admin/users vehicle garage.
  * @param {StaffTask} booking
+ * @param {{
+ *   bookingsByDate?: ReturnType<typeof asBookingList>,
+ *   txIndex?: Map<number, ReturnType<typeof normalizeTransaction>>,
+ *   userByPlate?: Map<string, Awaited<ReturnType<typeof findUserByLicensePlate>>>,
+ *   signal?: AbortSignal,
+ * }} [context] optional shared batch-loaded data (built by enrichStaffTasks)
  * @returns {Promise<StaffTask>}
  */
-export async function enrichStaffBooking(booking) {
+export async function enrichStaffBooking(booking, context = {}) {
   if (!booking?.bookingId) return booking
 
   let merged = normalizeStaffTask(booking)
 
-  try {
-    const dateKey =
-      merged.scheduledTime?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
-    const data = await fetchBookingsByDate(toApiTargetDate(dateKey))
-    const match = asBookingList(data).find(
+  const { bookingsByDate, txIndex, userByPlate, signal } = context
+  const fetchOpts = signal ? { signal } : {}
+
+  if (bookingsByDate) {
+    const match = bookingsByDate.find(
       (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
     )
     if (match) {
       merged = normalizeStaffTask({ ...match, bookingId: booking.bookingId })
     }
-  } catch {
-    // same shape as by-license-plate — continue
+  } else if (signal !== undefined || context.allowStandaloneFetch) {
+    // Fallback: when called outside the batched enrichStaffTasks context.
+    try {
+      const dateKey =
+        merged.scheduledTime?.slice(0, 10) ??
+        new Date().toISOString().slice(0, 10)
+      const data = await fetchBookingsByDate(toApiTargetDate(dateKey), fetchOpts)
+      const match = asBookingList(data).find(
+        (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
+      )
+      if (match) {
+        merged = normalizeStaffTask({ ...match, bookingId: booking.bookingId })
+      }
+    } catch {
+      // continue
+    }
   }
 
-  if (needsCustomerLookup(merged) && merged.licensePlate && merged.licensePlate !== '—') {
-    const lookup = await findUserByLicensePlate(merged.licensePlate)
+  if (
+    needsCustomerLookup(merged) &&
+    merged.licensePlate &&
+    merged.licensePlate !== '—'
+  ) {
+    let lookup = userByPlate?.get(merged.licensePlate)
+    if (!lookup && userByPlate === undefined) {
+      lookup = await findUserByLicensePlate(merged.licensePlate, fetchOpts).catch(
+        () => null,
+      )
+    }
     if (lookup) {
       const { customer, vehicle } = lookup
       merged = normalizeStaffTask({
@@ -263,19 +295,93 @@ export async function enrichStaffBooking(booking) {
     }
   }
 
-  merged = await attachPaymentFromTransactions(merged)
+  merged = await attachPaymentFromTransactions(merged, txIndex ?? new Map(), fetchOpts)
   merged = attachDetailsFromSummary(merged)
 
   return merged
 }
 
-/** Enrich a list of staff tasks/bookings in parallel. */
-export async function enrichStaffTasks(tasks) {
+/**
+ * Enrich a list of staff tasks/bookings.
+ * Batches shared lookups: 1x fetchBookingsByDate (if not pre-loaded) + 1x fetchTransactions + deduped plate lookups
+ * instead of 3N sequential calls per task.
+ * @param {StaffTask[]} tasks
+ * @param {{ signal?: AbortSignal, bookingsByDate?: unknown[] }} [options]
+ */
+export async function enrichStaffTasks(tasks, options = {}) {
   const list = Array.isArray(tasks) ? tasks : []
+  if (!list.length) return []
+
+  const { signal, bookingsByDate: preloadedBookings } = options
+  const fetchOpts = signal ? { signal } : {}
+
+  const dates = new Set()
+  const platesToLookup = new Set()
+
+  for (const t of list) {
+    const dateKey =
+      t.scheduledTime?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+    dates.add(dateKey)
+
+    const normalized = normalizeStaffTask(t)
+    if (
+      needsCustomerLookup(normalized) &&
+      normalized.licensePlate &&
+      normalized.licensePlate !== '—'
+    ) {
+      platesToLookup.add(normalized.licensePlate)
+    }
+  }
+
+  const bookingsByDate = preloadedBookings
+    ? asBookingList(preloadedBookings)
+    : await (async () => {
+        if (dates.size !== 1) return null
+        const [dateKey] = dates
+        try {
+          const data = await fetchBookingsByDate(toApiTargetDate(dateKey), fetchOpts)
+          return asBookingList(data)
+        } catch {
+          return null
+        }
+      })()
+
+  const txIndex = await (async () => {
+    try {
+      const txs = await fetchTransactions(fetchOpts)
+      const list = Array.isArray(txs) ? txs : []
+      const map = new Map()
+      for (const raw of list) {
+        const tx = normalizeTransaction(raw)
+        if (tx.bookingId != null) map.set(Number(tx.bookingId), tx)
+      }
+      return map
+    } catch {
+      return new Map()
+    }
+  })()
+
+  const userByPlate = await (async () => {
+    if (!platesToLookup.size) return new Map()
+    const results = await Promise.all(
+      [...platesToLookup].map(async (plate) => {
+        try {
+          const lookup = await findUserByLicensePlate(plate, fetchOpts)
+          return [plate, lookup]
+        } catch {
+          return [plate, null]
+        }
+      }),
+    )
+    return new Map(results.filter(([, v]) => v != null))
+  })()
+
+  const context = { bookingsByDate, txIndex, userByPlate }
+
   return Promise.all(
     list.map(async (task) => {
       try {
-        return await enrichStaffBooking(task)
+        return await enrichStaffBooking(task, context)
       } catch {
         return normalizeStaffTask(task)
       }
@@ -288,12 +394,16 @@ const STAFF_HISTORY_STATUSES = new Set(['Completed', 'Cancelled', 'No-show'])
 /**
  * Staff service history — GET /admin/bookings?targetDate= (Swagger: StaffBookings).
  * @param {string} targetDate ISO date-time from {@link toApiTargetDate}
- * @param {{ laneId?: number | null }} [options]
+ * @param {{ laneId?: number | null, signal?: AbortSignal }} [options]
  */
 export async function fetchStaffServiceHistory(targetDate, options = {}) {
-  const { laneId } = options
-  const data = await fetchBookingsByDate(targetDate)
-  const filtered = asBookingList(data)
+  const { laneId, signal } = options
+  const fetchOpts = signal ? { signal } : {}
+
+  const data = await fetchBookingsByDate(targetDate, fetchOpts)
+  const allBookings = asBookingList(data)
+
+  const filtered = allBookings
     .map((item) => normalizeStaffTask(item))
     .filter((b) => STAFF_HISTORY_STATUSES.has(b.status))
     .filter((b) => {
@@ -302,7 +412,7 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
       return Number(b.processingLaneId) === Number(laneId)
     })
 
-  return enrichStaffTasks(filtered)
+  return enrichStaffTasks(filtered, { signal, bookingsByDate: allBookings })
 }
 
 /**
@@ -484,8 +594,8 @@ export function formatStaffStationLabel(assignment) {
  * GET /api/v1/operation-staff/lane-assignment
  * @returns {Promise<StaffLaneAssignment>}
  */
-export function fetchStaffLaneAssignment() {
-  return apiRequest('/operation-staff/lane-assignment').then(normalizeStaffLaneAssignment)
+export function fetchStaffLaneAssignment(options = {}) {
+  return apiRequest('/operation-staff/lane-assignment', options).then(normalizeStaffLaneAssignment)
 }
 
 /**
@@ -514,8 +624,8 @@ export function consumeStaffVoucher(payload) {
  * Returns bookings assigned to the logged-in Staff member's lane (CheckedIn or Processing).
  * @returns {Promise<StaffTask[]>}
  */
-export function fetchStaffTasks() {
-  return apiRequest('/operation-staff/tasks').then((data) => {
+export function fetchStaffTasks(options = {}) {
+  return apiRequest('/operation-staff/tasks', options).then((data) => {
     const list = Array.isArray(data) ? data : []
     return list.map(normalizeStaffTask)
   })
