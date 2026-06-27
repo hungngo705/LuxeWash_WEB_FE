@@ -16,15 +16,15 @@ export default function BusinessSidebar() {
     <nav className="bg-surface-container-lowest fixed top-0 left-0 z-50 h-screen w-64 border-r border-outline-variant shadow-sm">
       <div className="flex h-full flex-col py-6">
         <div className="mb-8 px-4">
-          <h1 className="font-sora text-[28px] leading-9 font-semibold tracking-tight text-primary">
+          <h1 className="font-sora text-[32px] leading-10 font-semibold tracking-tight text-primary">
             LuxeWash Pro
           </h1>
-          <p className="mt-1 text-xs font-semibold tracking-wider text-on-surface-variant">
+          <p className="mt-1 text-xs font-semibold tracking-wider text-tertiary">
             Business Portal
           </p>
         </div>
 
-        <div className="flex flex-grow flex-col gap-1">
+        <div className="flex flex-grow flex-col gap-1 overflow-y-auto">
           {navItems.map(({ to, label, icon, end }) => (
             <NavLink
               key={to}

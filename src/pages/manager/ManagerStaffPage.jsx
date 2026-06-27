@@ -66,14 +66,14 @@ export default function ManagerStaffPage() {
   const loadAssignments = useCallback(async () => {
     setAssignmentsLoading(true)
     try {
-      const data = await fetchAllLaneStaffAssignments()
+      const data = await fetchAllLaneStaffAssignments({ date: viewDate })
       setLaneAssignments(data)
     } catch {
       setLaneAssignments([])
     } finally {
       setAssignmentsLoading(false)
     }
-  }, [])
+  }, [viewDate])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -81,7 +81,7 @@ export default function ManagerStaffPage() {
     try {
       const [staffData, lanesData] = await Promise.allSettled([
         fetchManagerStaffs(),
-        fetchManagerLanes(),
+        fetchManagerLanes({ date: viewDate }),
       ])
       if (staffData.status === 'fulfilled') {
         setStaff(Array.isArray(staffData.value) ? staffData.value : [])
@@ -97,22 +97,16 @@ export default function ManagerStaffPage() {
     } finally {
       setLoading(false)
     }
-  }, [loadAssignments])
+  }, [loadAssignments, viewDate])
 
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  useEffect(() => {
-    if (viewDate === todayDateValue()) {
-      loadAssignments()
-    }
-  }, [viewDate, loadAssignments])
-
   const handleAssign = async () => {
     if (!assignTarget || !selectedLaneId || !selectedDate) return
     const laneId = Number(selectedLaneId)
-    const isViewingToday = selectedDate === viewDate
+    const isViewingSelectedDate = selectedDate === viewDate
 
     setAssigning(true)
     try {
@@ -122,21 +116,19 @@ export default function ManagerStaffPage() {
         assignedDate: selectedDate,
       })
 
-      if (isViewingToday) {
+      if (isViewingSelectedDate) {
         setLaneAssignments((prev) => upsertLaneAssignment(prev, laneId, assignTarget))
       }
 
       showToast(
-        isViewingToday
+        isViewingSelectedDate
           ? `Đã gán ${assignTarget.fullName} vào làn.`
-          : `Đã gán ${assignTarget.fullName} cho ngày ${selectedDate}. Bảng trên chỉ hiển thị phân công ngày ${viewDate}.`,
+          : `Đã gán ${assignTarget.fullName} cho ngày ${selectedDate}.`,
       )
       setAssignTarget(null)
       setSelectedLaneId('')
 
-      if (isViewingToday) {
-        await loadAssignments()
-      }
+      if (isViewingSelectedDate) await loadAssignments()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Lỗi khi phân công.')
     } finally {
@@ -148,7 +140,9 @@ export default function ManagerStaffPage() {
     if (!unassignTarget) return
     setUnassigning(true)
     try {
-      await unassignStaffFromLane(unassignTarget.laneId, unassignTarget.staff.userId)
+      await unassignStaffFromLane(unassignTarget.laneId, unassignTarget.staff.userId, {
+        date: viewDate,
+      })
       showToast(`Đã gỡ ${unassignTarget.staff.fullName} khỏi ${unassignTarget.laneName}.`)
       setUnassignTarget(null)
       await loadAssignments()
@@ -179,7 +173,7 @@ export default function ManagerStaffPage() {
               Phân công theo làn — {viewDate}
             </h2>
             <p className="text-sm text-on-surface-variant">
-              API chỉ trả về phân công trong ngày hôm nay (theo máy chủ). Chọn đúng ngày hôm nay khi phân công để thấy trên bảng.
+              Chọn ngày để xem, gán hoặc gỡ phân công làn cho nhân viên.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -199,13 +193,6 @@ export default function ManagerStaffPage() {
             </button>
           </div>
         </div>
-
-        {viewDate !== todayDateValue() && (
-          <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-            API hiện chỉ hỗ trợ xem phân công của <strong>hôm nay</strong> ({todayDateValue()}). Chọn lại ngày hôm nay
-            để xem bảng phân công.
-          </div>
-        )}
 
         {assignmentsLoading ? (
           <div className="flex justify-center py-10">
@@ -231,9 +218,9 @@ export default function ManagerStaffPage() {
                   <p className="py-4 text-center text-sm text-on-surface-variant">Chưa phân công nhân viên</p>
                 ) : (
                   <ul className="space-y-2">
-                    {assigned.map((s) => (
+                    {assigned.map((s, index) => (
                       <li
-                        key={s.userId}
+                        key={`${lane.laneId}-${viewDate}-${s.userId}-${index}`}
                         className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2"
                       >
                         <div>

@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fetchBusinessProfile } from '../../api/business.api'
+import { useAuth } from '../../context/AuthContext'
 
 export default function BusinessSettingsPage() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   useEffect(() => {
     fetchBusinessProfile()
@@ -12,6 +17,11 @@ export default function BusinessSettingsPage() {
       .catch(() => setError('Không thể tải thông tin doanh nghiệp.'))
       .finally(() => setLoading(false))
   }, [])
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login', { replace: true })
+  }
 
   if (loading) {
     return (
@@ -105,6 +115,52 @@ export default function BusinessSettingsPage() {
           )}
         </div>
       </div>
+
+      <section className="glass-panel soft-shadow overflow-hidden rounded-xl border border-error-container/40 bg-surface-container-lowest">
+        <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
+          <h2 className="flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
+            <span className="material-symbols-outlined text-error">logout</span>
+            Phiên làm việc
+          </h2>
+        </div>
+        <div className="p-6">
+          <p className="mb-4 text-sm text-on-surface-variant">
+            Đăng xuất để kết thúc phiên Business trên thiết bị này.
+          </p>
+          {!showConfirmDialog ? (
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-error/30 bg-error-container/20 px-4 py-3 text-sm font-semibold tracking-wide text-error uppercase transition-colors hover:bg-error-container/40 sm:w-auto"
+              onClick={() => setShowConfirmDialog(true)}
+            >
+              <span className="material-symbols-outlined text-[20px]">logout</span>
+              Đăng xuất
+            </button>
+          ) : (
+            <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
+              <p className="mb-4 text-sm font-medium text-on-surface">
+                Bạn chắc chắn muốn đăng xuất?
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className="rounded-lg bg-error px-4 py-2.5 text-sm font-semibold text-on-error transition-colors hover:bg-error/90"
+                  onClick={handleLogout}
+                >
+                  Xác nhận đăng xuất
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-variant"
+                  onClick={() => setShowConfirmDialog(false)}
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   )
 }

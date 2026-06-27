@@ -126,6 +126,31 @@ function RankBadge({ rankName, rankId }) {
   );
 }
 
+function PaymentStatusBadge({ status }) {
+  const raw = String(status ?? "").trim();
+  const normalized = raw === "—" || raw === "" ? "Chưa thanh toán" : raw;
+  const map = {
+    "Đã thanh toán": "border-primary/30 bg-primary/15 text-primary",
+    Paid: "border-primary/30 bg-primary/15 text-primary",
+    Success: "border-primary/30 bg-primary/15 text-primary",
+    "Chưa thanh toán": "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+    Pending: "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+    Unpaid: "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+    Failed: "border-error-container/40 bg-error-container/20 text-error",
+    Refunded: "border-outline-variant bg-surface-variant text-on-surface-variant",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+        map[normalized] ?? "border-outline-variant bg-surface-variant text-on-surface-variant"
+      }`}
+    >
+      <span className="material-symbols-outlined text-[14px]">payments</span>
+      {normalized}
+    </span>
+  );
+}
+
 function Toast({ message, type, onClose }) {
   useEffect(() => {
     const t = setTimeout(onClose, 3500);
@@ -439,6 +464,9 @@ function CustomerInfoPanel({
                 ? formatVnd(booking.finalAmount)
                 : "—"}
             </p>
+            <div className="mt-2">
+              <PaymentStatusBadge status={booking.paymentStatus} />
+            </div>
           </div>
           <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
             <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">

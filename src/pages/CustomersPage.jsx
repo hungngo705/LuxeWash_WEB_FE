@@ -11,7 +11,10 @@ import CustomerDetailPanel from '../components/customers/CustomerDetailPanel'
 import CustomerList from '../components/customers/CustomerList'
 import CustomerSearchBar from '../components/customers/CustomerSearchBar'
 
-export default function CustomersPage() {
+export default function CustomersPage({
+  title = 'Tra cứu khách hàng',
+  description = 'GET /admin/users — chỉ khách hàng (Customer)',
+}) {
   const [search, setSearch] = useState('')
   const [customers, setCustomers] = useState([])
   const [selectedUserId, setSelectedUserId] = useState(null)
@@ -83,9 +86,9 @@ export default function CustomersPage() {
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="font-sora text-2xl font-semibold text-on-surface">Tra cứu khách hàng</h1>
+        <h1 className="font-sora text-2xl font-semibold text-on-surface">{title}</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          GET /admin/users — chỉ khách hàng (Customer)
+          {description}
         </p>
       </div>
 

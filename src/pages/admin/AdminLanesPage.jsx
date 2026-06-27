@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
+  createBusinessLane,
   createLane,
   fetchBranches,
   fetchLanes,
@@ -11,7 +12,7 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const emptyForm = { name: '', branchId: '', isActive: true }
+const emptyForm = { name: '', branchId: '', isActive: true, isBusinessLane: false }
 
 export default function AdminLanesPage() {
   const [lanes, setLanes] = useState([])
@@ -65,6 +66,7 @@ export default function AdminLanesPage() {
       name: lane.name,
       branchId: String(lane.branchId),
       isActive: lane.isActive !== false,
+      isBusinessLane: lane.isBusinessLane === true,
     })
     setModalOpen(true)
   }
@@ -81,6 +83,9 @@ export default function AdminLanesPage() {
       if (editingId) {
         await updateLane(editingId, { ...payload, isActive: form.isActive })
         showToast('Đã cập nhật làn rửa')
+      } else if (form.isBusinessLane) {
+        await createBusinessLane(payload)
+        showToast('Đã thêm làn doanh nghiệp')
       } else {
         await createLane(payload)
         showToast('Đã thêm làn rửa')
@@ -130,12 +135,13 @@ export default function AdminLanesPage() {
         <EmptyState icon="garage" title="Chưa có làn rửa" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[720px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Tên làn</th>
                 <th className="px-4 py-3">Chi nhánh</th>
+                <th className="px-4 py-3">Loại làn</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
@@ -147,6 +153,15 @@ export default function AdminLanesPage() {
                   <td className="px-4 py-3 font-medium text-on-surface">{lane.name}</td>
                   <td className="px-4 py-3 text-on-surface-variant">
                     {lane.branchName ?? branchName(lane.branchId)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {lane.isBusinessLane ? (
+                      <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary-container/40 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-on-secondary-container uppercase">
+                        Doanh nghiệp
+                      </span>
+                    ) : (
+                      <span className="text-on-surface-variant">Tiêu dùng</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={lane.isActive !== false ? 'Active' : 'Inactive'} />
@@ -203,6 +218,23 @@ export default function AdminLanesPage() {
               ))}
             </select>
           </label>
+          {!editingId && (
+            <label className="flex items-start gap-2 text-sm text-on-surface">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={form.isBusinessLane}
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, isBusinessLane: e.target.checked }))}
+              />
+              <span>
+                <span className="font-medium">Làn doanh nghiệp (phục vụ fleet)</span>
+                <span className="block text-xs text-on-surface-variant">
+                  Tạo qua API riêng — làn này chỉ dùng cho đặt lịch của doanh nghiệp.
+                </span>
+              </span>
+            </label>
+          )}
           {editingId && (
             <label className="flex items-center gap-2 text-sm text-on-surface">
               <input

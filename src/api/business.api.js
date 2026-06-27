@@ -236,6 +236,21 @@ export function normalizeBusinessBookingDetail(item) {
   const total = finalAmount ?? originalPrice ?? 0
   const rawServices = Array.isArray(record.services) ? record.services : []
 
+  const laneId =
+    record.laneId != null
+      ? Number(record.laneId)
+      : record.lane?.id != null
+        ? Number(record.lane.id)
+        : null
+  const laneName =
+    record.laneName != null && String(record.laneName).trim()
+      ? String(record.laneName)
+      : record.lane?.name != null
+        ? String(record.lane.name)
+        : record.processingLaneName != null
+          ? String(record.processingLaneName)
+          : ''
+
   return {
     ...record,
     bookingId: Number(record.bookingId ?? record.id),
@@ -249,6 +264,12 @@ export function normalizeBusinessBookingDetail(item) {
         record.fleetVehicle?.vehicleTypeName ??
         '',
     ),
+    vehicleTypeId:
+      record.vehicleTypeId != null
+        ? Number(record.vehicleTypeId)
+        : record.fleetVehicle?.vehicleTypeId != null
+          ? Number(record.fleetVehicle.vehicleTypeId)
+          : null,
     branchId: record.branchId != null ? Number(record.branchId) : null,
     branchName:
       record.branchName != null && String(record.branchName).trim()
@@ -256,8 +277,16 @@ export function normalizeBusinessBookingDetail(item) {
         : record.branch?.name != null && String(record.branch.name).trim()
           ? String(/** @type {{ name?: string }} */ (record.branch).name)
           : '',
+    laneId,
+    laneName,
+    isBusinessLane: record.isBusinessLane === true || record.IsBusinessLane === true,
     scheduledTime: record.scheduledTime ?? record.targetDate ?? record.createdAt,
+    estimatedStart: record.estimatedStart ?? null,
+    estimatedEnd: record.estimatedEnd ?? null,
+    oldScheduledTime: record.oldScheduledTime ?? null,
+    newScheduledTime: record.newScheduledTime ?? null,
     status: String(record.status ?? ''),
+    paymentStatus: String(record.paymentStatus ?? 'Unpaid'),
     originalPrice,
     finalAmount,
     totalAmount: total,

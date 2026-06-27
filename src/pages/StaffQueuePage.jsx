@@ -4,10 +4,39 @@ import {
   enrichStaffTasks,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
+  formatPaymentMethodLabel,
   formatStaffStationLabel,
   staffCheckinBooking,
   updateStaffBookingStatus,
 } from '../api'
+
+function PaymentStatusBadge({ status }) {
+  const raw = String(status ?? '').trim()
+  const normalized =
+    raw === '—' || raw === '' ? 'Chưa thanh toán' : raw
+  const map = {
+    'Đã thanh toán': { label: 'Đã thanh toán', className: 'bg-primary/15 text-primary' },
+    Paid: { label: 'Đã thanh toán', className: 'bg-primary/15 text-primary' },
+    Success: { label: 'Đã thanh toán', className: 'bg-primary/15 text-primary' },
+    'Chưa thanh toán': { label: 'Chưa thanh toán', className: 'bg-tertiary-container/15 text-tertiary-container' },
+    Pending: { label: 'Chưa thanh toán', className: 'bg-tertiary-container/15 text-tertiary-container' },
+    Unpaid: { label: 'Chưa thanh toán', className: 'bg-tertiary-container/15 text-tertiary-container' },
+    Failed: { label: 'Thất bại', className: 'bg-error-container/30 text-error' },
+    Refunded: { label: 'Đã hoàn tiền', className: 'bg-surface-variant text-on-surface-variant' },
+  }
+  const style = map[normalized] ?? {
+    label: normalized,
+    className: 'bg-surface-variant text-on-surface-variant',
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${style.className}`}
+    >
+      <span className="material-symbols-outlined text-[12px]">payments</span>
+      {style.label}
+    </span>
+  )
+}
 
 export default function StaffQueuePage() {
   const [allBookings, setAllBookings] = useState([])
@@ -252,7 +281,7 @@ export default function StaffQueuePage() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1000px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">Biển số</th>
@@ -260,6 +289,7 @@ export default function StaffQueuePage() {
                 <th className="px-4 py-3">Dịch vụ</th>
                 <th className="px-4 py-3">Giờ hẹn</th>
                 <th className="px-4 py-3">Trạng thái</th>
+                <th className="px-4 py-3">Thanh toán</th>
                 {tab === 'active' && <th className="px-4 py-3">Giá tiền</th>}
                 <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
@@ -305,6 +335,12 @@ export default function StaffQueuePage() {
                       <span className="h-1.5 w-1.5 rounded-full bg-current" />
                       {booking.status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <PaymentStatusBadge status={booking.paymentStatus} />
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      {formatPaymentMethodLabel(booking.paymentMethod)}
+                    </p>
                   </td>
                   {tab === 'active' && (
                     <td className="px-4 py-3 font-semibold text-on-surface">

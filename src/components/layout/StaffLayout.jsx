@@ -7,10 +7,10 @@ import StaffTopBar from './StaffTopBar'
 
 const PAGE_TITLES = {
   '/dashboard': 'LPR System Control',
+  '/bookings': 'Booking trong ngày',
   '/queue': 'Queue Management',
   '/history': 'Service History',
   '/customers': 'Customer Lookup',
-  '/fleet-approvals': 'Duyệt xe doanh nghiệp',
   '/shifts': 'Ca làm của tôi',
   '/settings': 'Settings',
 }

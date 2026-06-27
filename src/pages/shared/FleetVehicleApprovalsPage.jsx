@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api'
 import {
-  approveFleetVehicle,
-  fetchStaffPendingFleetVehicles,
-  rejectFleetVehicle,
+  approveAdminFleetVehicle,
+  fetchAdminPendingFleetVehicles,
+  rejectAdminFleetVehicle,
 } from '../../api/fleet.api'
 
 function StatusBadge({ status }) {
@@ -41,12 +41,12 @@ export default function FleetVehicleApprovalsPage({
     setLoading(true)
     setLoadError('')
     try {
-      const list = await fetchStaffPendingFleetVehicles()
+      const list = await fetchAdminPendingFleetVehicles()
       setVehicles(list)
     } catch (err) {
       if (err instanceof ApiError && err.isForbidden) {
         setLoadError(
-          'Tài khoản chưa có quyền xem danh sách xe chờ duyệt (GET /fleet/staff/pending/all). Vui lòng liên hệ quản trị hệ thống.',
+          'Tài khoản chưa có quyền xem danh sách xe chờ duyệt. Vui lòng kiểm tra quyền Admin trên backend.',
         )
       } else {
         setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách xe chờ duyệt.')
@@ -65,7 +65,7 @@ export default function FleetVehicleApprovalsPage({
     if (processingId) return
     setProcessingId(vehicle.fleetVehicleId)
     try {
-      await approveFleetVehicle(vehicle.fleetVehicleId)
+      await approveAdminFleetVehicle(vehicle.fleetVehicleId)
       showToast(`Đã duyệt xe ${vehicle.licensePlate}`)
       await loadVehicles()
     } catch (err) {
@@ -84,7 +84,7 @@ export default function FleetVehicleApprovalsPage({
 
     setProcessingId(rejectTarget.fleetVehicleId)
     try {
-      await rejectFleetVehicle(rejectTarget.fleetVehicleId, rejectReason.trim())
+      await rejectAdminFleetVehicle(rejectTarget.fleetVehicleId, rejectReason.trim())
       setRejectTarget(null)
       setRejectReason('')
       showToast(`Đã từ chối xe ${rejectTarget.licensePlate}`)
@@ -125,6 +125,16 @@ export default function FleetVehicleApprovalsPage({
           {loadError}
         </div>
       )}
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex items-start gap-2">
+        <span className="material-symbols-outlined text-base mt-0.5">info</span>
+        <p>
+          Xe có <span className="font-medium">hãng / dòng / loại phương tiện</span> đã tồn tại và đang
+          hoạt động trong hệ thống sẽ được <span className="font-medium">tự động duyệt</span> ngay khi
+          doanh nghiệp nhập — những xe này <span className="font-medium">không xuất hiện</span> trong
+          danh sách chờ duyệt.
+        </p>
+      </div>
 
       <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
         {loading ? (

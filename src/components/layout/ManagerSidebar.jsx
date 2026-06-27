@@ -9,9 +9,9 @@ const navItems = [
   { to: '/manager/staff', label: 'Phân công làn', icon: 'badge' },
   { to: '/manager/shifts', label: 'Ca làm', icon: 'schedule' },
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
+  { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
   { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
   { to: '/manager/business-applications', label: 'Đơn DN', icon: 'business' },
-  { to: '/manager/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
 ]
 
 export default function ManagerSidebar({ station }) {
@@ -22,7 +22,7 @@ export default function ManagerSidebar({ station }) {
           <h1 className="font-sora text-[32px] leading-10 font-semibold tracking-tight text-primary">
             LuxeWash Pro
           </h1>
-          <p className="mt-1 text-xs font-semibold tracking-wider text-secondary">
+          <p className="mt-1 text-xs font-semibold tracking-wider text-tertiary">
             Manager Console
           </p>
         </div>
@@ -36,7 +36,7 @@ export default function ManagerSidebar({ station }) {
               className={({ isActive }) =>
                 `mx-3 flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200 active:scale-95 ${
                   isActive
-                    ? 'bg-secondary text-on-secondary'
+                    ? 'bg-primary text-on-primary'
                     : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
                 }`
               }
@@ -57,7 +57,7 @@ export default function ManagerSidebar({ station }) {
             className={({ isActive }) =>
               `mx-3 mt-auto flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200 active:scale-95 ${
                 isActive
-                  ? 'bg-secondary text-on-secondary'
+                  ? 'bg-primary text-on-primary'
                   : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
               }`
             }

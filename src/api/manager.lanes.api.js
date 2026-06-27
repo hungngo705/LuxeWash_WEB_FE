@@ -6,6 +6,8 @@ import { apiRequest } from './client'
  *   name: string
  *   branchId: number
  *   isActive?: boolean
+ *   isBusinessLane?: boolean
+ *   assignedStaff?: LaneAssignedStaff[]
  * }} ManagerLane
  *
  * @typedef {{
@@ -29,13 +31,25 @@ export function asManagerCollection(data) {
   return []
 }
 
+function toDateTimeQueryValue(date) {
+  if (!date) return ''
+  const value = String(date)
+  return value.includes('T') ? value : `${value.slice(0, 10)}T00:00:00`
+}
+
 /** @param {Record<string, unknown>} item @returns {ManagerLane} */
 function normalize(item) {
+  const assignedStaff = Array.isArray(item.assignedStaff)
+    ? item.assignedStaff.map(normalizeLaneAssignedStaff)
+    : []
+
   return {
     laneId: Number(item.laneId ?? item.id),
     name: String(item.name ?? ''),
     branchId: Number(item.branchId),
     isActive: item.isActive !== false,
+    isBusinessLane: item.isBusinessLane === true || item.IsBusinessLane === true,
+    assignedStaff,
   }
 }
 
@@ -51,12 +65,15 @@ export function normalizeLaneAssignedStaff(item) {
 }
 
 /**
- * GET /api/v1/manager/lanes
- * Returns all lanes in the Manager's branch.
+ * GET /api/v1/manager/lanes?date=
+ * Returns all lanes in the Manager's branch with staff assigned for the requested date.
+ * @param {{ date?: string }} [options] `date` is yyyy-MM-dd or full ISO; BE accepts DateTime?.
  * @returns {Promise<ManagerLane[]>}
  */
-export function fetchManagerLanes() {
-  return apiRequest('/manager/lanes').then((data) => asManagerCollection(data).map(normalize))
+export function fetchManagerLanes(options = {}) {
+  const date = toDateTimeQueryValue(options.date)
+  const params = date ? `?date=${encodeURIComponent(date)}` : ''
+  return apiRequest(`/manager/lanes${params}`).then((data) => asManagerCollection(data).map(normalize))
 }
 
 /**
@@ -73,12 +90,16 @@ export function createManagerLane(payload) {
 
 /**
  * GET /api/v1/manager/lanes/{laneId}/staff
- * Staff assigned to the lane for today (Swagger: Manager).
+ * Staff assigned to the lane for the given date (defaults to today on BE side).
  * @param {number} laneId
+ * @param {{ date?: string }} [options] `date` is yyyy-MM-dd or full ISO; BE accepts DateTime?.
  * @returns {Promise<LaneAssignedStaff[]>}
  */
-export function fetchLaneAssignedStaff(laneId) {
-  return apiRequest(`/manager/lanes/${laneId}/staff`).then((data) =>
+export function fetchLaneAssignedStaff(laneId, options = {}) {
+  const { date } = options
+  const dateValue = toDateTimeQueryValue(date)
+  const params = dateValue ? `?date=${encodeURIComponent(dateValue)}` : ''
+  return apiRequest(`/manager/lanes/${laneId}/staff${params}`).then((data) =>
     asManagerCollection(data).map(normalizeLaneAssignedStaff),
   )
 }
@@ -87,23 +108,26 @@ export function fetchLaneAssignedStaff(laneId) {
  * DELETE /api/v1/manager/lanes/{laneId}/staff/{staffId}
  * @param {number} laneId
  * @param {number} staffId
+ * @param {{ date?: string }} [options] `date` is yyyy-MM-dd or full ISO.
  */
-export function unassignStaffFromLane(laneId, staffId) {
-  return apiRequest(`/manager/lanes/${laneId}/staff/${staffId}`, { method: 'DELETE' })
+export function unassignStaffFromLane(laneId, staffId, options = {}) {
+  const { date } = options
+  const dateValue = toDateTimeQueryValue(date)
+  const params = dateValue ? `?date=${encodeURIComponent(dateValue)}` : ''
+  return apiRequest(`/manager/lanes/${laneId}/staff/${staffId}${params}`, { method: 'DELETE' })
 }
 
 /**
  * Load every lane with staff assigned today.
+ * @param {{ date?: string }} [options]
  * @returns {Promise<Array<{ lane: ManagerLane; staff: LaneAssignedStaff[] }>>}
  */
-export async function fetchAllLaneStaffAssignments() {
-  const lanes = await fetchManagerLanes()
+export async function fetchAllLaneStaffAssignments(options = {}) {
+  const lanes = await fetchManagerLanes(options)
   if (!lanes.length) return []
 
-  return Promise.all(
-    lanes.map(async (lane) => {
-      const staff = await fetchLaneAssignedStaff(lane.laneId)
-      return { lane, staff }
-    }),
-  )
+  return lanes.map((lane) => ({
+    lane,
+    staff: Array.isArray(lane.assignedStaff) ? lane.assignedStaff : [],
+  }))
 }

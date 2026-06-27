@@ -32,6 +32,7 @@ import { normalizeManagerStaff } from './manager.employees.api'
  *   finalAmount: number
  *   processingLaneId?: number
  *   processingLaneName?: string
+ *   isBusinessLane?: boolean
  *   details: Array<{
  *     detailId?: number
  *     licensePlate: string
@@ -115,6 +116,7 @@ export function normalizeManagerBooking(item) {
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
+    isBusinessLane: item.isBusinessLane === true || item.IsBusinessLane === true,
     details: Array.isArray(details)
       ? details.map((d, i) => ({
           detailId: d.detailId ?? d.id ?? i + 1,

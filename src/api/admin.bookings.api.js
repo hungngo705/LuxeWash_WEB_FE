@@ -10,6 +10,7 @@ import { apiRequest } from './client'
  *   scheduledDate: string
  *   rankName: string
  *   status: string
+ *   paymentStatus?: string
  *   finalAmount: number
  *   fallbackQrCode: string
  *   slotId?: number
@@ -160,6 +161,7 @@ export function normalizeAdminBooking(item) {
     scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
     rankName: String(item.rankName ?? item.tierName ?? '—'),
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
+    paymentStatus: String(item.paymentStatus ?? item.PaymentStatus ?? 'Unpaid'),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     originalAmount: Number(item.originalPrice ?? item.originalAmount ?? item.finalAmount ?? 0),
     fallbackQrCode: String(item.fallbackQrCode ?? item.qrCode ?? '—'),

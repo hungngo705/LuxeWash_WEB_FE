@@ -42,7 +42,8 @@ export default function AdminPendingCarModelsPage() {
         fetchVehicleTypes(),
       ])
       setPendingModels(models)
-      setVehicleTypes(Array.isArray(types) ? types : [])
+      const allTypes = Array.isArray(types) ? types : []
+      setVehicleTypes(allTypes.filter((t) => t.name?.trim().toLowerCase() !== 'khác'))
     } catch (err) {
       setLoadError(
         err instanceof ApiError ? err.message : 'Không tải được danh sách mẫu xe chờ duyệt',
@@ -71,12 +72,10 @@ export default function AdminPendingCarModelsPage() {
     setProcessingId(approveTarget.id)
     try {
       await approveCarModelRequest(approveTarget.id, {
-        vehicleTypeId: selectedVehicleTypeId === 'other' ? null : Number(selectedVehicleTypeId),
+        vehicleTypeId: Number(selectedVehicleTypeId),
       })
       const typeName =
-        selectedVehicleTypeId === 'other'
-          ? 'Xe du lịch (khác)'
-          : vehicleTypes.find((t) => t.id === Number(selectedVehicleTypeId))?.name ?? selectedVehicleTypeId
+        vehicleTypes.find((t) => t.id === Number(selectedVehicleTypeId))?.name ?? selectedVehicleTypeId
       showToast(
         `Đã duyệt mẫu xe "${approveTarget?.name || approveTarget?.brand || `#${approveTarget?.id}`}" — loại xe: ${typeName}`,
       )
@@ -283,7 +282,6 @@ export default function AdminPendingCarModelsPage() {
                   {vt.description ? ` — ${vt.description}` : ''}
                 </option>
               ))}
-              <option value="other">Xe du lịch (khác)</option>
             </select>
             <p className="text-xs text-on-surface-variant">
               Chọn loại xe chuẩn (Sedan, SUV, Hatchback,…) để tính giá dịch vụ chính xác.

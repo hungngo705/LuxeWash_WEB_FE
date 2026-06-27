@@ -9,7 +9,7 @@ export default function ManagerTopBar({ title = 'Manager Console' }) {
       <div className="flex h-full items-center justify-between px-6">
         <h2 className="font-sora text-2xl font-semibold text-on-surface">{title}</h2>
         <div className="flex items-center gap-4">
-          <span className="rounded-full bg-secondary-container px-3 py-1 text-xs font-semibold tracking-wider text-on-secondary-container uppercase">
+          <span className="rounded-full bg-tertiary-container px-3 py-1 text-xs font-semibold tracking-wider text-on-tertiary-container uppercase">
             Manager
           </span>
           <div className="mx-1 h-6 w-px bg-outline-variant" />

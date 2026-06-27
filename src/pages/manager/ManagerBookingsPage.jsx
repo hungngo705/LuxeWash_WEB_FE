@@ -183,7 +183,14 @@ export default function ManagerBookingsPage() {
                           {formatDateTime(b.scheduledTime ?? b.scheduledDate)}
                         </p>
                       </td>
-                      <td className="px-4 py-3">{b.processingLaneName || '—'}</td>
+                      <td className="px-4 py-3">
+                        <p>{b.processingLaneName || '—'}</p>
+                        {b.isBusinessLane && (
+                          <span className="mt-1 inline-flex rounded-full border border-secondary/30 bg-secondary-container/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
+                            Doanh nghiệp
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <StatusBadge status={b.status} />
                       </td>

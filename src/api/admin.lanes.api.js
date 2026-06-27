@@ -7,6 +7,7 @@ import { apiRequest } from './client'
  *   branchId: number
  *   branchName?: string
  *   isActive?: boolean
+ *   isBusinessLane?: boolean
  * }} Lane
  *
  * @typedef {{ name: string; branchId: number }} CreateLanePayload
@@ -21,6 +22,7 @@ export function normalizeLane(item) {
     branchId: Number(item.branchId),
     branchName: item.branchName != null ? String(item.branchName) : undefined,
     isActive: item.isActive !== false,
+    isBusinessLane: item.isBusinessLane === true || item.IsBusinessLane === true,
   }
 }
 
@@ -43,6 +45,21 @@ export function createLane(payload) {
   return apiRequest('/admin/lanes', {
     method: 'POST',
     body: JSON.stringify(payload),
+  })
+}
+
+/**
+ * POST /api/v1/admin/lanes/business
+ * Tạo làn rửa chuyên dụng cho xe doanh nghiệp (fleet).
+ * @param {{ name: string; branchId: number }} payload
+ */
+export function createBusinessLane(payload) {
+  return apiRequest('/admin/lanes/business', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: payload.name,
+      branchId: Number(payload.branchId),
+    }),
   })
 }
 

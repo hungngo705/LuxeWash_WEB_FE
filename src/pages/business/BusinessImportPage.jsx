@@ -73,6 +73,15 @@ export default function BusinessImportPage() {
         <p className="text-sm text-on-surface-variant mt-1">
           Tải template, điền thông tin xe và nhập danh sách vào hệ thống.
         </p>
+        <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 flex items-start gap-2">
+          <span className="material-symbols-outlined text-base mt-0.5">info</span>
+          <p>
+            Xe có <span className="font-medium">hãng / dòng / loại phương tiện</span> đã tồn tại và
+            đang hoạt động trong hệ thống sẽ được <span className="font-medium">tự động duyệt</span> ngay
+            khi nhập. Chỉ xe có <span className="font-medium">hãng / dòng / loại</span> mới hoàn toàn
+            mới cần Admin duyệt thủ công.
+          </p>
+        </div>
       </div>
 
       <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-6 space-y-6">
