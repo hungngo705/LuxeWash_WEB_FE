@@ -247,12 +247,51 @@ export function fetchBookingById(bookingId) {
 }
 
 /**
+ * GET /api/v1/bookings/user/{userId}
+ * Admin/Manager/Staff lookup for a customer's bookings.
+ * @param {number} userId
+ */
+export function fetchBookingsByUserId(userId) {
+  return apiRequest(`/bookings/user/${Number(userId)}`).then((data) =>
+    asBookingList(data).map(normalizeAdminBooking),
+  )
+}
+
+/** @param {unknown} raw */
+export function normalizeSmartLicensePlateLookup(raw) {
+  const item = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {}
+  const customerType = String(item.customerType ?? item.CustomerType ?? 'WalkIn')
+  const data = item.data ?? item.Data ?? null
+  return {
+    customerType,
+    data,
+    booking: customerType === 'PreBooked' && data && typeof data === 'object'
+      ? normalizeAdminBooking(/** @type {Record<string, unknown>} */ (data))
+      : null,
+    fleetVehicle: customerType === 'Fleet' && data && typeof data === 'object'
+      ? /** @type {Record<string, unknown>} */ (data)
+      : null,
+  }
+}
+
+/**
  * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
- * Returns array of BookingResponseDTO for the given plate.
+ * Smart lookup returns { customerType: PreBooked | Fleet | WalkIn, data }.
+ * Requires backend token BranchId claim.
+ */
+export function smartLookupLicensePlate(licensePlate) {
+  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate.trim())}`).then(
+    normalizeSmartLicensePlateLookup,
+  )
+}
+
+/**
+ * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
+ * Backward-compatible helper: returns only PreBooked booking data as an array.
  */
 export function fetchBookingsByLicensePlate(licensePlate) {
-  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate.trim())}`).then(
-    asBookingList,
+  return smartLookupLicensePlate(licensePlate).then((lookup) =>
+    lookup.booking ? [lookup.booking] : [],
   )
 }
 

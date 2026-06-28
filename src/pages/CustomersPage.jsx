@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
+  fetchBookingsByUserId,
   fetchUserById,
   fetchUsers,
   mapListUserToCustomerView,
@@ -72,11 +73,27 @@ export default function CustomersPage({
       return
     }
     setDetailLoading(true)
-    fetchUserById(selectedUserId)
-      .then((detail) => setSelectedCustomer(mapUserDetailToCustomerView(detail)))
-      .catch(() => {
+    Promise.allSettled([
+      fetchUserById(selectedUserId),
+      fetchBookingsByUserId(selectedUserId),
+    ])
+      .then(([detailResult, bookingsResult]) => {
         const fallback = customers.find((c) => c.userId === selectedUserId)
-        setSelectedCustomer(fallback ?? null)
+        const profile =
+          detailResult.status === 'fulfilled'
+            ? mapUserDetailToCustomerView(detailResult.value)
+            : fallback
+
+        if (!profile) {
+          setSelectedCustomer(null)
+          return
+        }
+
+        setSelectedCustomer({
+          ...profile,
+          recentBookings:
+            bookingsResult.status === 'fulfilled' ? bookingsResult.value.slice(0, 5) : [],
+        })
       })
       .finally(() => setDetailLoading(false))
   }, [selectedUserId, customers])

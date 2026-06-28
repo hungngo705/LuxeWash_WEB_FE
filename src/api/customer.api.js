@@ -56,11 +56,25 @@ export function createBooking(payload) {
  *   vehicleId?: number
  *   serviceIds: number[]
  *   laneId?: number
+ *   userId?: number
+ *   pointsToUse?: number
+ *   voucherId?: number
  * }} payload
  */
 export function createWalkInBooking(payload) {
+  const body = {
+    branchId: Number(payload.branchId),
+    licensePlate: String(payload.licensePlate ?? '').trim().toUpperCase(),
+    serviceIds: Array.isArray(payload.serviceIds) ? payload.serviceIds.map(Number) : [],
+    userId: payload.userId ?? 0,
+    pointsToUse: payload.pointsToUse ?? 0,
+  }
+
+  if (Number(payload.vehicleId) > 0) body.vehicleId = Number(payload.vehicleId)
+  if (Number(payload.voucherId) > 0) body.voucherId = Number(payload.voucherId)
+
   return apiRequest('/bookings/walk-in', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   })
 }

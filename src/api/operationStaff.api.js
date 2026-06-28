@@ -622,12 +622,32 @@ export function consumeStaffVoucher(payload) {
 /**
  * GET /api/v1/operation-staff/tasks
  * Returns bookings assigned to the logged-in Staff member's lane (CheckedIn or Processing).
+ * @param {{ date?: string, signal?: AbortSignal }} [options]
  * @returns {Promise<StaffTask[]>}
  */
 export function fetchStaffTasks(options = {}) {
-  return apiRequest('/operation-staff/tasks', options).then((data) => {
+  const { date, ...requestOptions } = options
+  const params = new URLSearchParams()
+  if (date) params.set('date', String(date).slice(0, 10))
+
+  return apiRequest(`/operation-staff/tasks${params.toString() ? `?${params}` : ''}`, requestOptions).then((data) => {
     const list = Array.isArray(data) ? data : []
     return list.map(normalizeStaffTask)
+  })
+}
+
+/**
+ * POST /api/v1/operation-staff/lanes/swap
+ * Swaps today's or a selected day's lane assignment with another staff member by phone number.
+ * @param {{ targetPhoneNumber: string, date?: string }} payload
+ */
+export function swapStaffLaneByPhone(payload) {
+  return apiRequest('/operation-staff/lanes/swap', {
+    method: 'POST',
+    body: JSON.stringify({
+      targetPhoneNumber: payload.targetPhoneNumber,
+      date: payload.date || null,
+    }),
   })
 }
 

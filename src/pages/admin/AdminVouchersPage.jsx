@@ -279,7 +279,7 @@ export default function AdminVouchersPage() {
                 <th className="px-4 py-3">Giảm giá</th>
                 <th className="px-4 py-3">Thời gian hiệu lực</th>
                 <th className="px-4 py-3">Thời gian</th>
-                <th className="px-4 py-3">Dùng được?</th>
+                <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Đã dùng</th>
                 <th className="px-4 py-3">Loại</th>
                 <th className="px-4 py-3">Thao tác</th>

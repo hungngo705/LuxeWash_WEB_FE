@@ -10,7 +10,7 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const emptyForm = { name: '' }
+const emptyForm = { name: '', isBusinessLane: false }
 
 function todayDateValue() {
   const now = new Date()
@@ -96,7 +96,10 @@ export default function ManagerLanesPage() {
 
     setSaving(true)
     try {
-      await createManagerLane({ name: form.name.trim() })
+      await createManagerLane({
+        name: form.name.trim(),
+        isBusinessLane: form.isBusinessLane,
+      })
       showToast('Đã thêm làn rửa')
       setModalOpen(false)
       await loadLanes()
@@ -338,6 +341,19 @@ export default function ManagerLanesPage() {
               disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               placeholder="VD: Làn bọt tuyết 1"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+            <span>
+              <span className="block text-sm font-medium text-on-surface">Làn doanh nghiệp</span>
+              <span className="block text-xs text-on-surface-variant">Dùng cho xe fleet/doanh nghiệp.</span>
+            </span>
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-primary"
+              checked={form.isBusinessLane}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, isBusinessLane: e.target.checked }))}
             />
           </label>
         </div>

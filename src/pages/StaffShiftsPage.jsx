@@ -6,6 +6,7 @@ import {
   fetchStaffOvertimeRequests,
   fetchStaffShifts,
   fetchStaffShiftSwapRequests,
+  swapStaffLaneByPhone,
   toTimeInputValue,
 } from '../api'
 import EmptyState from '../components/admin/shared/EmptyState'
@@ -22,6 +23,7 @@ const TABS = [
 
 const emptyOvertimeForm = { workDate: '', startTime: '17:00', endTime: '20:00', reason: '' }
 const emptySwapForm = { fromAssignmentId: '', toAssignmentId: '', reason: '' }
+const emptyLaneSwapForm = { targetPhoneNumber: '', date: '' }
 
 export default function StaffShiftsPage() {
   const [tab, setTab] = useState('schedule')
@@ -31,11 +33,14 @@ export default function StaffShiftsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [toast, setToast] = useState('')
+  const [shiftFilter, setShiftFilter] = useState({ fromDate: '', toDate: '' })
 
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false)
   const [swapModalOpen, setSwapModalOpen] = useState(false)
   const [overtimeForm, setOvertimeForm] = useState(emptyOvertimeForm)
   const [swapForm, setSwapForm] = useState(emptySwapForm)
+  const [laneSwapModalOpen, setLaneSwapModalOpen] = useState(false)
+  const [laneSwapForm, setLaneSwapForm] = useState(emptyLaneSwapForm)
   const [saving, setSaving] = useState(false)
 
   const showToast = (msg) => {
@@ -48,7 +53,7 @@ export default function StaffShiftsPage() {
     setLoadError('')
     try {
       const [shiftList, overtime, swaps] = await Promise.all([
-        fetchStaffShifts(),
+        fetchStaffShifts(shiftFilter),
         fetchStaffOvertimeRequests(),
         fetchStaffShiftSwapRequests(),
       ])
@@ -60,7 +65,7 @@ export default function StaffShiftsPage() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [shiftFilter])
 
   useEffect(() => {
     loadAll()
@@ -104,18 +109,40 @@ export default function StaffShiftsPage() {
     }
   }
 
+  const handleSwapLaneByPhone = async () => {
+    if (!laneSwapForm.targetPhoneNumber.trim()) {
+      showToast('Vui lòng nhập số điện thoại nhân viên muốn đổi làn')
+      return
+    }
+    setSaving(true)
+    try {
+      await swapStaffLaneByPhone({
+        targetPhoneNumber: laneSwapForm.targetPhoneNumber.trim(),
+        date: laneSwapForm.date || undefined,
+      })
+      showToast('Đã đổi làn thành công')
+      setLaneSwapModalOpen(false)
+      setLaneSwapForm(emptyLaneSwapForm)
+      await loadAll()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không đổi làn được')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="w-full">
       <PageHeader
         title="Ca làm của tôi"
         description="Xem lịch ca, gửi yêu cầu tăng ca hoặc đổi ca"
-        actionLabel={tab === 'overtime' ? 'Xin tăng ca' : tab === 'swap' ? 'Xin đổi ca' : undefined}
+        actionLabel={tab === 'overtime' ? 'Xin tăng ca' : tab === 'swap' ? 'Xin đổi ca' : 'Đổi làn'}
         onAction={
           tab === 'overtime'
             ? () => setOvertimeModalOpen(true)
             : tab === 'swap'
             ? () => setSwapModalOpen(true)
-            : undefined
+            : () => setLaneSwapModalOpen(true)
         }
       />
 
@@ -141,6 +168,39 @@ export default function StaffShiftsPage() {
           </button>
         ))}
       </div>
+
+      {tab === 'schedule' && (
+        <div className="mb-4 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Từ ngày</span>
+              <input
+                type="date"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm"
+                value={shiftFilter.fromDate}
+                onChange={(e) => setShiftFilter((f) => ({ ...f, fromDate: e.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Đến ngày</span>
+              <input
+                type="date"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm"
+                value={shiftFilter.toDate}
+                onChange={(e) => setShiftFilter((f) => ({ ...f, toDate: e.target.value }))}
+              />
+            </label>
+            <button
+              type="button"
+              className="rounded-lg border border-outline-variant px-4 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container"
+              onClick={() => setShiftFilter({ fromDate: '', toDate: '' })}
+              disabled={!shiftFilter.fromDate && !shiftFilter.toDate}
+            >
+              Xóa lọc
+            </button>
+          </div>
+        </div>
+      )}
 
       {loadError && (
         <div className="mb-4 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 text-sm text-error">
@@ -320,6 +380,39 @@ export default function StaffShiftsPage() {
               onChange={(e) => setSwapForm((f) => ({ ...f, reason: e.target.value }))}
             />
           </label>
+        </div>
+      </FormModal>
+
+      <FormModal
+        open={laneSwapModalOpen}
+        title="Đổi làn theo số điện thoại"
+        submitLabel={saving ? 'Đang đổi…' : 'Đổi làn'}
+        onClose={() => !saving && setLaneSwapModalOpen(false)}
+        onSubmit={handleSwapLaneByPhone}
+      >
+        <div className="space-y-4">
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Số điện thoại nhân viên</span>
+            <input
+              type="tel"
+              className="w-full rounded-lg border border-outline-variant px-3 py-2"
+              value={laneSwapForm.targetPhoneNumber}
+              onChange={(e) => setLaneSwapForm((f) => ({ ...f, targetPhoneNumber: e.target.value }))}
+              placeholder="VD: 0901234567"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Ngày đổi làn</span>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-outline-variant px-3 py-2"
+              value={laneSwapForm.date}
+              onChange={(e) => setLaneSwapForm((f) => ({ ...f, date: e.target.value }))}
+            />
+          </label>
+          <p className="text-xs text-on-surface-variant">
+            Nếu bỏ trống ngày, hệ thống sẽ đổi làn cho hôm nay.
+          </p>
         </div>
       </FormModal>
     </div>

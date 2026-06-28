@@ -79,12 +79,15 @@ export function fetchManagerLanes(options = {}) {
 /**
  * POST /api/v1/manager/lanes
  * Creates a new lane in the Manager's branch.
- * @param {{ name: string }} payload
+ * @param {{ name: string, isBusinessLane?: boolean }} payload
  */
 export function createManagerLane(payload) {
   return apiRequest('/manager/lanes', {
     method: 'POST',
-    body: JSON.stringify({ name: payload.name }),
+    body: JSON.stringify({
+      name: payload.name,
+      isBusinessLane: payload.isBusinessLane === true,
+    }),
   })
 }
 

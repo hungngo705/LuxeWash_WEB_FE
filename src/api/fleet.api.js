@@ -82,6 +82,23 @@ export function fleetCheckIn(bookingId) {
   })
 }
 
+/**
+ * POST /api/v1/fleet/walk-in
+ * Creates a company/fleet walk-in wash log billed to the business account.
+ * @param {{ licensePlate: string, branchId: number }} payload
+ */
+export function fleetWalkIn(payload) {
+  const licensePlate = String(payload.licensePlate ?? '').trim().toUpperCase()
+  return apiRequest('/fleet/walk-in', {
+    method: 'POST',
+    body: JSON.stringify({
+      licensePlate,
+      licensePLate: licensePlate,
+      branchId: Number(payload.branchId),
+    }),
+  })
+}
+
 /** POST /fleet/walk-out/{washLogId} */
 export function fleetWalkOut(washLogId) {
   return apiRequest(`/fleet/walk-out/${washLogId}`, { method: 'POST' })

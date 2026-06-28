@@ -34,6 +34,21 @@ async function parseResponseBody(response) {
   return text ? { message: text } : null
 }
 
+function getErrorMessage(body) {
+  if (body && typeof body === 'object' && 'message' in body) {
+    return String(body.message ?? '')
+  }
+  return ''
+}
+
+function shouldLogoutOnUnauthorized(body) {
+  const message = getErrorMessage(body).toLowerCase()
+  if (message.includes('branchid') || message.includes('chi nhánh')) {
+    return false
+  }
+  return true
+}
+
 /**
  * SmartWash API wrapper — response shape: { statusCode, message, data }
  *
@@ -110,10 +125,11 @@ export async function apiRequest(path, options = {}) {
   const body = await parseResponseBody(response)
 
   if (response.status === 401) {
-    onUnauthorized?.()
+    if (shouldLogoutOnUnauthorized(body)) {
+      onUnauthorized?.()
+    }
     throw new ApiError(
-      (body && typeof body === 'object' && 'message' in body && body.message) ||
-        'Unauthorized',
+      getErrorMessage(body) || 'Unauthorized',
       401,
       body,
     )
@@ -134,7 +150,7 @@ export async function apiRequest(path, options = {}) {
     )
 
     if (wrapper.statusCode >= 400) {
-      if (wrapper.statusCode === 401) {
+      if (wrapper.statusCode === 401 && shouldLogoutOnUnauthorized(body)) {
         onUnauthorized?.()
       }
       throw new ApiError(wrapper.message ?? 'Request failed', wrapper.statusCode, body)

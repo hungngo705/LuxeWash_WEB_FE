@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
 import {
   ApiError,
+  apiRequest,
+  createWalkInBooking,
   enrichStaffBooking,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
+  fleetWalkIn,
   formatPaymentMethodLabel,
-  formatStaffStationLabel,
   normalizeStaffTask,
-  searchBookingsByLicensePlate,
+  smartLookupLicensePlate,
   staffCheckinBooking,
   updateStaffBookingStatus,
 } from "../api";
@@ -50,31 +52,6 @@ function mergeStaffTasksFromApi(prev, fromApi) {
     merged = upsertStaffTaskList(merged, local);
   }
   return merged;
-}
-
-const ACTIVE_PLATE_STATUSES = new Set(["Processing", "Checked-in", "Pending"]);
-const PLATE_STATUS_PRIORITY = { Processing: 0, "Checked-in": 1, Pending: 2 };
-
-/** @param {import('../api/operationStaff.api').StaffTask[]} list @param {string} normalized */
-function pickBestPlateBooking(list, normalized) {
-  const samePlate = list.filter(
-    (b) => normalizePlate(b.licensePlate) === normalized,
-  );
-  if (!samePlate.length) return null;
-
-  const active = samePlate.filter((b) => ACTIVE_PLATE_STATUSES.has(b.status));
-  const pool = active.length ? active : samePlate;
-
-  return [...pool].sort((a, b) => {
-    const diff =
-      (PLATE_STATUS_PRIORITY[a.status] ?? 9) -
-      (PLATE_STATUS_PRIORITY[b.status] ?? 9);
-    if (diff !== 0) return diff;
-    return (
-      new Date(b.scheduledTime ?? 0).getTime() -
-      new Date(a.scheduledTime ?? 0).getTime()
-    );
-  })[0];
 }
 
 function plateLookupMessage(status) {
@@ -312,6 +289,119 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
             );
           })
         )}
+      </div>
+    </section>
+  );
+}
+
+function PersonalWalkInPanel({
+  draft,
+  services,
+  loadingServices,
+  creating,
+  onToggleService,
+  onSubmit,
+  onCancel,
+}) {
+  if (!draft) return null;
+
+  return (
+    <section className="glass-panel soft-shadow mt-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-secondary">
+            person_add
+          </span>
+          <div>
+            <h3 className="font-sora text-lg font-semibold text-on-surface">
+              Walk-in cá nhân
+            </h3>
+            <p className="text-xs text-on-surface-variant">
+              {draft.licensePlate} · chọn dịch vụ để check-in trực tiếp
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant"
+          onClick={onCancel}
+          aria-label="Đóng"
+        >
+          <span className="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+
+      <div className="space-y-4 p-4">
+        {loadingServices ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
+          </div>
+        ) : services.length === 0 ? (
+          <p className="rounded-lg border border-outline-variant bg-surface-container-low p-3 text-sm text-on-surface-variant">
+            Không tải được danh sách dịch vụ cho chi nhánh này.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            {services.map((service) => {
+              const serviceId = Number(service.serviceId ?? service.id);
+              const selected = draft.serviceIds.includes(serviceId);
+              const minPrice =
+                Array.isArray(service.prices) && service.prices.length > 0
+                  ? Math.min(...service.prices.map((p) => Number(p.price) || 0))
+                  : 0;
+
+              return (
+                <button
+                  key={serviceId}
+                  type="button"
+                  className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-left transition-colors ${
+                    selected
+                      ? "border-secondary bg-secondary-container/25"
+                      : "border-outline-variant bg-surface-container-low hover:border-secondary/50"
+                  }`}
+                  onClick={() => onToggleService(serviceId)}
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-on-surface">
+                      {service.serviceName ?? service.name ?? `Dịch vụ ${serviceId}`}
+                    </p>
+                    {service.description && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-on-surface-variant">
+                        {service.description}
+                      </p>
+                    )}
+                    {minPrice > 0 && (
+                      <p className="mt-1 text-sm font-semibold text-primary">
+                        từ {formatVnd(minPrice)}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`material-symbols-outlined shrink-0 ${
+                      selected ? "text-secondary" : "text-outline"
+                    }`}
+                  >
+                    {selected ? "check_circle" : "radio_button_unchecked"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-semibold text-on-secondary transition-colors hover:bg-secondary/90 disabled:opacity-60"
+          onClick={onSubmit}
+          disabled={creating || loadingServices || draft.serviceIds.length === 0}
+        >
+          {creating ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-secondary/30 border-t-on-secondary" />
+          ) : (
+            <span className="material-symbols-outlined text-lg">login</span>
+          )}
+          Tạo walk-in personal
+        </button>
       </div>
     </section>
   );
@@ -622,10 +712,34 @@ export default function DashboardPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [completingId, setCompletingId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [laneLabel, setLaneLabel] = useState("");
+  const [laneAssignment, setLaneAssignment] = useState(null);
   const [toast, setToast] = useState(null);
+  const [walkInDraft, setWalkInDraft] = useState(null);
+  const [walkInServices, setWalkInServices] = useState([]);
+  const [loadingWalkInServices, setLoadingWalkInServices] = useState(false);
+  const [creatingWalkIn, setCreatingWalkIn] = useState(false);
 
   const showToast = (message, type = "success") => setToast({ message, type });
+
+  const loadWalkInServices = useCallback(async (branchId) => {
+    setLoadingWalkInServices(true);
+    try {
+      const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : "";
+      const data = await apiRequest(`/services${query}`);
+      const list = Array.isArray(data) ? data : [];
+      setWalkInServices(list.filter((service) => service.isActive !== false));
+    } catch (err) {
+      setWalkInServices([]);
+      showToast(
+        err instanceof ApiError
+          ? err.message
+          : "Không tải được danh sách dịch vụ walk-in.",
+        "error",
+      );
+    } finally {
+      setLoadingWalkInServices(false);
+    }
+  }, []);
 
   const loadStaffTasks = useCallback(async ({ signal } = {}) => {
     try {
@@ -642,16 +756,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load with abort cleanup
     loadStaffTasks({ signal: controller.signal })
     fetchStaffLaneAssignment({ signal: controller.signal })
       .then((a) => {
         if (!controller.signal.aborted) {
-          setLaneLabel(formatStaffStationLabel(a))
+          setLaneAssignment(a)
         }
       })
       .catch((err) => {
         if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
-        if (!controller.signal.aborted) setLaneLabel('Chưa phân công làn')
       })
 
     const interval = setInterval(() => {
@@ -690,6 +804,7 @@ export default function DashboardPage() {
   }, [staffTasks, selectedBooking]);
 
   const applySelectedBooking = useCallback(async (booking, options = {}) => {
+    setWalkInDraft(null);
     setSelectedBooking(booking);
     if (options.message !== undefined) setLookupError(options.message);
 
@@ -709,6 +824,58 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const toggleWalkInService = useCallback((serviceId) => {
+    setWalkInDraft((draft) => {
+      if (!draft) return draft;
+      const id = Number(serviceId);
+      const serviceIds = draft.serviceIds.includes(id)
+        ? draft.serviceIds.filter((item) => item !== id)
+        : [...draft.serviceIds, id];
+      return { ...draft, serviceIds };
+    });
+  }, []);
+
+  const handleCreatePersonalWalkIn = useCallback(async () => {
+    if (!walkInDraft) return;
+    const branchId = Number(walkInDraft.branchId);
+    if (!branchId) {
+      setLookupError("Chưa xác định được chi nhánh của nhân viên để tạo walk-in.");
+      return;
+    }
+    if (walkInDraft.serviceIds.length === 0) {
+      setLookupError("Vui lòng chọn ít nhất một dịch vụ cho khách walk-in.");
+      return;
+    }
+
+    setCreatingWalkIn(true);
+    try {
+      const bookingResult = await createWalkInBooking({
+        branchId,
+        licensePlate: walkInDraft.licensePlate,
+        serviceIds: walkInDraft.serviceIds.map(Number),
+        userId: 0,
+        pointsToUse: 0,
+      });
+      const booking = normalizeStaffTask(bookingResult);
+      setWalkInDraft(null);
+      setPlateInput("");
+      setLookupError("");
+      showToast(`Đã tạo walk-in personal cho xe ${walkInDraft.licensePlate}.`);
+      await loadStaffTasks();
+      if (Number(booking.bookingId)) {
+        await applySelectedBooking(booking);
+      }
+    } catch (err) {
+      setLookupError(
+        err instanceof ApiError
+          ? err.message
+          : "Không thể tạo walk-in personal. Vui lòng thử lại.",
+      );
+    } finally {
+      setCreatingWalkIn(false);
+    }
+  }, [walkInDraft, loadStaffTasks, applySelectedBooking]);
+
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase();
     if (!plate) return;
@@ -724,28 +891,78 @@ export default function DashboardPage() {
         return;
       }
 
-      const list = (await searchBookingsByLicensePlate(plate)).map(
-        normalizeStaffTask,
-      );
-      const todayMatch = pickBestPlateBooking(list, normalized);
-      if (todayMatch) {
-        await applySelectedBooking(todayMatch, {
-          message: plateLookupMessage(todayMatch.status),
+      const lookup = await smartLookupLicensePlate(plate);
+
+      if (lookup.customerType === "PreBooked" && lookup.booking) {
+        const booking = normalizeStaffTask(lookup.booking);
+        await applySelectedBooking(booking, {
+          message: plateLookupMessage(booking.status),
         });
         return;
       }
 
+      if (lookup.customerType === "Fleet") {
+        setWalkInDraft(null);
+        const branchId = Number(laneAssignment?.branchId);
+        if (!branchId) {
+          setSelectedBooking(null);
+          setLookupError(
+            "Xe doanh nghiep hop le, nhung chua xac dinh duoc chi nhanh/lan cua nhan vien de check-in.",
+          );
+          return;
+        }
+
+        try {
+          await fleetWalkIn({ licensePlate: plate, branchId });
+          setSelectedBooking(null);
+          setPlateInput("");
+          setLookupError("");
+          showToast(`Xe doanh nghiep ${plate} da duoc tiep nhan va ghi no cong ty.`);
+          return;
+        } catch (err) {
+          setSelectedBooking(null);
+          setLookupError(
+            err instanceof ApiError && err.status === 404
+              ? "Khong tim thay phuong tien trong doi xe. Vui long chuyen sang luong khach vang lai ca nhan va thu tien mat/chuyen khoan truc tiep."
+              : err instanceof ApiError
+              ? err.message
+              : "Khong the check-in xe doanh nghiep. Vui long thu lai.",
+          );
+          return;
+        }
+      }
+
+      if (lookup.customerType === "WalkIn") {
+        const branchId = Number(laneAssignment?.branchId);
+        setSelectedBooking(null);
+        if (!branchId) {
+          setWalkInDraft(null);
+          setLookupError(
+            "Khách walk-in cá nhân, nhưng chưa xác định được chi nhánh/làn của nhân viên.",
+          );
+          return;
+        }
+        setWalkInDraft({
+          licensePlate: plate,
+          branchId,
+          serviceIds: [],
+        });
+        setLookupError("Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.");
+        await loadWalkInServices(branchId);
+        return;
+      }
+
+      setWalkInDraft(null);
       setSelectedBooking(null);
-      setLookupError(
-        "Không tìm thấy lịch hẹn cho biển số này tại làn của bạn.",
-      );
-    } catch {
-      setLookupError("Không thể tra cứu. Vui lòng thử lại.");
+      setLookupError("Khong xac dinh duoc loai khach hang cho bien so nay.");
+    } catch (err) {
+      setWalkInDraft(null);
+      setLookupError(err instanceof ApiError ? err.message : "Khong the tra cuu. Vui long thu lai.");
       setSelectedBooking(null);
     } finally {
       setLoadingLookup(false);
     }
-  }, [plateInput, staffTasks, applySelectedBooking]);
+  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
 
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
@@ -838,12 +1055,14 @@ export default function DashboardPage() {
 
   const handleSkip = useCallback(() => {
     setSelectedBooking(null);
+    setWalkInDraft(null);
     setPlateInput("");
     setLookupError("");
   }, []);
 
   const handleSelectFromQueue = useCallback(
     async (item) => {
+      setWalkInDraft(null);
       setPlateInput(item.licensePlate);
       setLookupError("");
       await applySelectedBooking(item);
@@ -902,6 +1121,18 @@ export default function DashboardPage() {
             loading={loadingLookup}
             checkedInCount={checkedInQueue.length}
             processingCount={processingVehicles.length}
+          />
+          <PersonalWalkInPanel
+            draft={walkInDraft}
+            services={walkInServices}
+            loadingServices={loadingWalkInServices}
+            creating={creatingWalkIn}
+            onToggleService={toggleWalkInService}
+            onSubmit={handleCreatePersonalWalkIn}
+            onCancel={() => {
+              setWalkInDraft(null);
+              setLookupError("");
+            }}
           />
           <CheckedInQueuePanel
             items={checkedInQueue}
