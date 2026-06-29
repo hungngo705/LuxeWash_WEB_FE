@@ -5,6 +5,7 @@ import {
   fetchAllLaneStaffAssignments,
   fetchManagerLanes,
   fetchManagerStaffs,
+  fetchManagerWorkShifts,
   unassignStaffFromLane,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
@@ -18,6 +19,10 @@ function todayDateValue() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+function formatShiftTime(value) {
+  return value ? String(value).slice(0, 5) : ''
+}
+
 /** @param {Array<{ lane: { laneId: number }; staff: Array<Record<string, unknown>> }>} assignments @param {number} laneId @param {Record<string, unknown>} staffMember */
 function upsertLaneAssignment(assignments, laneId, staffMember) {
   const normalized = {
@@ -25,6 +30,8 @@ function upsertLaneAssignment(assignments, laneId, staffMember) {
     fullName: String(staffMember.fullName ?? '—'),
     phoneNumber: String(staffMember.phoneNumber ?? '—'),
     status: String(staffMember.status ?? 'Active'),
+    shiftId: staffMember.shiftId != null ? Number(staffMember.shiftId) : undefined,
+    shiftName: staffMember.shiftName != null ? String(staffMember.shiftName) : undefined,
   }
 
   return assignments.map((item) =>
@@ -43,6 +50,7 @@ function upsertLaneAssignment(assignments, laneId, staffMember) {
 export default function ManagerStaffPage() {
   const [staff, setStaff] = useState([])
   const [lanes, setLanes] = useState([])
+  const [workShifts, setWorkShifts] = useState([])
   const [laneAssignments, setLaneAssignments] = useState([])
   const [loading, setLoading] = useState(true)
   const [assignmentsLoading, setAssignmentsLoading] = useState(true)
@@ -51,6 +59,7 @@ export default function ManagerStaffPage() {
 
   const [assignTarget, setAssignTarget] = useState(null)
   const [selectedLaneId, setSelectedLaneId] = useState('')
+  const [selectedWorkShiftId, setSelectedWorkShiftId] = useState('')
   const [viewDate, setViewDate] = useState(todayDateValue)
   const [selectedDate, setSelectedDate] = useState(todayDateValue)
   const [assigning, setAssigning] = useState(false)
@@ -79,15 +88,19 @@ export default function ManagerStaffPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const [staffData, lanesData] = await Promise.allSettled([
+      const [staffData, lanesData, shiftsData] = await Promise.allSettled([
         fetchManagerStaffs(),
         fetchManagerLanes({ date: viewDate }),
+        fetchManagerWorkShifts(false),
       ])
       if (staffData.status === 'fulfilled') {
         setStaff(Array.isArray(staffData.value) ? staffData.value : [])
       }
       if (lanesData.status === 'fulfilled') {
         setLanes(Array.isArray(lanesData.value) ? lanesData.value : [])
+      }
+      if (shiftsData.status === 'fulfilled') {
+        setWorkShifts(Array.isArray(shiftsData.value) ? shiftsData.value : [])
       }
       if (staffData.status === 'rejected') {
         const err = staffData.reason
@@ -100,12 +113,18 @@ export default function ManagerStaffPage() {
   }, [loadAssignments, viewDate])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async manager staff load
     loadData()
   }, [loadData])
 
   const handleAssign = async () => {
-    if (!assignTarget || !selectedLaneId || !selectedDate) return
+    if (!assignTarget || !selectedLaneId || !selectedDate || !selectedWorkShiftId) {
+      showToast('Vui lòng chọn ngày, làn và ca làm việc.')
+      return
+    }
     const laneId = Number(selectedLaneId)
+    const shiftId = Number(selectedWorkShiftId)
+    const shift = workShifts.find((item) => Number(item.workShiftId) === shiftId)
     const isViewingSelectedDate = selectedDate === viewDate
 
     setAssigning(true)
@@ -114,10 +133,17 @@ export default function ManagerStaffPage() {
         staffId: Number(assignTarget.userId),
         laneId,
         assignedDate: selectedDate,
+        workShiftId: shiftId,
       })
 
       if (isViewingSelectedDate) {
-        setLaneAssignments((prev) => upsertLaneAssignment(prev, laneId, assignTarget))
+        setLaneAssignments((prev) =>
+          upsertLaneAssignment(prev, laneId, {
+            ...assignTarget,
+            shiftId,
+            shiftName: shift?.shiftName,
+          }),
+        )
       }
 
       showToast(
@@ -127,6 +153,7 @@ export default function ManagerStaffPage() {
       )
       setAssignTarget(null)
       setSelectedLaneId('')
+      setSelectedWorkShiftId('')
 
       if (isViewingSelectedDate) await loadAssignments()
     } catch (err) {
@@ -226,6 +253,9 @@ export default function ManagerStaffPage() {
                         <div>
                           <p className="text-sm font-medium text-on-surface">{s.fullName}</p>
                           <p className="text-xs text-on-surface-variant">{s.phoneNumber}</p>
+                          {s.shiftName && (
+                            <p className="text-xs font-medium text-secondary">{s.shiftName}</p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -295,6 +325,7 @@ export default function ManagerStaffPage() {
                         onClick={() => {
                           setAssignTarget(s)
                           setSelectedLaneId('')
+                          setSelectedWorkShiftId('')
                           setSelectedDate(viewDate)
                         }}
                         disabled={lanes.length === 0}
@@ -328,6 +359,29 @@ export default function ManagerStaffPage() {
             disabled={assigning}
             onChange={(e) => setSelectedDate(e.target.value)}
           />
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">
+              Ca làm việc
+            </span>
+            <select
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={selectedWorkShiftId}
+              disabled={assigning || workShifts.length === 0}
+              onChange={(e) => setSelectedWorkShiftId(e.target.value)}
+            >
+              <option value="">Chọn ca làm việc</option>
+              {workShifts.map((shift) => (
+                <option key={shift.workShiftId} value={shift.workShiftId}>
+                  {shift.shiftName} ({formatShiftTime(shift.startTime)} - {formatShiftTime(shift.endTime)})
+                </option>
+              ))}
+            </select>
+          </label>
+          {workShifts.length === 0 && (
+            <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+              Chưa có ca làm việc active để phân công lane.
+            </p>
+          )}
           {selectedDate !== viewDate && (
             <p className="rounded-lg border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
               Bạn đang phân công cho ngày {selectedDate}, trong khi bảng hiển thị ngày {viewDate}. Phân công vẫn

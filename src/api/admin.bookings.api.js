@@ -98,7 +98,7 @@ export function plateSearchVariants(plate) {
   const raw = normalizePlateQuery(plate)
   if (!raw) return []
 
-  const compact = raw.replace(/[\s.\-]/g, '')
+  const compact = raw.replace(/[\s.-]/g, '')
   const dotted = raw.replace(/-/g, '.').replace(/\s/g, '')
   const dashed = raw.replace(/\./g, '-').replace(/\s/g, '')
 
@@ -262,6 +262,10 @@ export function normalizeSmartLicensePlateLookup(raw) {
   const item = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {}
   const customerType = String(item.customerType ?? item.CustomerType ?? 'WalkIn')
   const data = item.data ?? item.Data ?? null
+  const walkInData =
+    customerType === 'WalkIn' && data && typeof data === 'object'
+      ? /** @type {Record<string, unknown>} */ (data)
+      : null
   return {
     customerType,
     data,
@@ -270,6 +274,15 @@ export function normalizeSmartLicensePlateLookup(raw) {
       : null,
     fleetVehicle: customerType === 'Fleet' && data && typeof data === 'object'
       ? /** @type {Record<string, unknown>} */ (data)
+      : null,
+    walkInCustomer: walkInData
+      ? {
+          userId: walkInData.userId != null ? Number(walkInData.userId) : 0,
+          customerName: walkInData.customerName != null ? String(walkInData.customerName) : '',
+          phoneNumber: walkInData.phoneNumber != null ? String(walkInData.phoneNumber) : '',
+          vehicleId: walkInData.vehicleId != null ? Number(walkInData.vehicleId) : undefined,
+          vehicleTypeId: walkInData.vehicleTypeId != null ? Number(walkInData.vehicleTypeId) : undefined,
+        }
       : null,
   }
 }

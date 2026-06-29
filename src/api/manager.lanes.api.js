@@ -16,6 +16,8 @@ import { apiRequest } from './client'
  *   phoneNumber: string
  *   status: string
  *   assignedDate?: string
+ *   shiftId?: number
+ *   shiftName?: string
  * }} LaneAssignedStaff
  */
 
@@ -61,6 +63,8 @@ export function normalizeLaneAssignedStaff(item) {
     phoneNumber: String(item.phoneNumber ?? '—'),
     status: String(item.status ?? 'Active'),
     assignedDate: item.assignedDate != null ? String(item.assignedDate) : undefined,
+    shiftId: item.shiftId != null ? Number(item.shiftId) : undefined,
+    shiftName: item.shiftName != null ? String(item.shiftName) : undefined,
   }
 }
 

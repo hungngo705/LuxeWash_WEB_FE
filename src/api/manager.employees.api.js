@@ -6,6 +6,8 @@ import { apiRequest } from './client'
  *   fullName: string
  *   phoneNumber: string
  *   status: string
+ *   shiftId?: number
+ *   shiftName?: string
  * }} ManagerStaffMember
  *
  * @typedef {{
@@ -37,6 +39,8 @@ export function normalizeManagerStaff(item) {
     fullName: String(item.fullName ?? '—'),
     phoneNumber: String(item.phoneNumber ?? '—'),
     status: String(item.status ?? 'Active'),
+    shiftId: item.shiftId != null ? Number(item.shiftId) : undefined,
+    shiftName: item.shiftName != null ? String(item.shiftName) : undefined,
   }
 }
 

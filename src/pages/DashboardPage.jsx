@@ -7,6 +7,7 @@ import {
   enrichStaffBooking,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
+  fetchVehicleTypes,
   fleetWalkIn,
   formatPaymentMethodLabel,
   normalizeStaffTask,
@@ -294,16 +295,52 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
   );
 }
 
+function isPayOsConfigurationError(err) {
+  if (!(err instanceof ApiError)) return false;
+  const payload = err.payload && typeof err.payload === "object" ? err.payload : {};
+  const details = String(payload.details ?? payload.Details ?? "");
+  return `${err.message} ${details}`.toLowerCase().includes("payos configuration is missing");
+}
+
+function getVehicleTypeId(type) {
+  return Number(type?.vehicleTypeId ?? type?.id ?? 0);
+}
+
+function isFallbackVehicleType(type) {
+  return String(type?.name ?? type?.vehicleTypeName ?? "")
+    .trim()
+    .toLowerCase() === "khác";
+}
+
+function getServicePriceForVehicleType(service, vehicleTypeId) {
+  if (!vehicleTypeId || !Array.isArray(service?.prices)) return null;
+  return (
+    service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
+  );
+}
+
 function PersonalWalkInPanel({
   draft,
   services,
+  vehicleTypes,
   loadingServices,
+  loadingVehicleTypes,
   creating,
   onToggleService,
+  onVehicleTypeChange,
+  onPaymentMethodChange,
   onSubmit,
   onCancel,
 }) {
   if (!draft) return null;
+  const isRegisteredCustomer = Number(draft.userId) > 0;
+  const paymentOptions = isRegisteredCustomer
+    ? [{ value: "Wallet", label: "Ví" }]
+    : [
+        { value: "Cash", label: "Tiền mặt" },
+        { value: "PayOS", label: "PayOS" },
+      ];
+  const selectedVehicleTypeId = Number(draft.vehicleTypeId) || 0;
 
   return (
     <section className="glass-panel soft-shadow mt-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -332,6 +369,83 @@ function PersonalWalkInPanel({
       </div>
 
       <div className="space-y-4 p-4">
+        {isRegisteredCustomer ? (
+          <div className="rounded-xl border border-primary/25 bg-primary-container/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              Khách đã đăng ký
+            </p>
+            <p className="mt-1 font-semibold text-on-surface">
+              {draft.customerName || `Customer #${draft.userId}`}
+            </p>
+            {draft.phoneNumber && (
+              <p className="text-sm text-on-surface-variant">{draft.phoneNumber}</p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              Khách vãng lai
+            </p>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Chưa có tài khoản trong hệ thống, booking sẽ gửi userId = 0.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            Thanh toán
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {paymentOptions.map((option) => {
+              const selected = draft.paymentMethod === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                    selected
+                      ? "border-secondary bg-secondary-container/25 text-secondary"
+                      : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:border-secondary/50"
+                  }`}
+                  onClick={() => onPaymentMethodChange(option.value)}
+                  disabled={isRegisteredCustomer}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
+                  </span>
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+          <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            Loại xe
+          </label>
+          <select
+            className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm font-medium text-on-surface outline-none focus:border-secondary"
+            value={selectedVehicleTypeId ? String(selectedVehicleTypeId) : ""}
+            onChange={(event) => onVehicleTypeChange(event.target.value)}
+            disabled={loadingVehicleTypes || creating}
+          >
+            <option value="">
+              {loadingVehicleTypes ? "Đang tải loại xe..." : "Chọn loại xe"}
+            </option>
+            {vehicleTypes.filter((type) => !isFallbackVehicleType(type)).map((type) => {
+              const id = getVehicleTypeId(type);
+              if (!id) return null;
+              return (
+                <option key={id} value={id}>
+                  {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
         {loadingServices ? (
           <div className="flex items-center justify-center py-6">
             <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
@@ -345,10 +459,13 @@ function PersonalWalkInPanel({
             {services.map((service) => {
               const serviceId = Number(service.serviceId ?? service.id);
               const selected = draft.serviceIds.includes(serviceId);
+              const selectedPrice = getServicePriceForVehicleType(service, selectedVehicleTypeId);
+              const disabledByVehicleType = selectedVehicleTypeId > 0 && !selectedPrice;
               const minPrice =
                 Array.isArray(service.prices) && service.prices.length > 0
                   ? Math.min(...service.prices.map((p) => Number(p.price) || 0))
                   : 0;
+              const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice;
 
               return (
                 <button
@@ -357,8 +474,11 @@ function PersonalWalkInPanel({
                   className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-left transition-colors ${
                     selected
                       ? "border-secondary bg-secondary-container/25"
+                      : disabledByVehicleType
+                        ? "border-outline-variant bg-surface-container-low opacity-50"
                       : "border-outline-variant bg-surface-container-low hover:border-secondary/50"
                   }`}
+                  disabled={disabledByVehicleType}
                   onClick={() => onToggleService(serviceId)}
                 >
                   <div className="min-w-0">
@@ -370,9 +490,14 @@ function PersonalWalkInPanel({
                         {service.description}
                       </p>
                     )}
-                    {minPrice > 0 && (
+                    {displayPrice > 0 && (
                       <p className="mt-1 text-sm font-semibold text-primary">
-                        từ {formatVnd(minPrice)}
+                        {selectedPrice ? formatVnd(displayPrice) : `từ ${formatVnd(displayPrice)}`}
+                      </p>
+                    )}
+                    {disabledByVehicleType && (
+                      <p className="mt-1 text-xs text-error">
+                        Chưa có giá cho loại xe này
                       </p>
                     )}
                   </div>
@@ -381,7 +506,7 @@ function PersonalWalkInPanel({
                       selected ? "text-secondary" : "text-outline"
                     }`}
                   >
-                    {selected ? "check_circle" : "radio_button_unchecked"}
+                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
                   </span>
                 </button>
               );
@@ -716,7 +841,9 @@ export default function DashboardPage() {
   const [toast, setToast] = useState(null);
   const [walkInDraft, setWalkInDraft] = useState(null);
   const [walkInServices, setWalkInServices] = useState([]);
+  const [vehicleTypes, setVehicleTypes] = useState([]);
   const [loadingWalkInServices, setLoadingWalkInServices] = useState(false);
+  const [loadingVehicleTypes, setLoadingVehicleTypes] = useState(false);
   const [creatingWalkIn, setCreatingWalkIn] = useState(false);
 
   const showToast = (message, type = "success") => setToast({ message, type });
@@ -738,6 +865,19 @@ export default function DashboardPage() {
       );
     } finally {
       setLoadingWalkInServices(false);
+    }
+  }, []);
+
+  const loadVehicleTypes = useCallback(async () => {
+    setLoadingVehicleTypes(true);
+    try {
+      const types = await fetchVehicleTypes();
+      setVehicleTypes(Array.isArray(types) ? types : []);
+    } catch {
+      setVehicleTypes([]);
+      showToast("Không tải được danh sách loại xe.", "error");
+    } finally {
+      setLoadingVehicleTypes(false);
     }
   }, []);
 
@@ -767,6 +907,7 @@ export default function DashboardPage() {
       .catch((err) => {
         if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
       })
+    loadVehicleTypes()
 
     const interval = setInterval(() => {
       loadStaffTasks({ signal: controller.signal })
@@ -775,7 +916,7 @@ export default function DashboardPage() {
       controller.abort()
       clearInterval(interval)
     }
-  }, [loadStaffTasks])
+  }, [loadStaffTasks, loadVehicleTypes])
 
   const checkedInQueue = useMemo(
     () => staffTasks.filter((b) => b.status === "Checked-in"),
@@ -828,11 +969,25 @@ export default function DashboardPage() {
     setWalkInDraft((draft) => {
       if (!draft) return draft;
       const id = Number(serviceId);
-      const serviceIds = draft.serviceIds.includes(id)
-        ? draft.serviceIds.filter((item) => item !== id)
-        : [...draft.serviceIds, id];
-      return { ...draft, serviceIds };
+      return { ...draft, serviceIds: draft.serviceIds.includes(id) ? [] : [id] };
     });
+  }, []);
+
+  const updateWalkInPaymentMethod = useCallback((paymentMethod) => {
+    setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod } : draft));
+  }, []);
+
+  const updateWalkInVehicleType = useCallback((vehicleTypeId) => {
+    const nextVehicleTypeId = Number(vehicleTypeId) || undefined;
+    setWalkInDraft((draft) =>
+      draft
+        ? {
+            ...draft,
+            vehicleTypeId: nextVehicleTypeId,
+            serviceIds: [],
+          }
+        : draft,
+    );
   }, []);
 
   const handleCreatePersonalWalkIn = useCallback(async () => {
@@ -846,17 +1001,30 @@ export default function DashboardPage() {
       setLookupError("Vui lòng chọn ít nhất một dịch vụ cho khách walk-in.");
       return;
     }
+    if (!Number(walkInDraft.vehicleTypeId)) {
+      setLookupError("Vui lòng chọn loại xe để tính đúng giá dịch vụ walk-in.");
+      return;
+    }
 
     setCreatingWalkIn(true);
     try {
+      const returnUrl = `${window.location.origin}/dashboard`;
       const bookingResult = await createWalkInBooking({
         branchId,
         licensePlate: walkInDraft.licensePlate,
         serviceIds: walkInDraft.serviceIds.map(Number),
-        userId: 0,
+        userId: Number(walkInDraft.userId) > 0 ? Number(walkInDraft.userId) : 0,
+        vehicleId: Number(walkInDraft.vehicleId) > 0 ? Number(walkInDraft.vehicleId) : undefined,
+        vehicleTypeId: Number(walkInDraft.vehicleTypeId),
         pointsToUse: 0,
+        paymentMethod: walkInDraft.paymentMethod,
+        returnUrl,
+        cancelUrl: returnUrl,
       });
       const booking = normalizeStaffTask(bookingResult);
+      if (bookingResult?.paymentUrl) {
+        window.open(bookingResult.paymentUrl, "_blank", "noopener,noreferrer");
+      }
       setWalkInDraft(null);
       setPlateInput("");
       setLookupError("");
@@ -866,6 +1034,11 @@ export default function DashboardPage() {
         await applySelectedBooking(booking);
       }
     } catch (err) {
+      if (isPayOsConfigurationError(err)) {
+        setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod: "Cash" } : draft));
+        setLookupError("PayOS chưa được cấu hình trên backend. Vui lòng chọn Tiền mặt để tạo walk-in.");
+        return;
+      }
       setLookupError(
         err instanceof ApiError
           ? err.message
@@ -946,8 +1119,19 @@ export default function DashboardPage() {
           licensePlate: plate,
           branchId,
           serviceIds: [],
+          userId: lookup.walkInCustomer?.userId ?? 0,
+          customerName: lookup.walkInCustomer?.customerName ?? "",
+          phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+          vehicleId: lookup.walkInCustomer?.vehicleId,
+          vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
+          paymentMethod: lookup.walkInCustomer?.userId ? "Wallet" : "Cash",
         });
         setLookupError("Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.");
+        setLookupError(
+          lookup.walkInCustomer?.userId
+            ? "Khách đã đăng ký nhưng chưa có booking. Chọn dịch vụ để tạo walk-in."
+            : "Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.",
+        );
         await loadWalkInServices(branchId);
         return;
       }
@@ -1125,9 +1309,13 @@ export default function DashboardPage() {
           <PersonalWalkInPanel
             draft={walkInDraft}
             services={walkInServices}
+            vehicleTypes={vehicleTypes}
             loadingServices={loadingWalkInServices}
+            loadingVehicleTypes={loadingVehicleTypes}
             creating={creatingWalkIn}
             onToggleService={toggleWalkInService}
+            onVehicleTypeChange={updateWalkInVehicleType}
+            onPaymentMethodChange={updateWalkInPaymentMethod}
             onSubmit={handleCreatePersonalWalkIn}
             onCancel={() => {
               setWalkInDraft(null);

@@ -80,6 +80,7 @@ export default function ManagerLanesPage() {
   }, [selectedDate])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async manager lanes load
     loadLanes()
   }, [loadLanes])
 
@@ -303,6 +304,9 @@ export default function ManagerLanesPage() {
                               <div className="min-w-0">
                                 <p className="truncate font-medium text-on-surface">{member.fullName}</p>
                                 <p className="truncate text-xs text-on-surface-variant">{member.phoneNumber}</p>
+                                {member.shiftName && (
+                                  <p className="truncate text-xs font-medium text-secondary">{member.shiftName}</p>
+                                )}
                               </div>
                             </div>
                             <button

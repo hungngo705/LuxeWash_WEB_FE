@@ -1,4 +1,4 @@
-import { apiRequest } from './client'
+import { apiRequest, getAccessToken } from './client'
 import {
   asBookingList,
   fetchBookingsByDate,
@@ -7,6 +7,26 @@ import {
 } from './admin.bookings.api'
 import { fetchTransactions, normalizeTransaction } from './admin.transactions.api'
 import { findUserByLicensePlate, maskPhoneNumber } from './staff.customers.api'
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== 'string') return null
+  const payload = token.split('.')[1]
+  if (!payload) return null
+  try {
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return JSON.parse(atob(padded))
+  } catch {
+    return null
+  }
+}
+
+function getBranchIdFromToken() {
+  const payload = decodeJwtPayload(getAccessToken())
+  const raw = payload?.BranchId ?? payload?.branchId
+  const branchId = Number(raw)
+  return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
+}
 
 /**
  * @typedef {{
@@ -27,6 +47,8 @@ export function formatPaymentMethodLabel(method) {
     Wallet: 'Ví LuxeWash',
     Card: 'Thẻ ngân hàng',
     Cash: 'Tiền mặt',
+    PayOS: 'PayOS',
+    QR: 'PayOS',
     Points: 'Điểm thưởng',
     Point: 'Điểm thưởng',
     COD: 'Thanh toán tại quầy',
@@ -570,10 +592,11 @@ export function normalizeVehicleRecognition(data) {
 /** @param {Record<string, unknown>} item @returns {StaffLaneAssignment} */
 export function normalizeStaffLaneAssignment(item) {
   if (!item || typeof item !== 'object') return {}
+  const branchId = item.branchId ?? item.BranchId ?? getBranchIdFromToken()
   return {
     laneId: item.laneId != null ? Number(item.laneId) : undefined,
     laneName: item.laneName != null ? String(item.laneName) : undefined,
-    branchId: item.branchId != null ? Number(item.branchId) : undefined,
+    branchId: branchId != null ? Number(branchId) : undefined,
     branchName: item.branchName != null ? String(item.branchName) : undefined,
     assignedDate: item.assignedDate != null ? String(item.assignedDate) : undefined,
     staffId: item.staffId != null ? Number(item.staffId) : undefined,
