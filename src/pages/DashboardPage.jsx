@@ -49,6 +49,23 @@ function isPaidPaymentStatus(status) {
   return ["completed", "paid", "success", "succeeded"].includes(normalized);
 }
 
+function getPaymentMethodDisplay(method, paymentStatus) {
+  const raw = String(method ?? "").trim();
+  const label = formatPaymentMethodLabel(method);
+  const missingMethod =
+    !raw ||
+    raw === "—" ||
+    raw.toLowerCase() === "pending" ||
+    label === "Chưa thanh toán" ||
+    label === "Chưa xác định";
+
+  if (isPaidPaymentStatus(paymentStatus) && missingMethod) {
+    return "Thanh toán trên hệ thống";
+  }
+
+  return label;
+}
+
 /** @param {import('../api/operationStaff.api').StaffTask[]} list @param {import('../api/operationStaff.api').StaffTask} booking */
 function upsertStaffTaskList(list, booking) {
   const id = Number(booking.bookingId);
@@ -775,7 +792,7 @@ function CustomerInfoPanel({
             </p>
             <p className="text-sm font-medium text-on-surface">
               {safeText(
-                formatPaymentMethodLabel(booking.paymentMethod),
+                getPaymentMethodDisplay(booking.paymentMethod, booking.paymentStatus),
                 "Chưa chọn",
               )}
             </p>
@@ -891,7 +908,7 @@ function ProcessingVehiclesPanel({
                     {v.serviceName}
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    {formatPaymentMethodLabel(v.paymentMethod)} ·{" "}
+                    {getPaymentMethodDisplay(v.paymentMethod, v.paymentStatus)} ·{" "}
                     {formatVnd(v.finalAmount)}
                   </p>
                 </div>
@@ -1124,7 +1141,23 @@ export default function DashboardPage() {
     if (options.message !== undefined) setLookupError(options.message);
 
     try {
-      const enriched = await enrichStaffBooking(booking, { allowStandaloneFetch: true });
+      let enriched = await enrichStaffBooking(booking, { allowStandaloneFetch: true });
+      if (Number(enriched?.bookingId)) {
+        try {
+          const payment = await fetchBookingPaymentStatus(enriched.bookingId);
+          enriched = {
+            ...enriched,
+            paymentStatus: payment?.paymentStatus
+              ? String(payment.paymentStatus)
+              : enriched.paymentStatus,
+            paymentMethod: payment?.paymentMethod
+              ? String(payment.paymentMethod)
+              : enriched.paymentMethod,
+          };
+        } catch {
+          // Keep the booking payload if payment verification is temporarily unavailable.
+        }
+      }
       if (
         enriched.status === "Processing" ||
         enriched.status === "Checked-in"
