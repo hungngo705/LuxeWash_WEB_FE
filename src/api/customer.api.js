@@ -86,3 +86,12 @@ export function createWalkInBooking(payload) {
     body: JSON.stringify(body),
   })
 }
+
+/**
+ * GET /api/v1/bookings/{id}/payment-status
+ * Verifies the current payment status for a booking, including PayOS walk-in payments.
+ * @param {number} bookingId
+ */
+export function fetchBookingPaymentStatus(bookingId) {
+  return apiRequest(`/bookings/${Number(bookingId)}/payment-status`)
+}

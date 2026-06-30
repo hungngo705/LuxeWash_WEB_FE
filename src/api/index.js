@@ -238,6 +238,7 @@ export {
   checkAvailableSlots,
   checkCompatibility,
   createBooking,
+  fetchBookingPaymentStatus,
   createWalkInBooking,
 } from './customer.api'
 

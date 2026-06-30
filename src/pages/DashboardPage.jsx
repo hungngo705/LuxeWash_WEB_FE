@@ -5,6 +5,7 @@ import {
   apiRequest,
   createWalkInBooking,
   enrichStaffBooking,
+  fetchBookingPaymentStatus,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
   fetchVehicleTypes,
@@ -25,6 +26,27 @@ function normalizePlate(plate) {
     .toUpperCase()
     .replace(/\s/g, "")
     .replace(/\./g, "");
+}
+
+function isLocalAppHost(hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname.endsWith(".local")
+  );
+}
+
+function getPayOsCallbackUrl(path) {
+  if (typeof window === "undefined") return "https://payos.vn";
+  return isLocalAppHost(window.location.hostname)
+    ? "https://payos.vn"
+    : `${window.location.origin}${path}`;
+}
+
+function isPaidPaymentStatus(status) {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return ["completed", "paid", "success", "succeeded"].includes(normalized);
 }
 
 /** @param {import('../api/operationStaff.api').StaffTask[]} list @param {import('../api/operationStaff.api').StaffTask} booking */
@@ -67,11 +89,11 @@ function plateLookupMessage(status) {
 function StatusBadge({ status }) {
   const styles = {
     Pending:
-      "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+      "border-tertiary/40 bg-tertiary/10 text-tertiary",
     "Checked-in":
-      "border-primary-container/40 bg-primary-container/15 text-primary-container",
+      "border-primary/40 bg-primary/10 text-primary",
     Processing:
-      "border-secondary-container/40 bg-secondary-container/15 text-secondary-container",
+      "border-secondary/40 bg-secondary/10 text-secondary",
     Completed:
       "border-outline-variant bg-surface-variant text-on-surface-variant",
   };
@@ -111,9 +133,10 @@ function PaymentStatusBadge({ status }) {
     "Đã thanh toán": "border-primary/30 bg-primary/15 text-primary",
     Paid: "border-primary/30 bg-primary/15 text-primary",
     Success: "border-primary/30 bg-primary/15 text-primary",
-    "Chưa thanh toán": "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
-    Pending: "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
-    Unpaid: "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+    Completed: "border-primary/30 bg-primary/15 text-primary",
+    "Chưa thanh toán": "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    Pending: "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    Unpaid: "border-tertiary/40 bg-tertiary/10 text-tertiary",
     Failed: "border-error-container/40 bg-error-container/20 text-error",
     Refunded: "border-outline-variant bg-surface-variant text-on-surface-variant",
   };
@@ -157,6 +180,66 @@ function LoadingSpinner({ label = "Đang xử lý…" }) {
     <div className="flex flex-col items-center justify-center gap-3 py-12">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
       <span className="text-sm text-on-surface-variant">{label}</span>
+    </div>
+  );
+}
+
+function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
+  if (!payment?.url) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3">
+      <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
+          <div>
+            <h3 className="font-sora text-lg font-semibold text-on-surface">
+              Thanh toan PayOS
+            </h3>
+            <p className="text-xs text-on-surface-variant">
+              {payment.licensePlate} - Booking #{payment.bookingId || "-"} - {formatVnd(payment.amount)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onPaid}
+              disabled={verifying}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {verifying ? "sync" : "check_circle"}
+              </span>
+              {verifying ? "Dang kiem tra" : "Da thanh toan"}
+            </button>
+            <a
+              className="flex items-center gap-1 rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-variant"
+              href={payment.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+              Mo tab
+            </a>
+            <button
+              type="button"
+              className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant"
+              onClick={onClose}
+              aria-label="Dong PayOS"
+            >
+              <span className="material-symbols-outlined text-xl">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 bg-white">
+          <iframe
+            title="PayOS checkout"
+            src={payment.url}
+            className="h-full w-full border-0"
+            allow="clipboard-read; clipboard-write; payment *"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -221,10 +304,10 @@ function PlateLookupPanel({
             src={CAMERA_IMAGE}
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-4xl text-primary-container opacity-70">
+            <span className="material-symbols-outlined text-4xl text-primary opacity-80">
               videocam_off
             </span>
-            <span className="text-xs text-primary-container opacity-70">
+            <span className="text-xs font-medium text-primary opacity-85">
               Camera AI chưa triển khai
             </span>
           </div>
@@ -246,7 +329,7 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
             Đã check-in — chờ rửa
           </h3>
         </div>
-        <span className="rounded bg-primary-container/15 px-2 py-1 text-xs font-semibold text-primary-container">
+        <span className="rounded border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
           {items.length} xe
         </span>
       </div>
@@ -265,11 +348,11 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
                 onClick={() => onSelect(item)}
                 className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
                   selected
-                    ? "border-primary-container bg-primary-container/10 shadow-sm"
-                    : "border-outline-variant bg-surface-container-low hover:border-primary-container/30"
+                    ? "border-primary bg-primary/10 shadow-sm"
+                    : "border-outline-variant bg-surface-container-low hover:border-primary/35"
                 }`}
               >
-                <span className="material-symbols-outlined text-2xl text-primary-container">
+                <span className="material-symbols-outlined text-2xl text-primary">
                   directions_car
                 </span>
                 <div className="min-w-0 flex-1">
@@ -335,7 +418,11 @@ function PersonalWalkInPanel({
   if (!draft) return null;
   const isRegisteredCustomer = Number(draft.userId) > 0;
   const paymentOptions = isRegisteredCustomer
-    ? [{ value: "Wallet", label: "Ví" }]
+    ? [
+        { value: "Cash", label: "Tiền mặt" },
+        { value: "PayOS", label: "PayOS" },
+        { value: "Wallet", label: "Ví" },
+      ]
     : [
         { value: "Cash", label: "Tiền mặt" },
         { value: "PayOS", label: "PayOS" },
@@ -396,7 +483,7 @@ function PersonalWalkInPanel({
           <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             Thanh toán
           </p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className={`mt-3 grid gap-2 ${paymentOptions.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
             {paymentOptions.map((option) => {
               const selected = draft.paymentMethod === option.value;
               return (
@@ -409,7 +496,6 @@ function PersonalWalkInPanel({
                       : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:border-secondary/50"
                   }`}
                   onClick={() => onPaymentMethodChange(option.value)}
-                  disabled={isRegisteredCustomer}
                 >
                   <span className="material-symbols-outlined text-[18px]">
                     {selected ? "radio_button_checked" : "radio_button_unchecked"}
@@ -603,7 +689,7 @@ function CustomerInfoPanel({
       </div>
       <div className="flex-1 space-y-4 p-4">
         {error && (
-          <div className="rounded-lg border border-tertiary-container/40 bg-tertiary-container/10 px-3 py-2 text-xs text-tertiary-container">
+          <div className="rounded-lg border border-tertiary/35 bg-tertiary/10 px-3 py-2 text-xs font-medium text-tertiary">
             {error}
           </div>
         )}
@@ -708,7 +794,7 @@ function CustomerInfoPanel({
             </button>
           )}
           {isProcessing && (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary-container/40 bg-secondary-container/10 px-4 py-3 text-sm font-medium text-secondary-container">
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary/35 bg-secondary/10 px-4 py-3 text-sm font-semibold text-secondary">
               Xe đang rửa — hoàn thành ở cột bên phải
             </div>
           )}
@@ -763,7 +849,7 @@ function ProcessingVehiclesPanel({
             Đang rửa
           </h3>
         </div>
-        <span className="rounded bg-secondary-container/20 px-2 py-1 text-xs font-semibold text-secondary-container">
+        <span className="rounded border border-secondary/25 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary">
           {vehicles.length} xe
         </span>
       </div>
@@ -781,7 +867,7 @@ function ProcessingVehiclesPanel({
           {vehicles.map((v) => (
             <div
               key={v.bookingId}
-              className="group relative overflow-hidden rounded-xl border border-secondary-container/25 bg-surface-container-low p-4 transition-all hover:border-secondary-container/50"
+              className="group relative overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low p-4 transition-all hover:border-secondary/50"
             >
               <button
                 type="button"
@@ -789,11 +875,11 @@ function ProcessingVehiclesPanel({
                 onClick={() => onSelect(v)}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-sora text-xl font-bold tracking-wide text-secondary-container">
+                  <span className="font-sora text-xl font-bold tracking-wide text-on-surface">
                     {v.licensePlate}
                   </span>
-                  <span className="flex items-center gap-1 rounded-full bg-secondary-container/15 px-2 py-0.5 text-[10px] font-semibold text-secondary-container uppercase">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary-container" />
+                  <span className="flex items-center gap-1 rounded-full border border-secondary/25 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold text-secondary uppercase">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
                     Processing
                   </span>
                 </div>
@@ -812,7 +898,7 @@ function ProcessingVehiclesPanel({
               </button>
               <button
                 type="button"
-                className="w-full rounded-xl border border-primary-container bg-primary-container/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/25 disabled:opacity-50"
+                className="w-full rounded-xl border border-primary bg-primary/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary uppercase transition-colors hover:bg-primary/20 disabled:opacity-50"
                 onClick={() => onComplete(v.bookingId)}
                 disabled={completingId === v.bookingId}
               >
@@ -845,8 +931,67 @@ export default function DashboardPage() {
   const [loadingWalkInServices, setLoadingWalkInServices] = useState(false);
   const [loadingVehicleTypes, setLoadingVehicleTypes] = useState(false);
   const [creatingWalkIn, setCreatingWalkIn] = useState(false);
+  const [payOsPayment, setPayOsPayment] = useState(null);
+  const [verifyingPayOsPayment, setVerifyingPayOsPayment] = useState(false);
 
   const showToast = (message, type = "success") => setToast({ message, type });
+
+  const markPayOsPaymentCompleted = useCallback((payment = payOsPayment) => {
+    if (!payment?.bookingId) {
+      setPayOsPayment(null);
+      return;
+    }
+    const paidPatch = {
+      bookingId: Number(payment.bookingId),
+      paymentMethod: "PayOS",
+      paymentStatus: "Completed",
+    };
+    setSelectedBooking((booking) =>
+      Number(booking?.bookingId) === Number(payment.bookingId)
+        ? { ...booking, ...paidPatch }
+        : booking,
+    );
+    setStaffTasks((tasks) =>
+      tasks.map((task) =>
+        Number(task.bookingId) === Number(payment.bookingId)
+          ? { ...task, ...paidPatch }
+          : task,
+      ),
+    );
+    setPayOsPayment(null);
+    showToast(`Da ghi nhan thanh toan PayOS cho booking #${payment.bookingId}.`);
+  }, [payOsPayment]);
+
+  const verifyPayOsPaymentStatus = useCallback(async (payment = payOsPayment, { silent = false } = {}) => {
+    if (!payment?.bookingId) return false;
+    if (!silent) setVerifyingPayOsPayment(true);
+    try {
+      const status = await fetchBookingPaymentStatus(payment.bookingId);
+      if (isPaidPaymentStatus(status?.paymentStatus)) {
+        markPayOsPaymentCompleted({
+          ...payment,
+          amount: Number(status?.amount ?? payment.amount ?? 0),
+        });
+        return true;
+      }
+      if (!silent) {
+        showToast("PayOS chua xac nhan thanh toan. Vui long thu lai sau vai giay.", "error");
+      }
+      return false;
+    } catch (err) {
+      if (!silent) {
+        showToast(
+          err instanceof ApiError
+            ? err.message
+            : "Khong the kiem tra trang thai thanh toan PayOS.",
+          "error",
+        );
+      }
+      return false;
+    } finally {
+      if (!silent) setVerifyingPayOsPayment(false);
+    }
+  }, [payOsPayment, markPayOsPaymentCompleted]);
 
   const loadWalkInServices = useCallback(async (branchId) => {
     setLoadingWalkInServices(true);
@@ -880,6 +1025,35 @@ export default function DashboardPage() {
       setLoadingVehicleTypes(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!payOsPayment?.bookingId) return undefined;
+
+    let cancelled = false;
+    const pollPayment = async () => {
+      try {
+        const status = await fetchBookingPaymentStatus(payOsPayment.bookingId);
+        if (!cancelled && isPaidPaymentStatus(status?.paymentStatus)) {
+          markPayOsPaymentCompleted({
+            ...payOsPayment,
+            amount: Number(status?.amount ?? payOsPayment.amount ?? 0),
+          });
+        }
+      } catch {
+        // Payment polling is best-effort while PayOS/webhook finishes.
+      }
+    };
+
+    const interval = setInterval(pollPayment, 3000);
+    const timeout = setTimeout(() => clearInterval(interval), 120000);
+    pollPayment();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [payOsPayment, markPayOsPaymentCompleted]);
 
   const loadStaffTasks = useCallback(async ({ signal } = {}) => {
     try {
@@ -1008,7 +1182,7 @@ export default function DashboardPage() {
 
     setCreatingWalkIn(true);
     try {
-      const returnUrl = `${window.location.origin}/dashboard`;
+      const returnUrl = getPayOsCallbackUrl("/dashboard");
       const bookingResult = await createWalkInBooking({
         branchId,
         licensePlate: walkInDraft.licensePlate,
@@ -1023,7 +1197,12 @@ export default function DashboardPage() {
       });
       const booking = normalizeStaffTask(bookingResult);
       if (bookingResult?.paymentUrl) {
-        window.open(bookingResult.paymentUrl, "_blank", "noopener,noreferrer");
+        setPayOsPayment({
+          url: String(bookingResult.paymentUrl),
+          bookingId: booking.bookingId || bookingResult.bookingId,
+          licensePlate: booking.licensePlate || walkInDraft.licensePlate,
+          amount: Number(booking.finalAmount ?? bookingResult.finalAmount ?? 0),
+        });
       }
       setWalkInDraft(null);
       setPlateInput("");
@@ -1124,7 +1303,7 @@ export default function DashboardPage() {
           phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
           vehicleId: lookup.walkInCustomer?.vehicleId,
           vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
-          paymentMethod: lookup.walkInCustomer?.userId ? "Wallet" : "Cash",
+          paymentMethod: "Cash",
         });
         setLookupError("Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.");
         setLookupError(
@@ -1277,6 +1456,14 @@ export default function DashboardPage() {
           onClose={() => setDetailBooking(null)}
         />
       )}
+      {payOsPayment && (
+        <PayOsQrModal
+          payment={payOsPayment}
+          onClose={() => setPayOsPayment(null)}
+          onPaid={() => verifyPayOsPaymentStatus(payOsPayment)}
+          verifying={verifyingPayOsPayment}
+        />
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -1285,11 +1472,11 @@ export default function DashboardPage() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="flex items-center gap-2 rounded-full border border-primary-container/30 bg-primary-container/10 px-3 py-1.5 text-xs text-primary-container">
+          <span className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
             <span className="material-symbols-outlined text-[16px]">login</span>
             {checkedInQueue.length} check-in
           </span>
-          <span className="flex items-center gap-2 rounded-full border border-secondary-container/30 bg-secondary-container/10 px-3 py-1.5 text-xs text-secondary-container">
+          <span className="flex items-center gap-2 rounded-full border border-secondary/30 bg-secondary/10 px-3 py-1.5 text-xs font-semibold text-secondary">
             <span className="material-symbols-outlined text-[16px]">wash</span>
             {processingVehicles.length} đang rửa
           </span>

@@ -13,6 +13,15 @@ function getVehicleTypeId(type) {
   return Number(type?.vehicleTypeId ?? type?.id ?? 0)
 }
 
+function isLocalAppHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.local')
+}
+
+function getPayOsCallbackUrl(path) {
+  if (typeof window === 'undefined') return 'https://payos.vn'
+  return isLocalAppHost(window.location.hostname) ? 'https://payos.vn' : `${window.location.origin}${path}`
+}
+
 function isFallbackVehicleType(type) {
   return String(type?.name ?? type?.vehicleTypeName ?? '')
     .trim()
@@ -106,7 +115,7 @@ export default function ManagerWalkInPage() {
 
     setSubmitting(true)
     try {
-      const returnUrl = `${window.location.origin}/manager/walk-in`
+      const returnUrl = getPayOsCallbackUrl('/manager/walk-in')
       await createWalkInBooking({
         branchId: Number(branchId),
         licensePlate: form.licensePlate.trim().toUpperCase(),
