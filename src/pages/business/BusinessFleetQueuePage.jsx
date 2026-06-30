@@ -64,9 +64,20 @@ export default function BusinessFleetQueuePage() {
   }, [])
 
   useEffect(() => {
-    load()
-    const interval = setInterval(load, 10000)
-    return () => clearInterval(interval)
+    let cancelled = false
+    const safeLoad = () => {
+      load().then(() => {
+        if (cancelled) {
+          // discard — caller navigated away
+        }
+      })
+    }
+    safeLoad()
+    const interval = setInterval(safeLoad, 10000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [load])
 
   const handleAssignLane = async () => {

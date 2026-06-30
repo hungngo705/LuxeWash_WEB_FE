@@ -7,6 +7,7 @@ const PAGE_TITLES = {
   '/admin/services': 'Quản lý dịch vụ',
   '/admin/vehicle-types': 'Loại xe',
   '/admin/vehicle-approvals': 'Duyệt loại xe',
+  '/admin/fleet-approvals': 'Duyệt xe doanh nghiệp',
   '/admin/branches': 'Chi nhánh',
   '/admin/lanes': 'Làn rửa',
   '/admin/employees': 'Nhân viên',

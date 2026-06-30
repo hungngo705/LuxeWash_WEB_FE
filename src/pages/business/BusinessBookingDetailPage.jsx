@@ -116,15 +116,62 @@ export default function BusinessBookingDetailPage() {
               </p>
             </div>
             <div>
+              <p className="text-xs text-on-surface-variant mb-1">Làn rửa</p>
+              <p className="text-sm text-on-surface">
+                {booking.laneName || (booking.laneId ? `Làn #${booking.laneId}` : '—')}
+              </p>
+              {booking.isBusinessLane && (
+                <span className="mt-1 inline-flex rounded-full border border-secondary/30 bg-secondary-container/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
+                  Doanh nghiệp
+                </span>
+              )}
+            </div>
+            <div>
               <p className="text-xs text-on-surface-variant mb-1">Ngày đặt</p>
               <p className="text-sm text-on-surface">
                 {formatDateTime(booking.scheduledTime || booking.createdAt)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-on-surface-variant mb-1">Trạng thái thanh toán</p>
+              <p className="text-sm text-on-surface">
+                {booking.paymentStatus === 'Paid' ? (
+                  <span className="font-medium text-primary">Đã thanh toán</span>
+                ) : booking.paymentStatus === 'Refunded' ? (
+                  <span className="text-on-surface-variant">Đã hoàn tiền</span>
+                ) : (
+                  <span className="text-on-surface-variant">Chưa thanh toán</span>
+                )}
               </p>
             </div>
             {booking.startTime && (
               <div>
                 <p className="text-xs text-on-surface-variant mb-1">Khung giờ</p>
                 <p className="text-sm text-on-surface">{booking.startTime} — {booking.endTime}</p>
+              </div>
+            )}
+            {booking.estimatedStart && (
+              <div>
+                <p className="text-xs text-on-surface-variant mb-1">Bắt đầu dự kiến</p>
+                <p className="text-sm text-on-surface">{formatDateTime(booking.estimatedStart)}</p>
+              </div>
+            )}
+            {booking.estimatedEnd && (
+              <div>
+                <p className="text-xs text-on-surface-variant mb-1">Kết thúc dự kiến</p>
+                <p className="text-sm text-on-surface">{formatDateTime(booking.estimatedEnd)}</p>
+              </div>
+            )}
+            {(booking.oldScheduledTime || booking.newScheduledTime) && (
+              <div className="col-span-2 rounded-lg border border-outline-variant/60 bg-surface-container-low p-3 text-xs">
+                <p className="font-semibold uppercase tracking-wider text-on-surface-variant">
+                  Lịch đổi gần nhất
+                </p>
+                <p className="mt-1 text-on-surface">
+                  Từ: <span className="text-on-surface-variant">{booking.oldScheduledTime ? formatDateTime(booking.oldScheduledTime) : '—'}</span>
+                  {' → '}
+                  Đến: <span className="font-medium text-on-surface">{booking.newScheduledTime ? formatDateTime(booking.newScheduledTime) : '—'}</span>
+                </p>
               </div>
             )}
           </div>

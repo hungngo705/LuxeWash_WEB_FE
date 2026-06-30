@@ -16,7 +16,9 @@ function asCollection(data) {
 /** @param {Record<string, unknown>} item */
 export function normalizeStaffShift(item) {
   return {
-    shiftAssignmentId: Number(item.shiftAssignmentId ?? item.id),
+    shiftAssignmentId: Number(item.shiftAssignmentId ?? item.assignmentId ?? item.id),
+    staffUserId: item.staffUserId != null ? Number(item.staffUserId) : undefined,
+    staffName: item.staffName != null ? String(item.staffName) : '',
     workShiftId: Number(item.workShiftId ?? 0),
     shiftName: String(item.shiftName ?? '—'),
     workDate: String(item.workDate ?? ''),
@@ -46,6 +48,11 @@ export function normalizeStaffShiftSwapRequest(item) {
     shiftSwapRequestId: Number(item.shiftSwapRequestId ?? item.id),
     fromAssignmentId: Number(item.fromAssignmentId ?? 0),
     toAssignmentId: Number(item.toAssignmentId ?? 0),
+    requestedByName: item.requestedByName != null ? String(item.requestedByName) : '',
+    fromStaffName: item.fromStaffName != null ? String(item.fromStaffName) : '',
+    toStaffName: item.toStaffName != null ? String(item.toStaffName) : '',
+    fromWorkDate: item.fromWorkDate != null ? String(item.fromWorkDate) : '',
+    toWorkDate: item.toWorkDate != null ? String(item.toWorkDate) : '',
     reason: item.reason != null ? String(item.reason) : '',
     status: String(item.status ?? 'Pending'),
     reviewNote: item.reviewNote != null ? String(item.reviewNote) : '',
@@ -58,10 +65,16 @@ function toApiWorkDate(date) {
   return date.includes('T') ? date : `${date}T00:00:00.000Z`
 }
 
+/** @param {string | undefined} date YYYY-MM-DD */
+function toStaffShiftQueryDate(date) {
+  if (!date) return ''
+  return date.includes('T') ? date : `${date}T00:00:00`
+}
+
 export async function fetchStaffShifts(filter = {}) {
   const params = new URLSearchParams()
-  if (filter.fromDate) params.set('fromDate', filter.fromDate)
-  if (filter.toDate) params.set('toDate', filter.toDate)
+  if (filter.fromDate) params.set('fromDate', toStaffShiftQueryDate(filter.fromDate))
+  if (filter.toDate) params.set('toDate', toStaffShiftQueryDate(filter.toDate))
   const qs = params.toString()
   const data = await apiRequest(`/staff/me/shifts${qs ? `?${qs}` : ''}`)
   return asCollection(data).map(normalizeStaffShift)

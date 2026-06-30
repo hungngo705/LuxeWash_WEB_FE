@@ -15,6 +15,7 @@ import AdminCarModelsPage from './pages/admin/AdminCarModelsPage'
 import AdminPendingCarModelsPage from './pages/admin/AdminPendingCarModelsPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminEmployeesPage from './pages/admin/AdminEmployeesPage'
+import AdminFleetApprovalsPage from './pages/admin/AdminFleetApprovalsPage'
 import AdminLanesPage from './pages/admin/AdminLanesPage'
 import AdminServicesPage from './pages/admin/AdminServicesPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
@@ -31,8 +32,8 @@ import DashboardPage from './pages/DashboardPage'
 import HistoryPage from './pages/HistoryPage'
 import LoginPage from './pages/LoginPage'
 import StaffQueuePage from './pages/StaffQueuePage'
+import StaffBookingsPage from './pages/StaffBookingsPage'
 import SettingsPage from './pages/SettingsPage'
-import StaffFleetApprovalsPage from './pages/StaffFleetApprovalsPage'
 import StaffShiftsPage from './pages/StaffShiftsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
@@ -43,6 +44,7 @@ import ManagerSettingsPage from './pages/manager/ManagerSettingsPage'
 import ManagerLanesPage from './pages/manager/ManagerLanesPage'
 import ManagerTimeSlotsPage from './pages/manager/ManagerTimeSlotsPage'
 import ManagerEmployeesPage from './pages/manager/ManagerEmployeesPage'
+import ManagerCustomersPage from './pages/manager/ManagerCustomersPage'
 import LandingPage from './pages/LandingPage'
 import BusinessRegisterPage from './pages/business/BusinessRegisterPage'
 import BusinessDashboardPage from './pages/business/BusinessDashboardPage'
@@ -66,7 +68,6 @@ import BusinessSettingsPage from './pages/business/BusinessSettingsPage'
 import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicationsPage'
 import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
 import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
-import ManagerFleetApprovalsPage from './pages/manager/ManagerFleetApprovalsPage'
 import ManagerShiftsPage from './pages/manager/ManagerShiftsPage'
 
 export default function App() {
@@ -86,10 +87,10 @@ export default function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/bookings" element={<StaffBookingsPage />} />
             <Route path="/queue" element={<StaffQueuePage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/customers" element={<CustomersPage />} />
-            <Route path="/fleet-approvals" element={<StaffFleetApprovalsPage />} />
             <Route path="/shifts" element={<StaffShiftsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
@@ -105,6 +106,7 @@ export default function App() {
             <Route path="/admin/services" element={<AdminServicesPage />} />
             <Route path="/admin/vehicle-types" element={<AdminVehicleTypesPage />} />
             <Route path="/admin/vehicle-approvals" element={<AdminVehicleApprovalsPage />} />
+            <Route path="/admin/fleet-approvals" element={<AdminFleetApprovalsPage />} />
             <Route path="/admin/branches" element={<AdminBranchesPage />} />
             <Route path="/admin/lanes" element={<AdminLanesPage />} />
             <Route path="/admin/employees" element={<AdminEmployeesPage />} />
@@ -142,13 +144,13 @@ export default function App() {
             <Route path="/manager/time-slots" element={<ManagerTimeSlotsPage />} />
             <Route path="/manager/staff" element={<ManagerStaffPage />} />
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />
+            <Route path="/manager/customers" element={<ManagerCustomersPage />} />
             <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
             <Route
               path="/manager/business-applications"
               element={<ManagerBusinessApplicationsPage />}
             />
-            <Route path="/manager/fleet-approvals" element={<ManagerFleetApprovalsPage />} />
             <Route path="/manager/shifts" element={<ManagerShiftsPage />} />
           </Route>
 

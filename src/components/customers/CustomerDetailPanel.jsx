@@ -1,4 +1,4 @@
-import { formatVnd } from '../../utils/format'
+import { formatDateTime, formatVnd } from '../../utils/format'
 
 export default function CustomerDetailPanel({ customer }) {
   if (!customer) {
@@ -83,6 +83,40 @@ export default function CustomerDetailPanel({ customer }) {
             </div>
           ))}
         </div>
+      </div>
+
+      <div className="border-t border-outline-variant p-6">
+        <h3 className="mb-3 flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-primary">receipt_long</span>
+          Lịch đặt gần đây
+        </h3>
+        {customer.recentBookings?.length ? (
+          <div className="space-y-2">
+            {customer.recentBookings.map((booking) => (
+              <div
+                key={booking.bookingId}
+                className="grid gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 text-sm sm:grid-cols-[1fr_auto]"
+              >
+                <div>
+                  <p className="font-medium text-on-surface">
+                    #{booking.bookingId} · {booking.licensePlate}
+                  </p>
+                  <p className="text-on-surface-variant">
+                    {booking.serviceName} · {booking.scheduledTime ? formatDateTime(booking.scheduledTime) : booking.scheduledDate}
+                  </p>
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="font-semibold text-primary">{formatVnd(booking.finalAmount)}</p>
+                  <p className="text-xs text-on-surface-variant">{booking.status}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
+            Chưa có lịch đặt nào.
+          </p>
+        )}
       </div>
     </div>
   )

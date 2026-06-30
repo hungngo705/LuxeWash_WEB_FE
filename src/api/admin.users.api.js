@@ -42,17 +42,18 @@ import { apiRequest } from './client'
  * }} FetchUsersParams
  */
 
-/** @param {FetchUsersParams} [params] @returns {Promise<UserListPage>} */
+/** @param {FetchUsersParams & { signal?: AbortSignal }} [params] @returns {Promise<UserListPage>} */
 export function fetchUsers(params = {}) {
+  const { signal, ...rest } = params
   const searchParams = new URLSearchParams()
 
-  if (params.page) searchParams.set('page', String(params.page))
-  if (params.pageSize) searchParams.set('pageSize', String(params.pageSize))
-  if (params.keyword) searchParams.set('keyword', params.keyword)
-  if (params.status) searchParams.set('status', params.status)
+  if (rest.page) searchParams.set('page', String(rest.page))
+  if (rest.pageSize) searchParams.set('pageSize', String(rest.pageSize))
+  if (rest.keyword) searchParams.set('keyword', rest.keyword)
+  if (rest.status) searchParams.set('status', rest.status)
 
   const query = searchParams.toString()
-  return apiRequest(`/admin/users${query ? `?${query}` : ''}`)
+  return apiRequest(`/admin/users${query ? `?${query}` : ''}`, signal ? { signal } : undefined)
 }
 
 /** @param {Record<string, unknown>} vehicle */
@@ -79,9 +80,9 @@ export function normalizeUserDetail(detail) {
   }
 }
 
-/** @param {number} id @returns {Promise<UserDetail>} */
-export function fetchUserById(id) {
-  return apiRequest(`/admin/users/${id}`).then(normalizeUserDetail)
+/** @param {number} id @param {{ signal?: AbortSignal }} [options] @returns {Promise<UserDetail>} */
+export function fetchUserById(id, options = {}) {
+  return apiRequest(`/admin/users/${id}`, options).then(normalizeUserDetail)
 }
 
 /** @param {number} id @param {'Active' | 'Blocked'} status */

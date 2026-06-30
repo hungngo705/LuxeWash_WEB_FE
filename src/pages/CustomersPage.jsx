@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
+  fetchBookingsByUserId,
   fetchUserById,
   fetchUsers,
   mapListUserToCustomerView,
@@ -11,7 +12,10 @@ import CustomerDetailPanel from '../components/customers/CustomerDetailPanel'
 import CustomerList from '../components/customers/CustomerList'
 import CustomerSearchBar from '../components/customers/CustomerSearchBar'
 
-export default function CustomersPage() {
+export default function CustomersPage({
+  title = 'Tra cứu khách hàng',
+  description = 'GET /admin/users — chỉ khách hàng (Customer)',
+}) {
   const [search, setSearch] = useState('')
   const [customers, setCustomers] = useState([])
   const [selectedUserId, setSelectedUserId] = useState(null)
@@ -69,11 +73,27 @@ export default function CustomersPage() {
       return
     }
     setDetailLoading(true)
-    fetchUserById(selectedUserId)
-      .then((detail) => setSelectedCustomer(mapUserDetailToCustomerView(detail)))
-      .catch(() => {
+    Promise.allSettled([
+      fetchUserById(selectedUserId),
+      fetchBookingsByUserId(selectedUserId),
+    ])
+      .then(([detailResult, bookingsResult]) => {
         const fallback = customers.find((c) => c.userId === selectedUserId)
-        setSelectedCustomer(fallback ?? null)
+        const profile =
+          detailResult.status === 'fulfilled'
+            ? mapUserDetailToCustomerView(detailResult.value)
+            : fallback
+
+        if (!profile) {
+          setSelectedCustomer(null)
+          return
+        }
+
+        setSelectedCustomer({
+          ...profile,
+          recentBookings:
+            bookingsResult.status === 'fulfilled' ? bookingsResult.value.slice(0, 5) : [],
+        })
       })
       .finally(() => setDetailLoading(false))
   }, [selectedUserId, customers])
@@ -83,9 +103,9 @@ export default function CustomersPage() {
   return (
     <div className="w-full">
       <div className="mb-6">
-        <h1 className="font-sora text-2xl font-semibold text-on-surface">Tra cứu khách hàng</h1>
+        <h1 className="font-sora text-2xl font-semibold text-on-surface">{title}</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          GET /admin/users — chỉ khách hàng (Customer)
+          {description}
         </p>
       </div>
 

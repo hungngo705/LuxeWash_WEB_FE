@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
 import { fetchBusinessProfile } from '../../api/business.api'
 import BusinessSidebar from './BusinessSidebar'
 import BusinessTopBar from './BusinessTopBar'
@@ -39,7 +38,6 @@ function getTitle(pathname) {
 }
 
 export default function BusinessLayout() {
-  const { business } = useAuth()
   const { pathname } = useLocation()
   const title = getTitle(pathname)
   const [approvalStatus, setApprovalStatus] = useState(null)
@@ -53,7 +51,7 @@ export default function BusinessLayout() {
   return (
     <div className="min-h-screen bg-background">
       <BusinessSidebar />
-      <BusinessTopBar title={title} user={business} />
+      <BusinessTopBar title={title} />
       <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)] p-6">
         {approvalStatus && approvalStatus !== 'Approved' && (
           <div className="mb-6 flex items-start gap-3 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3">

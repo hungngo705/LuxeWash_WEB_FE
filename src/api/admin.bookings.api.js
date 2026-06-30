@@ -10,6 +10,7 @@ import { apiRequest } from './client'
  *   scheduledDate: string
  *   rankName: string
  *   status: string
+ *   paymentStatus?: string
  *   finalAmount: number
  *   fallbackQrCode: string
  *   slotId?: number
@@ -97,7 +98,7 @@ export function plateSearchVariants(plate) {
   const raw = normalizePlateQuery(plate)
   if (!raw) return []
 
-  const compact = raw.replace(/[\s.\-]/g, '')
+  const compact = raw.replace(/[\s.-]/g, '')
   const dotted = raw.replace(/-/g, '.').replace(/\s/g, '')
   const dashed = raw.replace(/\./g, '-').replace(/\s/g, '')
 
@@ -160,6 +161,7 @@ export function normalizeAdminBooking(item) {
     scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
     rankName: String(item.rankName ?? item.tierName ?? '—'),
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
+    paymentStatus: String(item.paymentStatus ?? item.PaymentStatus ?? 'Unpaid'),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     originalAmount: Number(item.originalPrice ?? item.originalAmount ?? item.finalAmount ?? 0),
     fallbackQrCode: String(item.fallbackQrCode ?? item.qrCode ?? '—'),
@@ -181,10 +183,11 @@ export function normalizeAdminBooking(item) {
  * GET /api/v1/admin/bookings?targetDate= — Swagger chỉ có targetDate.
  * Lọc theo chi nhánh thực hiện ở FE qua {@link filterBookingsByBranch}.
  * @param {string} targetDate ISO date-time
+ * @param {{ signal?: AbortSignal }} [options]
  */
-export function fetchBookingsByDate(targetDate) {
+export function fetchBookingsByDate(targetDate, options = {}) {
   const params = new URLSearchParams({ targetDate })
-  return apiRequest(`/admin/bookings?${params}`)
+  return apiRequest(`/admin/bookings?${params}`, options)
 }
 
 /** @param {AdminBooking[]} bookings @param {number | string} branchId */
@@ -244,12 +247,64 @@ export function fetchBookingById(bookingId) {
 }
 
 /**
+ * GET /api/v1/bookings/user/{userId}
+ * Admin/Manager/Staff lookup for a customer's bookings.
+ * @param {number} userId
+ */
+export function fetchBookingsByUserId(userId) {
+  return apiRequest(`/bookings/user/${Number(userId)}`).then((data) =>
+    asBookingList(data).map(normalizeAdminBooking),
+  )
+}
+
+/** @param {unknown} raw */
+export function normalizeSmartLicensePlateLookup(raw) {
+  const item = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {}
+  const customerType = String(item.customerType ?? item.CustomerType ?? 'WalkIn')
+  const data = item.data ?? item.Data ?? null
+  const walkInData =
+    customerType === 'WalkIn' && data && typeof data === 'object'
+      ? /** @type {Record<string, unknown>} */ (data)
+      : null
+  return {
+    customerType,
+    data,
+    booking: customerType === 'PreBooked' && data && typeof data === 'object'
+      ? normalizeAdminBooking(/** @type {Record<string, unknown>} */ (data))
+      : null,
+    fleetVehicle: customerType === 'Fleet' && data && typeof data === 'object'
+      ? /** @type {Record<string, unknown>} */ (data)
+      : null,
+    walkInCustomer: walkInData
+      ? {
+          userId: walkInData.userId != null ? Number(walkInData.userId) : 0,
+          customerName: walkInData.customerName != null ? String(walkInData.customerName) : '',
+          phoneNumber: walkInData.phoneNumber != null ? String(walkInData.phoneNumber) : '',
+          vehicleId: walkInData.vehicleId != null ? Number(walkInData.vehicleId) : undefined,
+          vehicleTypeId: walkInData.vehicleTypeId != null ? Number(walkInData.vehicleTypeId) : undefined,
+        }
+      : null,
+  }
+}
+
+/**
  * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
- * Returns array of BookingResponseDTO for the given plate.
+ * Smart lookup returns { customerType: PreBooked | Fleet | WalkIn, data }.
+ * Requires backend token BranchId claim.
+ */
+export function smartLookupLicensePlate(licensePlate) {
+  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate.trim())}`).then(
+    normalizeSmartLicensePlateLookup,
+  )
+}
+
+/**
+ * GET /api/v1/admin/bookings/by-license-plate/{licensePlate}
+ * Backward-compatible helper: returns only PreBooked booking data as an array.
  */
 export function fetchBookingsByLicensePlate(licensePlate) {
-  return apiRequest(`/admin/bookings/by-license-plate/${encodeURIComponent(licensePlate.trim())}`).then(
-    asBookingList,
+  return smartLookupLicensePlate(licensePlate).then((lookup) =>
+    lookup.booking ? [lookup.booking] : [],
   )
 }
 

@@ -25,8 +25,8 @@ import { apiRequest } from './client'
  */
 
 /** @returns {Promise<unknown[]>} */
-export function fetchTransactions() {
-  return apiRequest('/transactions')
+export function fetchTransactions(options = {}) {
+  return apiRequest('/transactions', options)
 }
 
 /** @returns {Promise<unknown[]>} */

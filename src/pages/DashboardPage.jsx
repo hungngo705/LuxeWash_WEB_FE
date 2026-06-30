@@ -2,13 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
 import {
   ApiError,
+  apiRequest,
+  createWalkInBooking,
   enrichStaffBooking,
+  fetchBookingPaymentStatus,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
+  fetchVehicleTypes,
+  fleetWalkIn,
   formatPaymentMethodLabel,
-  formatStaffStationLabel,
   normalizeStaffTask,
-  searchBookingsByLicensePlate,
+  smartLookupLicensePlate,
   staffCheckinBooking,
   updateStaffBookingStatus,
 } from "../api";
@@ -22,6 +26,27 @@ function normalizePlate(plate) {
     .toUpperCase()
     .replace(/\s/g, "")
     .replace(/\./g, "");
+}
+
+function isLocalAppHost(hostname) {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname.endsWith(".local")
+  );
+}
+
+function getPayOsCallbackUrl(path) {
+  if (typeof window === "undefined") return "https://payos.vn";
+  return isLocalAppHost(window.location.hostname)
+    ? "https://payos.vn"
+    : `${window.location.origin}${path}`;
+}
+
+function isPaidPaymentStatus(status) {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return ["completed", "paid", "success", "succeeded"].includes(normalized);
 }
 
 /** @param {import('../api/operationStaff.api').StaffTask[]} list @param {import('../api/operationStaff.api').StaffTask} booking */
@@ -52,31 +77,6 @@ function mergeStaffTasksFromApi(prev, fromApi) {
   return merged;
 }
 
-const ACTIVE_PLATE_STATUSES = new Set(["Processing", "Checked-in", "Pending"]);
-const PLATE_STATUS_PRIORITY = { Processing: 0, "Checked-in": 1, Pending: 2 };
-
-/** @param {import('../api/operationStaff.api').StaffTask[]} list @param {string} normalized */
-function pickBestPlateBooking(list, normalized) {
-  const samePlate = list.filter(
-    (b) => normalizePlate(b.licensePlate) === normalized,
-  );
-  if (!samePlate.length) return null;
-
-  const active = samePlate.filter((b) => ACTIVE_PLATE_STATUSES.has(b.status));
-  const pool = active.length ? active : samePlate;
-
-  return [...pool].sort((a, b) => {
-    const diff =
-      (PLATE_STATUS_PRIORITY[a.status] ?? 9) -
-      (PLATE_STATUS_PRIORITY[b.status] ?? 9);
-    if (diff !== 0) return diff;
-    return (
-      new Date(b.scheduledTime ?? 0).getTime() -
-      new Date(a.scheduledTime ?? 0).getTime()
-    );
-  })[0];
-}
-
 function plateLookupMessage(status) {
   if (status === "Pending") return "";
   if (status === "Processing") return "";
@@ -89,11 +89,11 @@ function plateLookupMessage(status) {
 function StatusBadge({ status }) {
   const styles = {
     Pending:
-      "border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container",
+      "border-tertiary/40 bg-tertiary/10 text-tertiary",
     "Checked-in":
-      "border-primary-container/40 bg-primary-container/15 text-primary-container",
+      "border-primary/40 bg-primary/10 text-primary",
     Processing:
-      "border-secondary-container/40 bg-secondary-container/15 text-secondary-container",
+      "border-secondary/40 bg-secondary/10 text-secondary",
     Completed:
       "border-outline-variant bg-surface-variant text-on-surface-variant",
   };
@@ -126,6 +126,32 @@ function RankBadge({ rankName, rankId }) {
   );
 }
 
+function PaymentStatusBadge({ status }) {
+  const raw = String(status ?? "").trim();
+  const normalized = raw === "—" || raw === "" ? "Chưa thanh toán" : raw;
+  const map = {
+    "Đã thanh toán": "border-primary/30 bg-primary/15 text-primary",
+    Paid: "border-primary/30 bg-primary/15 text-primary",
+    Success: "border-primary/30 bg-primary/15 text-primary",
+    Completed: "border-primary/30 bg-primary/15 text-primary",
+    "Chưa thanh toán": "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    Pending: "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    Unpaid: "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    Failed: "border-error-container/40 bg-error-container/20 text-error",
+    Refunded: "border-outline-variant bg-surface-variant text-on-surface-variant",
+  };
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+        map[normalized] ?? "border-outline-variant bg-surface-variant text-on-surface-variant"
+      }`}
+    >
+      <span className="material-symbols-outlined text-[14px]">payments</span>
+      {normalized}
+    </span>
+  );
+}
+
 function Toast({ message, type, onClose }) {
   useEffect(() => {
     const t = setTimeout(onClose, 3500);
@@ -154,6 +180,66 @@ function LoadingSpinner({ label = "Đang xử lý…" }) {
     <div className="flex flex-col items-center justify-center gap-3 py-12">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
       <span className="text-sm text-on-surface-variant">{label}</span>
+    </div>
+  );
+}
+
+function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
+  if (!payment?.url) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3">
+      <div className="flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
+          <div>
+            <h3 className="font-sora text-lg font-semibold text-on-surface">
+              Thanh toan PayOS
+            </h3>
+            <p className="text-xs text-on-surface-variant">
+              {payment.licensePlate} - Booking #{payment.bookingId || "-"} - {formatVnd(payment.amount)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onPaid}
+              disabled={verifying}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {verifying ? "sync" : "check_circle"}
+              </span>
+              {verifying ? "Dang kiem tra" : "Da thanh toan"}
+            </button>
+            <a
+              className="flex items-center gap-1 rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-variant"
+              href={payment.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+              Mo tab
+            </a>
+            <button
+              type="button"
+              className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant"
+              onClick={onClose}
+              aria-label="Dong PayOS"
+            >
+              <span className="material-symbols-outlined text-xl">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 bg-white">
+          <iframe
+            title="PayOS checkout"
+            src={payment.url}
+            className="h-full w-full border-0"
+            allow="clipboard-read; clipboard-write; payment *"
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -218,10 +304,10 @@ function PlateLookupPanel({
             src={CAMERA_IMAGE}
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <span className="material-symbols-outlined text-4xl text-primary-container opacity-70">
+            <span className="material-symbols-outlined text-4xl text-primary opacity-80">
               videocam_off
             </span>
-            <span className="text-xs text-primary-container opacity-70">
+            <span className="text-xs font-medium text-primary opacity-85">
               Camera AI chưa triển khai
             </span>
           </div>
@@ -243,7 +329,7 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
             Đã check-in — chờ rửa
           </h3>
         </div>
-        <span className="rounded bg-primary-container/15 px-2 py-1 text-xs font-semibold text-primary-container">
+        <span className="rounded border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
           {items.length} xe
         </span>
       </div>
@@ -262,11 +348,11 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
                 onClick={() => onSelect(item)}
                 className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
                   selected
-                    ? "border-primary-container bg-primary-container/10 shadow-sm"
-                    : "border-outline-variant bg-surface-container-low hover:border-primary-container/30"
+                    ? "border-primary bg-primary/10 shadow-sm"
+                    : "border-outline-variant bg-surface-container-low hover:border-primary/35"
                 }`}
               >
-                <span className="material-symbols-outlined text-2xl text-primary-container">
+                <span className="material-symbols-outlined text-2xl text-primary">
                   directions_car
                 </span>
                 <div className="min-w-0 flex-1">
@@ -287,6 +373,246 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
             );
           })
         )}
+      </div>
+    </section>
+  );
+}
+
+function isPayOsConfigurationError(err) {
+  if (!(err instanceof ApiError)) return false;
+  const payload = err.payload && typeof err.payload === "object" ? err.payload : {};
+  const details = String(payload.details ?? payload.Details ?? "");
+  return `${err.message} ${details}`.toLowerCase().includes("payos configuration is missing");
+}
+
+function getVehicleTypeId(type) {
+  return Number(type?.vehicleTypeId ?? type?.id ?? 0);
+}
+
+function isFallbackVehicleType(type) {
+  return String(type?.name ?? type?.vehicleTypeName ?? "")
+    .trim()
+    .toLowerCase() === "khác";
+}
+
+function getServicePriceForVehicleType(service, vehicleTypeId) {
+  if (!vehicleTypeId || !Array.isArray(service?.prices)) return null;
+  return (
+    service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
+  );
+}
+
+function PersonalWalkInPanel({
+  draft,
+  services,
+  vehicleTypes,
+  loadingServices,
+  loadingVehicleTypes,
+  creating,
+  onToggleService,
+  onVehicleTypeChange,
+  onPaymentMethodChange,
+  onSubmit,
+  onCancel,
+}) {
+  if (!draft) return null;
+  const isRegisteredCustomer = Number(draft.userId) > 0;
+  const paymentOptions = isRegisteredCustomer
+    ? [
+        { value: "Cash", label: "Tiền mặt" },
+        { value: "PayOS", label: "PayOS" },
+        { value: "Wallet", label: "Ví" },
+      ]
+    : [
+        { value: "Cash", label: "Tiền mặt" },
+        { value: "PayOS", label: "PayOS" },
+      ];
+  const selectedVehicleTypeId = Number(draft.vehicleTypeId) || 0;
+
+  return (
+    <section className="glass-panel soft-shadow mt-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
+        <div className="flex items-center gap-3">
+          <span className="material-symbols-outlined text-secondary">
+            person_add
+          </span>
+          <div>
+            <h3 className="font-sora text-lg font-semibold text-on-surface">
+              Walk-in cá nhân
+            </h3>
+            <p className="text-xs text-on-surface-variant">
+              {draft.licensePlate} · chọn dịch vụ để check-in trực tiếp
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant"
+          onClick={onCancel}
+          aria-label="Đóng"
+        >
+          <span className="material-symbols-outlined text-xl">close</span>
+        </button>
+      </div>
+
+      <div className="space-y-4 p-4">
+        {isRegisteredCustomer ? (
+          <div className="rounded-xl border border-primary/25 bg-primary-container/10 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+              Khách đã đăng ký
+            </p>
+            <p className="mt-1 font-semibold text-on-surface">
+              {draft.customerName || `Customer #${draft.userId}`}
+            </p>
+            {draft.phoneNumber && (
+              <p className="text-sm text-on-surface-variant">{draft.phoneNumber}</p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+              Khách vãng lai
+            </p>
+            <p className="mt-1 text-sm text-on-surface-variant">
+              Chưa có tài khoản trong hệ thống, booking sẽ gửi userId = 0.
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+          <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            Thanh toán
+          </p>
+          <div className={`mt-3 grid gap-2 ${paymentOptions.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
+            {paymentOptions.map((option) => {
+              const selected = draft.paymentMethod === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                    selected
+                      ? "border-secondary bg-secondary-container/25 text-secondary"
+                      : "border-outline-variant bg-surface-container-lowest text-on-surface-variant hover:border-secondary/50"
+                  }`}
+                  onClick={() => onPaymentMethodChange(option.value)}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
+                  </span>
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
+          <label className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
+            Loại xe
+          </label>
+          <select
+            className="mt-2 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm font-medium text-on-surface outline-none focus:border-secondary"
+            value={selectedVehicleTypeId ? String(selectedVehicleTypeId) : ""}
+            onChange={(event) => onVehicleTypeChange(event.target.value)}
+            disabled={loadingVehicleTypes || creating}
+          >
+            <option value="">
+              {loadingVehicleTypes ? "Đang tải loại xe..." : "Chọn loại xe"}
+            </option>
+            {vehicleTypes.filter((type) => !isFallbackVehicleType(type)).map((type) => {
+              const id = getVehicleTypeId(type);
+              if (!id) return null;
+              return (
+                <option key={id} value={id}>
+                  {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {loadingServices ? (
+          <div className="flex items-center justify-center py-6">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
+          </div>
+        ) : services.length === 0 ? (
+          <p className="rounded-lg border border-outline-variant bg-surface-container-low p-3 text-sm text-on-surface-variant">
+            Không tải được danh sách dịch vụ cho chi nhánh này.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2">
+            {services.map((service) => {
+              const serviceId = Number(service.serviceId ?? service.id);
+              const selected = draft.serviceIds.includes(serviceId);
+              const selectedPrice = getServicePriceForVehicleType(service, selectedVehicleTypeId);
+              const disabledByVehicleType = selectedVehicleTypeId > 0 && !selectedPrice;
+              const minPrice =
+                Array.isArray(service.prices) && service.prices.length > 0
+                  ? Math.min(...service.prices.map((p) => Number(p.price) || 0))
+                  : 0;
+              const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice;
+
+              return (
+                <button
+                  key={serviceId}
+                  type="button"
+                  className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-left transition-colors ${
+                    selected
+                      ? "border-secondary bg-secondary-container/25"
+                      : disabledByVehicleType
+                        ? "border-outline-variant bg-surface-container-low opacity-50"
+                      : "border-outline-variant bg-surface-container-low hover:border-secondary/50"
+                  }`}
+                  disabled={disabledByVehicleType}
+                  onClick={() => onToggleService(serviceId)}
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-on-surface">
+                      {service.serviceName ?? service.name ?? `Dịch vụ ${serviceId}`}
+                    </p>
+                    {service.description && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-on-surface-variant">
+                        {service.description}
+                      </p>
+                    )}
+                    {displayPrice > 0 && (
+                      <p className="mt-1 text-sm font-semibold text-primary">
+                        {selectedPrice ? formatVnd(displayPrice) : `từ ${formatVnd(displayPrice)}`}
+                      </p>
+                    )}
+                    {disabledByVehicleType && (
+                      <p className="mt-1 text-xs text-error">
+                        Chưa có giá cho loại xe này
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`material-symbols-outlined shrink-0 ${
+                      selected ? "text-secondary" : "text-outline"
+                    }`}
+                  >
+                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-semibold text-on-secondary transition-colors hover:bg-secondary/90 disabled:opacity-60"
+          onClick={onSubmit}
+          disabled={creating || loadingServices || draft.serviceIds.length === 0}
+        >
+          {creating ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-secondary/30 border-t-on-secondary" />
+          ) : (
+            <span className="material-symbols-outlined text-lg">login</span>
+          )}
+          Tạo walk-in personal
+        </button>
       </div>
     </section>
   );
@@ -339,6 +665,9 @@ function CustomerInfoPanel({
   const canStart = booking.status === "Checked-in";
   const isProcessing = booking.status === "Processing";
 
+  const safeText = (v, fallback = "—") =>
+    v == null || v === "" ? fallback : v;
+
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="border-b border-outline-variant bg-surface-container-low p-4">
@@ -360,7 +689,7 @@ function CustomerInfoPanel({
       </div>
       <div className="flex-1 space-y-4 p-4">
         {error && (
-          <div className="rounded-lg border border-tertiary-container/40 bg-tertiary-container/10 px-3 py-2 text-xs text-tertiary-container">
+          <div className="rounded-lg border border-tertiary/35 bg-tertiary/10 px-3 py-2 text-xs font-medium text-tertiary">
             {error}
           </div>
         )}
@@ -368,13 +697,13 @@ function CustomerInfoPanel({
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="font-sora text-2xl font-semibold text-on-surface">
-              {booking.customerName}
+              {safeText(booking.customerName, "Khách lẻ")}
             </p>
-            <p className="mt-1 flex items-center gap-1 text-sm text-on-surface-variant">
+            <p className="mt-1 flex items-center gap-1 text-sm font-medium text-on-surface-variant">
               <span className="material-symbols-outlined text-[16px]">
                 call
               </span>
-              {booking.phoneMasked}
+              {safeText(booking.phoneMasked, "Chưa có SĐT")}
             </p>
           </div>
           <RankBadge rankName={booking.rankName} rankId={booking.rankId} />
@@ -382,40 +711,45 @@ function CustomerInfoPanel({
 
         <div className="flex items-center justify-between">
           <StatusBadge status={booking.status} />
-          <span className="text-xs text-on-surface-variant">
+          <span className="text-xs font-medium text-on-surface-variant">
             #{booking.bookingId}
           </span>
         </div>
 
         <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
           <div className="mb-2 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary-container">
+            <span className="material-symbols-outlined text-primary">
               directions_car
             </span>
-            <span className="font-sora text-2xl font-bold tracking-widest text-primary-container">
-              {booking.licensePlate}
+            <span className="font-sora text-2xl font-bold tracking-widest text-on-surface">
+              {safeText(booking.licensePlate, "—")}
             </span>
           </div>
-          <div className="space-y-1 text-sm text-on-surface-variant">
+          <div className="space-y-1 text-sm text-on-surface">
             <p>
               <span className="font-semibold text-on-surface">
-                {booking.serviceName}
+                {safeText(booking.serviceName, "Chưa rõ dịch vụ")}
               </span>
-              {booking.vehicleDisplayName !== "—" &&
+              {booking.vehicleDisplayName &&
+                booking.vehicleDisplayName !== "—" &&
                 ` · ${booking.vehicleDisplayName}`}
             </p>
-            <p>
+            <p className="text-on-surface-variant">
               <span className="material-symbols-outlined mr-1 align-middle text-[14px]">
                 schedule
               </span>
-              {booking.slotLabel} — {formatDateTime(booking.scheduledTime)}
+              {safeText(booking.slotLabel, "")}
+              {booking.slotLabel && booking.scheduledTime ? " — " : ""}
+              {booking.scheduledTime
+                ? formatDateTime(booking.scheduledTime)
+                : ""}
             </p>
             {booking.processingLaneName && (
-              <p>
+              <p className="text-on-surface-variant">
                 <span className="material-symbols-outlined mr-1 align-middle text-[14px]">
                   garage
                 </span>
-                Làn: {booking.processingLaneName}
+                Làn: {safeText(booking.processingLaneName)}
               </p>
             )}
           </div>
@@ -427,15 +761,23 @@ function CustomerInfoPanel({
               Thanh toán
             </p>
             <p className="font-sora text-base font-semibold text-on-surface">
-              {formatVnd(booking.finalAmount)}
+              {booking.finalAmount != null
+                ? formatVnd(booking.finalAmount)
+                : "—"}
             </p>
+            <div className="mt-2">
+              <PaymentStatusBadge status={booking.paymentStatus} />
+            </div>
           </div>
           <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
             <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               Hình thức
             </p>
             <p className="text-sm font-medium text-on-surface">
-              {formatPaymentMethodLabel(booking.paymentMethod)}
+              {safeText(
+                formatPaymentMethodLabel(booking.paymentMethod),
+                "Chưa chọn",
+              )}
             </p>
           </div>
         </div>
@@ -452,7 +794,7 @@ function CustomerInfoPanel({
             </button>
           )}
           {isProcessing && (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary-container/40 bg-secondary-container/10 px-4 py-3 text-sm font-medium text-secondary-container">
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary/35 bg-secondary/10 px-4 py-3 text-sm font-semibold text-secondary">
               Xe đang rửa — hoàn thành ở cột bên phải
             </div>
           )}
@@ -507,7 +849,7 @@ function ProcessingVehiclesPanel({
             Đang rửa
           </h3>
         </div>
-        <span className="rounded bg-secondary-container/20 px-2 py-1 text-xs font-semibold text-secondary-container">
+        <span className="rounded border border-secondary/25 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary">
           {vehicles.length} xe
         </span>
       </div>
@@ -525,7 +867,7 @@ function ProcessingVehiclesPanel({
           {vehicles.map((v) => (
             <div
               key={v.bookingId}
-              className="group relative overflow-hidden rounded-xl border border-secondary-container/25 bg-surface-container-low p-4 transition-all hover:border-secondary-container/50"
+              className="group relative overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low p-4 transition-all hover:border-secondary/50"
             >
               <button
                 type="button"
@@ -533,11 +875,11 @@ function ProcessingVehiclesPanel({
                 onClick={() => onSelect(v)}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="font-sora text-xl font-bold tracking-wide text-secondary-container">
+                  <span className="font-sora text-xl font-bold tracking-wide text-on-surface">
                     {v.licensePlate}
                   </span>
-                  <span className="flex items-center gap-1 rounded-full bg-secondary-container/15 px-2 py-0.5 text-[10px] font-semibold text-secondary-container uppercase">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary-container" />
+                  <span className="flex items-center gap-1 rounded-full border border-secondary/25 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold text-secondary uppercase">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
                     Processing
                   </span>
                 </div>
@@ -556,7 +898,7 @@ function ProcessingVehiclesPanel({
               </button>
               <button
                 type="button"
-                className="w-full rounded-xl border border-primary-container bg-primary-container/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary-container uppercase transition-colors hover:bg-primary-container/25 disabled:opacity-50"
+                className="w-full rounded-xl border border-primary bg-primary/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary uppercase transition-colors hover:bg-primary/20 disabled:opacity-50"
                 onClick={() => onComplete(v.bookingId)}
                 disabled={completingId === v.bookingId}
               >
@@ -581,31 +923,174 @@ export default function DashboardPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [completingId, setCompletingId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [laneLabel, setLaneLabel] = useState("");
+  const [laneAssignment, setLaneAssignment] = useState(null);
   const [toast, setToast] = useState(null);
+  const [walkInDraft, setWalkInDraft] = useState(null);
+  const [walkInServices, setWalkInServices] = useState([]);
+  const [vehicleTypes, setVehicleTypes] = useState([]);
+  const [loadingWalkInServices, setLoadingWalkInServices] = useState(false);
+  const [loadingVehicleTypes, setLoadingVehicleTypes] = useState(false);
+  const [creatingWalkIn, setCreatingWalkIn] = useState(false);
+  const [payOsPayment, setPayOsPayment] = useState(null);
+  const [verifyingPayOsPayment, setVerifyingPayOsPayment] = useState(false);
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
-  const loadStaffTasks = useCallback(async () => {
+  const markPayOsPaymentCompleted = useCallback((payment = payOsPayment) => {
+    if (!payment?.bookingId) {
+      setPayOsPayment(null);
+      return;
+    }
+    const paidPatch = {
+      bookingId: Number(payment.bookingId),
+      paymentMethod: "PayOS",
+      paymentStatus: "Completed",
+    };
+    setSelectedBooking((booking) =>
+      Number(booking?.bookingId) === Number(payment.bookingId)
+        ? { ...booking, ...paidPatch }
+        : booking,
+    );
+    setStaffTasks((tasks) =>
+      tasks.map((task) =>
+        Number(task.bookingId) === Number(payment.bookingId)
+          ? { ...task, ...paidPatch }
+          : task,
+      ),
+    );
+    setPayOsPayment(null);
+    showToast(`Da ghi nhan thanh toan PayOS cho booking #${payment.bookingId}.`);
+  }, [payOsPayment]);
+
+  const verifyPayOsPaymentStatus = useCallback(async (payment = payOsPayment, { silent = false } = {}) => {
+    if (!payment?.bookingId) return false;
+    if (!silent) setVerifyingPayOsPayment(true);
     try {
-      const data = await fetchStaffTasks();
-      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data));
+      const status = await fetchBookingPaymentStatus(payment.bookingId);
+      if (isPaidPaymentStatus(status?.paymentStatus)) {
+        markPayOsPaymentCompleted({
+          ...payment,
+          amount: Number(status?.amount ?? payment.amount ?? 0),
+        });
+        return true;
+      }
+      if (!silent) {
+        showToast("PayOS chua xac nhan thanh toan. Vui long thu lai sau vai giay.", "error");
+      }
+      return false;
     } catch (err) {
-      console.warn("Failed to load staff tasks:", err);
+      if (!silent) {
+        showToast(
+          err instanceof ApiError
+            ? err.message
+            : "Khong the kiem tra trang thai thanh toan PayOS.",
+          "error",
+        );
+      }
+      return false;
     } finally {
-      setInitialLoading(false);
+      if (!silent) setVerifyingPayOsPayment(false);
+    }
+  }, [payOsPayment, markPayOsPaymentCompleted]);
+
+  const loadWalkInServices = useCallback(async (branchId) => {
+    setLoadingWalkInServices(true);
+    try {
+      const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : "";
+      const data = await apiRequest(`/services${query}`);
+      const list = Array.isArray(data) ? data : [];
+      setWalkInServices(list.filter((service) => service.isActive !== false));
+    } catch (err) {
+      setWalkInServices([]);
+      showToast(
+        err instanceof ApiError
+          ? err.message
+          : "Không tải được danh sách dịch vụ walk-in.",
+        "error",
+      );
+    } finally {
+      setLoadingWalkInServices(false);
+    }
+  }, []);
+
+  const loadVehicleTypes = useCallback(async () => {
+    setLoadingVehicleTypes(true);
+    try {
+      const types = await fetchVehicleTypes();
+      setVehicleTypes(Array.isArray(types) ? types : []);
+    } catch {
+      setVehicleTypes([]);
+      showToast("Không tải được danh sách loại xe.", "error");
+    } finally {
+      setLoadingVehicleTypes(false);
     }
   }, []);
 
   useEffect(() => {
-    loadStaffTasks();
-    fetchStaffLaneAssignment()
-      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
-      .catch(() => setLaneLabel("Chưa phân công làn"));
+    if (!payOsPayment?.bookingId) return undefined;
 
-    const interval = setInterval(loadStaffTasks, 30_000);
-    return () => clearInterval(interval);
-  }, [loadStaffTasks]);
+    let cancelled = false;
+    const pollPayment = async () => {
+      try {
+        const status = await fetchBookingPaymentStatus(payOsPayment.bookingId);
+        if (!cancelled && isPaidPaymentStatus(status?.paymentStatus)) {
+          markPayOsPaymentCompleted({
+            ...payOsPayment,
+            amount: Number(status?.amount ?? payOsPayment.amount ?? 0),
+          });
+        }
+      } catch {
+        // Payment polling is best-effort while PayOS/webhook finishes.
+      }
+    };
+
+    const interval = setInterval(pollPayment, 3000);
+    const timeout = setTimeout(() => clearInterval(interval), 120000);
+    pollPayment();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [payOsPayment, markPayOsPaymentCompleted]);
+
+  const loadStaffTasks = useCallback(async ({ signal } = {}) => {
+    try {
+      const data = await fetchStaffTasks({ signal })
+      if (signal?.aborted) return
+      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
+    } catch (err) {
+      if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
+      console.warn('Failed to load staff tasks:', err)
+    } finally {
+      if (!signal?.aborted) setInitialLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load with abort cleanup
+    loadStaffTasks({ signal: controller.signal })
+    fetchStaffLaneAssignment({ signal: controller.signal })
+      .then((a) => {
+        if (!controller.signal.aborted) {
+          setLaneAssignment(a)
+        }
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
+      })
+    loadVehicleTypes()
+
+    const interval = setInterval(() => {
+      loadStaffTasks({ signal: controller.signal })
+    }, 30_000)
+    return () => {
+      controller.abort()
+      clearInterval(interval)
+    }
+  }, [loadStaffTasks, loadVehicleTypes])
 
   const checkedInQueue = useMemo(
     () => staffTasks.filter((b) => b.status === "Checked-in"),
@@ -634,11 +1119,12 @@ export default function DashboardPage() {
   }, [staffTasks, selectedBooking]);
 
   const applySelectedBooking = useCallback(async (booking, options = {}) => {
+    setWalkInDraft(null);
     setSelectedBooking(booking);
     if (options.message !== undefined) setLookupError(options.message);
 
     try {
-      const enriched = await enrichStaffBooking(booking);
+      const enriched = await enrichStaffBooking(booking, { allowStandaloneFetch: true });
       if (
         enriched.status === "Processing" ||
         enriched.status === "Checked-in"
@@ -652,6 +1138,95 @@ export default function DashboardPage() {
       }
     }
   }, []);
+
+  const toggleWalkInService = useCallback((serviceId) => {
+    setWalkInDraft((draft) => {
+      if (!draft) return draft;
+      const id = Number(serviceId);
+      return { ...draft, serviceIds: draft.serviceIds.includes(id) ? [] : [id] };
+    });
+  }, []);
+
+  const updateWalkInPaymentMethod = useCallback((paymentMethod) => {
+    setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod } : draft));
+  }, []);
+
+  const updateWalkInVehicleType = useCallback((vehicleTypeId) => {
+    const nextVehicleTypeId = Number(vehicleTypeId) || undefined;
+    setWalkInDraft((draft) =>
+      draft
+        ? {
+            ...draft,
+            vehicleTypeId: nextVehicleTypeId,
+            serviceIds: [],
+          }
+        : draft,
+    );
+  }, []);
+
+  const handleCreatePersonalWalkIn = useCallback(async () => {
+    if (!walkInDraft) return;
+    const branchId = Number(walkInDraft.branchId);
+    if (!branchId) {
+      setLookupError("Chưa xác định được chi nhánh của nhân viên để tạo walk-in.");
+      return;
+    }
+    if (walkInDraft.serviceIds.length === 0) {
+      setLookupError("Vui lòng chọn ít nhất một dịch vụ cho khách walk-in.");
+      return;
+    }
+    if (!Number(walkInDraft.vehicleTypeId)) {
+      setLookupError("Vui lòng chọn loại xe để tính đúng giá dịch vụ walk-in.");
+      return;
+    }
+
+    setCreatingWalkIn(true);
+    try {
+      const returnUrl = getPayOsCallbackUrl("/dashboard");
+      const bookingResult = await createWalkInBooking({
+        branchId,
+        licensePlate: walkInDraft.licensePlate,
+        serviceIds: walkInDraft.serviceIds.map(Number),
+        userId: Number(walkInDraft.userId) > 0 ? Number(walkInDraft.userId) : 0,
+        vehicleId: Number(walkInDraft.vehicleId) > 0 ? Number(walkInDraft.vehicleId) : undefined,
+        vehicleTypeId: Number(walkInDraft.vehicleTypeId),
+        pointsToUse: 0,
+        paymentMethod: walkInDraft.paymentMethod,
+        returnUrl,
+        cancelUrl: returnUrl,
+      });
+      const booking = normalizeStaffTask(bookingResult);
+      if (bookingResult?.paymentUrl) {
+        setPayOsPayment({
+          url: String(bookingResult.paymentUrl),
+          bookingId: booking.bookingId || bookingResult.bookingId,
+          licensePlate: booking.licensePlate || walkInDraft.licensePlate,
+          amount: Number(booking.finalAmount ?? bookingResult.finalAmount ?? 0),
+        });
+      }
+      setWalkInDraft(null);
+      setPlateInput("");
+      setLookupError("");
+      showToast(`Đã tạo walk-in personal cho xe ${walkInDraft.licensePlate}.`);
+      await loadStaffTasks();
+      if (Number(booking.bookingId)) {
+        await applySelectedBooking(booking);
+      }
+    } catch (err) {
+      if (isPayOsConfigurationError(err)) {
+        setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod: "Cash" } : draft));
+        setLookupError("PayOS chưa được cấu hình trên backend. Vui lòng chọn Tiền mặt để tạo walk-in.");
+        return;
+      }
+      setLookupError(
+        err instanceof ApiError
+          ? err.message
+          : "Không thể tạo walk-in personal. Vui lòng thử lại.",
+      );
+    } finally {
+      setCreatingWalkIn(false);
+    }
+  }, [walkInDraft, loadStaffTasks, applySelectedBooking]);
 
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase();
@@ -668,28 +1243,89 @@ export default function DashboardPage() {
         return;
       }
 
-      const list = (await searchBookingsByLicensePlate(plate)).map(
-        normalizeStaffTask,
-      );
-      const todayMatch = pickBestPlateBooking(list, normalized);
-      if (todayMatch) {
-        await applySelectedBooking(todayMatch, {
-          message: plateLookupMessage(todayMatch.status),
+      const lookup = await smartLookupLicensePlate(plate);
+
+      if (lookup.customerType === "PreBooked" && lookup.booking) {
+        const booking = normalizeStaffTask(lookup.booking);
+        await applySelectedBooking(booking, {
+          message: plateLookupMessage(booking.status),
         });
         return;
       }
 
+      if (lookup.customerType === "Fleet") {
+        setWalkInDraft(null);
+        const branchId = Number(laneAssignment?.branchId);
+        if (!branchId) {
+          setSelectedBooking(null);
+          setLookupError(
+            "Xe doanh nghiep hop le, nhung chua xac dinh duoc chi nhanh/lan cua nhan vien de check-in.",
+          );
+          return;
+        }
+
+        try {
+          await fleetWalkIn({ licensePlate: plate, branchId });
+          setSelectedBooking(null);
+          setPlateInput("");
+          setLookupError("");
+          showToast(`Xe doanh nghiep ${plate} da duoc tiep nhan va ghi no cong ty.`);
+          return;
+        } catch (err) {
+          setSelectedBooking(null);
+          setLookupError(
+            err instanceof ApiError && err.status === 404
+              ? "Khong tim thay phuong tien trong doi xe. Vui long chuyen sang luong khach vang lai ca nhan va thu tien mat/chuyen khoan truc tiep."
+              : err instanceof ApiError
+              ? err.message
+              : "Khong the check-in xe doanh nghiep. Vui long thu lai.",
+          );
+          return;
+        }
+      }
+
+      if (lookup.customerType === "WalkIn") {
+        const branchId = Number(laneAssignment?.branchId);
+        setSelectedBooking(null);
+        if (!branchId) {
+          setWalkInDraft(null);
+          setLookupError(
+            "Khách walk-in cá nhân, nhưng chưa xác định được chi nhánh/làn của nhân viên.",
+          );
+          return;
+        }
+        setWalkInDraft({
+          licensePlate: plate,
+          branchId,
+          serviceIds: [],
+          userId: lookup.walkInCustomer?.userId ?? 0,
+          customerName: lookup.walkInCustomer?.customerName ?? "",
+          phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+          vehicleId: lookup.walkInCustomer?.vehicleId,
+          vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
+          paymentMethod: "Cash",
+        });
+        setLookupError("Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.");
+        setLookupError(
+          lookup.walkInCustomer?.userId
+            ? "Khách đã đăng ký nhưng chưa có booking. Chọn dịch vụ để tạo walk-in."
+            : "Khách walk-in cá nhân. Chọn dịch vụ để tạo check-in.",
+        );
+        await loadWalkInServices(branchId);
+        return;
+      }
+
+      setWalkInDraft(null);
       setSelectedBooking(null);
-      setLookupError(
-        "Không tìm thấy lịch hẹn cho biển số này tại làn của bạn.",
-      );
-    } catch {
-      setLookupError("Không thể tra cứu. Vui lòng thử lại.");
+      setLookupError("Khong xac dinh duoc loai khach hang cho bien so nay.");
+    } catch (err) {
+      setWalkInDraft(null);
+      setLookupError(err instanceof ApiError ? err.message : "Khong the tra cuu. Vui long thu lai.");
       setSelectedBooking(null);
     } finally {
       setLoadingLookup(false);
     }
-  }, [plateInput, staffTasks, applySelectedBooking]);
+  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
 
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
@@ -698,7 +1334,7 @@ export default function DashboardPage() {
       await updateStaffBookingStatus(selectedBooking.bookingId, "Processing");
       let processingBooking = { ...selectedBooking, status: "Processing" };
       try {
-        processingBooking = await enrichStaffBooking(processingBooking);
+        processingBooking = await enrichStaffBooking(processingBooking, { allowStandaloneFetch: true });
       } catch {
         // keep local processing booking
       }
@@ -731,7 +1367,7 @@ export default function DashboardPage() {
         setSelectedBooking(updated);
       } else {
         try {
-          const enriched = await enrichStaffBooking(selectedBooking);
+          const enriched = await enrichStaffBooking(selectedBooking, { allowStandaloneFetch: true });
           setSelectedBooking(enriched);
           setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
         } catch {
@@ -782,12 +1418,14 @@ export default function DashboardPage() {
 
   const handleSkip = useCallback(() => {
     setSelectedBooking(null);
+    setWalkInDraft(null);
     setPlateInput("");
     setLookupError("");
   }, []);
 
   const handleSelectFromQueue = useCallback(
     async (item) => {
+      setWalkInDraft(null);
       setPlateInput(item.licensePlate);
       setLookupError("");
       await applySelectedBooking(item);
@@ -818,6 +1456,14 @@ export default function DashboardPage() {
           onClose={() => setDetailBooking(null)}
         />
       )}
+      {payOsPayment && (
+        <PayOsQrModal
+          payment={payOsPayment}
+          onClose={() => setPayOsPayment(null)}
+          onPaid={() => verifyPayOsPaymentStatus(payOsPayment)}
+          verifying={verifyingPayOsPayment}
+        />
+      )}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -826,11 +1472,11 @@ export default function DashboardPage() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className="flex items-center gap-2 rounded-full border border-primary-container/30 bg-primary-container/10 px-3 py-1.5 text-xs text-primary-container">
+          <span className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
             <span className="material-symbols-outlined text-[16px]">login</span>
             {checkedInQueue.length} check-in
           </span>
-          <span className="flex items-center gap-2 rounded-full border border-secondary-container/30 bg-secondary-container/10 px-3 py-1.5 text-xs text-secondary-container">
+          <span className="flex items-center gap-2 rounded-full border border-secondary/30 bg-secondary/10 px-3 py-1.5 text-xs font-semibold text-secondary">
             <span className="material-symbols-outlined text-[16px]">wash</span>
             {processingVehicles.length} đang rửa
           </span>
@@ -846,6 +1492,22 @@ export default function DashboardPage() {
             loading={loadingLookup}
             checkedInCount={checkedInQueue.length}
             processingCount={processingVehicles.length}
+          />
+          <PersonalWalkInPanel
+            draft={walkInDraft}
+            services={walkInServices}
+            vehicleTypes={vehicleTypes}
+            loadingServices={loadingWalkInServices}
+            loadingVehicleTypes={loadingVehicleTypes}
+            creating={creatingWalkIn}
+            onToggleService={toggleWalkInService}
+            onVehicleTypeChange={updateWalkInVehicleType}
+            onPaymentMethodChange={updateWalkInPaymentMethod}
+            onSubmit={handleCreatePersonalWalkIn}
+            onCancel={() => {
+              setWalkInDraft(null);
+              setLookupError("");
+            }}
           />
           <CheckedInQueuePanel
             items={checkedInQueue}

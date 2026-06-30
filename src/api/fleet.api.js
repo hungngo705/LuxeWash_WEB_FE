@@ -35,7 +35,7 @@ export async function fetchBusinessPendingFleetVehicles() {
   return asFleetCollection(data).map(normalizeFleetPendingVehicle)
 }
 
-/** GET /fleet/staff/pending/all — Staff/Manager duyệt xe fleet */
+/** GET /fleet/staff/pending/all — Admin reviews pending fleet vehicles; backend route name is still staff. */
 export async function fetchStaffPendingFleetVehicles(businessProfileId) {
   const qs =
     businessProfileId != null ? `?businessProfileId=${Number(businessProfileId)}` : ''
@@ -45,6 +45,7 @@ export async function fetchStaffPendingFleetVehicles(businessProfileId) {
 
 /** @deprecated Dùng fetchBusinessPendingFleetVehicles hoặc fetchStaffPendingFleetVehicles */
 export const fetchPendingFleetVehicles = fetchBusinessPendingFleetVehicles
+export const fetchAdminPendingFleetVehicles = fetchStaffPendingFleetVehicles
 
 /** POST /fleet/staff/approve/{id} */
 export function approveFleetVehicle(fleetVehicleId) {
@@ -58,6 +59,9 @@ export function rejectFleetVehicle(fleetVehicleId, rejectionReason) {
     body: JSON.stringify({ rejectionReason }),
   })
 }
+
+export const approveAdminFleetVehicle = approveFleetVehicle
+export const rejectAdminFleetVehicle = rejectFleetVehicle
 
 /** GET /fleet/staff/imports — lịch sử nhập (Staff/Manager) */
 export async function fetchFleetImportBatches() {
@@ -75,6 +79,23 @@ export function fleetCheckIn(bookingId) {
   return apiRequest('/fleet/check-in', {
     method: 'POST',
     body: JSON.stringify({ bookingId: Number(bookingId) }),
+  })
+}
+
+/**
+ * POST /api/v1/fleet/walk-in
+ * Creates a company/fleet walk-in wash log billed to the business account.
+ * @param {{ licensePlate: string, branchId: number }} payload
+ */
+export function fleetWalkIn(payload) {
+  const licensePlate = String(payload.licensePlate ?? '').trim().toUpperCase()
+  return apiRequest('/fleet/walk-in', {
+    method: 'POST',
+    body: JSON.stringify({
+      licensePlate,
+      licensePLate: licensePlate,
+      branchId: Number(payload.branchId),
+    }),
   })
 }
 

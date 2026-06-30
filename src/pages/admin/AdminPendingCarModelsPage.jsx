@@ -42,7 +42,8 @@ export default function AdminPendingCarModelsPage() {
         fetchVehicleTypes(),
       ])
       setPendingModels(models)
-      setVehicleTypes(Array.isArray(types) ? types : [])
+      const allTypes = Array.isArray(types) ? types : []
+      setVehicleTypes(allTypes.filter((t) => t.name?.trim().toLowerCase() !== 'khác'))
     } catch (err) {
       setLoadError(
         err instanceof ApiError ? err.message : 'Không tải được danh sách mẫu xe chờ duyệt',
@@ -76,7 +77,7 @@ export default function AdminPendingCarModelsPage() {
       const typeName =
         vehicleTypes.find((t) => t.id === Number(selectedVehicleTypeId))?.name ?? selectedVehicleTypeId
       showToast(
-        `Đã duyệt mẫu xe "${approveTarget.brand} ${approveTarget.name}" — loại xe: ${typeName}`,
+        `Đã duyệt mẫu xe "${approveTarget?.name || approveTarget?.brand || `#${approveTarget?.id}`}" — loại xe: ${typeName}`,
       )
       setApproveTarget(null)
       setSelectedVehicleTypeId('')
@@ -94,7 +95,7 @@ export default function AdminPendingCarModelsPage() {
     setProcessingId(rejectTarget.id)
     try {
       await rejectCarModelRequest(rejectTarget.id)
-      showToast(`Đã từ chối mẫu xe "${rejectTarget.brand} ${rejectTarget.name}"`)
+      showToast(`Đã từ chối mẫu xe "${rejectTarget?.name || rejectTarget?.brand || `#${rejectTarget?.id}`}"`)
       setRejectTarget(null)
       await loadData()
     } catch (err) {
@@ -297,7 +298,7 @@ export default function AdminPendingCarModelsPage() {
           <p className="text-sm text-on-surface-variant">
             Bạn chắc chắn muốn từ chối mẫu xe{' '}
             <strong className="text-on-surface">
-              {rejectTarget?.brand} {rejectTarget?.name}
+              {rejectTarget?.name || rejectTarget?.brand || `#${rejectTarget?.id}`}
             </strong>
             ? Mẫu xe sẽ bị ẩn khỏi hệ thống.
           </p>

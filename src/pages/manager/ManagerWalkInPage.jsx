@@ -1,16 +1,42 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   createWalkInBooking,
+  fetchVehicleTypes,
 } from '../../api'
 import { apiRequest } from '../../api/client'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import { formatVnd } from '../../utils/format'
 import { useAuth } from '../../context/AuthContext'
 
+function getVehicleTypeId(type) {
+  return Number(type?.vehicleTypeId ?? type?.id ?? 0)
+}
+
+function isLocalAppHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.local')
+}
+
+function getPayOsCallbackUrl(path) {
+  if (typeof window === 'undefined') return 'https://payos.vn'
+  return isLocalAppHost(window.location.hostname) ? 'https://payos.vn' : `${window.location.origin}${path}`
+}
+
+function isFallbackVehicleType(type) {
+  return String(type?.name ?? type?.vehicleTypeName ?? '')
+    .trim()
+    .toLowerCase() === 'khác'
+}
+
+function getServicePriceForVehicleType(service, vehicleTypeId) {
+  if (!vehicleTypeId || !Array.isArray(service?.prices)) return null
+  return service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
+}
+
 export default function ManagerWalkInPage() {
   const { user } = useAuth()
   const [services, setServices] = useState([])
+  const [vehicleTypes, setVehicleTypes] = useState([])
   const [lanes, setLanes] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -20,6 +46,7 @@ export default function ManagerWalkInPage() {
 
   const [form, setForm] = useState({
     licensePlate: '',
+    vehicleTypeId: '',
     serviceIds: [],
     laneId: '',
   })
@@ -32,9 +59,10 @@ export default function ManagerWalkInPage() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [servicesResult, lanesResult] = await Promise.allSettled([
+      const [servicesResult, lanesResult, vehicleTypesResult] = await Promise.allSettled([
         apiRequest('/services'),
         apiRequest('/admin/lanes'),
+        fetchVehicleTypes(),
       ])
 
       if (servicesResult.status === 'fulfilled') {
@@ -46,12 +74,17 @@ export default function ManagerWalkInPage() {
         const list = Array.isArray(data) ? data : []
         setLanes(list.filter(l => l.isActive !== false))
       }
+      if (vehicleTypesResult.status === 'fulfilled') {
+        const data = vehicleTypesResult.value
+        setVehicleTypes(Array.isArray(data) ? data : [])
+      }
     } finally {
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async page data load
     loadData()
   }, [loadData])
 
@@ -75,18 +108,29 @@ export default function ManagerWalkInPage() {
       return
     }
 
+    if (!Number(form.vehicleTypeId)) {
+      showToast('Vui lòng chọn loại xe.')
+      return
+    }
+
     setSubmitting(true)
     try {
+      const returnUrl = getPayOsCallbackUrl('/manager/walk-in')
       await createWalkInBooking({
         branchId: Number(branchId),
         licensePlate: form.licensePlate.trim().toUpperCase(),
         serviceIds: form.serviceIds.map(Number),
+        vehicleTypeId: Number(form.vehicleTypeId),
         laneId: form.laneId ? Number(form.laneId) : undefined,
+        paymentMethod: 'Cash',
+        returnUrl,
+        cancelUrl: returnUrl,
       })
       showToast(`Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`)
       setForm((f) => ({
         ...f,
         licensePlate: '',
+        vehicleTypeId: '',
         serviceIds: [],
         laneId: '',
       }))
@@ -133,6 +177,28 @@ export default function ManagerWalkInPage() {
           />
         </div>
 
+        <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
+          <h3 className="mb-4 text-sm font-semibold text-on-surface">Loại xe</h3>
+          <select
+            className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface"
+            value={form.vehicleTypeId}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, vehicleTypeId: e.target.value, serviceIds: [] }))
+            }
+          >
+            <option value="">Chọn loại xe</option>
+            {vehicleTypes.filter((type) => !isFallbackVehicleType(type)).map((type) => {
+              const id = getVehicleTypeId(type)
+              if (!id) return null
+              return (
+                <option key={id} value={id}>
+                  {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
+                </option>
+              )
+            })}
+          </select>
+        </div>
+
         {/* Services */}
         <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
           <h3 className="mb-4 text-sm font-semibold text-on-surface">Chọn dịch vụ</h3>
@@ -143,9 +209,12 @@ export default function ManagerWalkInPage() {
               {services.map((service) => {
                 const serviceId = service.serviceId ?? service.id
                 const selected = form.serviceIds.includes(serviceId)
+                const selectedPrice = getServicePriceForVehicleType(service, Number(form.vehicleTypeId))
+                const disabledByVehicleType = Number(form.vehicleTypeId) > 0 && !selectedPrice
                 const minPrice = service.prices?.length > 0
                   ? Math.min(...service.prices.map((p) => p.price))
                   : 0
+                const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice
                 return (
                   <button
                     key={serviceId}
@@ -153,8 +222,11 @@ export default function ManagerWalkInPage() {
                     className={`rounded-xl border p-4 text-left transition-all ${
                       selected
                         ? 'border-secondary bg-secondary-container/30'
+                        : disabledByVehicleType
+                          ? 'border-outline-variant bg-surface-container-low opacity-50'
                         : 'border-outline-variant bg-surface-container-low hover:border-secondary'
                     }`}
+                    disabled={disabledByVehicleType}
                     onClick={() => toggleService(serviceId)}
                   >
                     <div className="flex items-start justify-between">
@@ -168,8 +240,13 @@ export default function ManagerWalkInPage() {
                         {selected ? 'check_circle' : 'radio_button_unchecked'}
                       </span>
                     </div>
-                    {minPrice > 0 && (
-                      <p className="mt-2 text-sm font-semibold text-primary">{formatVnd(minPrice)}</p>
+                    {displayPrice > 0 && (
+                      <p className="mt-2 text-sm font-semibold text-primary">
+                        {selectedPrice ? formatVnd(displayPrice) : `từ ${formatVnd(displayPrice)}`}
+                      </p>
+                    )}
+                    {disabledByVehicleType && (
+                      <p className="mt-2 text-xs text-error">Chưa có giá cho loại xe này</p>
                     )}
                   </button>
                 )

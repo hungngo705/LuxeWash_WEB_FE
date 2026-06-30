@@ -32,6 +32,7 @@ import { normalizeManagerStaff } from './manager.employees.api'
  *   finalAmount: number
  *   processingLaneId?: number
  *   processingLaneName?: string
+ *   isBusinessLane?: boolean
  *   details: Array<{
  *     detailId?: number
  *     licensePlate: string
@@ -115,6 +116,7 @@ export function normalizeManagerBooking(item) {
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
+    isBusinessLane: item.isBusinessLane === true || item.IsBusinessLane === true,
     details: Array.isArray(details)
       ? details.map((d, i) => ({
           detailId: d.detailId ?? d.id ?? i + 1,
@@ -150,16 +152,21 @@ export function fetchManagerStaffs() {
 
 /**
  * POST /api/v1/manager/lanes/assign-staff
- * Assigns a Staff member to a Lane for a specific date.
- * @param {{ staffId: number; laneId: number; assignedDate: string }} payload `assignedDate`: yyyy-MM-dd or ISO
+ * Assigns a Staff member to a Lane for a specific date and work shift.
+ * @param {{ staffId: number; laneId: number; assignedDate: string; workShiftId: number }} payload `assignedDate`: yyyy-MM-dd or ISO
  */
-export function assignStaffToLane({ staffId, laneId, assignedDate }) {
+export function assignStaffToLane({ staffId, laneId, assignedDate, workShiftId }) {
   const isoDate = String(assignedDate).includes('T')
     ? assignedDate
     : toApiTargetDate(String(assignedDate).slice(0, 10))
   return apiRequest('/manager/lanes/assign-staff', {
     method: 'POST',
-    body: JSON.stringify({ staffId, laneId, assignedDate: isoDate }),
+    body: JSON.stringify({
+      staffId: Number(staffId),
+      laneId: Number(laneId),
+      assignedDate: isoDate,
+      workShiftId: Number(workShiftId),
+    }),
   })
 }
 

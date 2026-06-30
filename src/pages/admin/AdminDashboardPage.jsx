@@ -37,9 +37,6 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadDashboard()
-  }, [loadDashboard])
-
-  useEffect(() => {
     const timer = setInterval(() => loadDashboard(true), 60000)
     return () => clearInterval(timer)
   }, [loadDashboard])

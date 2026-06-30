@@ -17,7 +17,7 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 const emptyForm = {
   startTime: '00:00',
   endTime: '00:00',
-  maxCapacity: 3,
+  maxCapacity: '3',
   isVipOnly: false,
 }
 
@@ -26,7 +26,7 @@ function toApiPayload(form, branchId) {
     branchId: Number(branchId),
     startTime: toApiTimeValue(form.startTime),
     endTime: toApiTimeValue(form.endTime),
-    maxCapacity: Number(form.maxCapacity),
+    maxCapacity: Number(form.maxCapacity || 0),
     isVipOnly: Boolean(form.isVipOnly),
   }
 }
@@ -34,7 +34,7 @@ function toApiPayload(form, branchId) {
 function validateForm(form) {
   if (!form.startTime || !form.endTime) return 'Vui lòng chọn giờ bắt đầu và kết thúc'
   if (form.startTime >= form.endTime) return 'Thời gian kết thúc phải sau thời gian bắt đầu'
-  if (Number(form.maxCapacity) < 1) return 'Sức chứa phải ít nhất 1'
+  if (!form.maxCapacity || Number(form.maxCapacity) < 1) return 'Sức chứa phải ít nhất 1'
   return null
 }
 
@@ -51,6 +51,7 @@ export default function AdminTimeSlotsPage() {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
+  const [formError, setFormError] = useState('')
 
   const showToast = (msg) => {
     setToast(msg)
@@ -84,6 +85,7 @@ export default function AdminTimeSlotsPage() {
   const openCreate = () => {
     setEditingId(null)
     setForm(emptyForm)
+    setFormError('')
     setModalOpen(true)
   }
 
@@ -95,9 +97,10 @@ export default function AdminTimeSlotsPage() {
     setForm({
       startTime: toTimeInputValue(slot.startTime),
       endTime: toTimeInputValue(slot.endTime),
-      maxCapacity: slot.maxCapacity,
+      maxCapacity: String(slot.maxCapacity ?? ''),
       isVipOnly: slot.isVipOnly,
     })
+    setFormError('')
     setModalOpen(true)
   }
 
@@ -105,13 +108,15 @@ export default function AdminTimeSlotsPage() {
     if (saving) return
 
     if (!selectedBranchId) {
-      showToast('Vui lòng chọn chi nhánh')
+      setFormError('Vui lòng chọn chi nhánh trước khi lưu')
       return
     }
 
+    setFormError('')
+
     const validationError = validateForm(form)
     if (validationError) {
-      showToast(validationError)
+      setFormError(validationError)
       return
     }
 
@@ -270,18 +275,28 @@ export default function AdminTimeSlotsPage() {
         open={modalOpen}
         title={editingId ? 'Sửa khung giờ' : 'Thêm khung giờ'}
         submitLabel={saving ? 'Đang lưu...' : 'Lưu'}
-        onClose={() => !saving && setModalOpen(false)}
+        onClose={() => {
+          if (!saving) {
+            setModalOpen(false)
+            setFormError('')
+          }
+        }}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
           {branches.length > 0 && (
             <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Chi nhánh</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">Chi nhánh <span className="text-error">*</span></span>
               <select
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                className={`w-full rounded-lg border bg-surface-container-lowest px-3 py-2 ${
+                  formError && !selectedBranchId ? 'border-error' : 'border-outline-variant'
+                }`}
                 value={selectedBranchId}
                 disabled={saving || Boolean(editingId)}
-                onChange={(e) => setSelectedBranchId(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBranchId(e.target.value)
+                  if (e.target.value) setFormError('')
+                }}
               >
                 <option value="">Chọn chi nhánh</option>
                 {branches.map((b) => (
@@ -290,6 +305,9 @@ export default function AdminTimeSlotsPage() {
                   </option>
                 ))}
               </select>
+              {formError && !selectedBranchId && (
+                <p className="mt-1 text-xs text-error">{formError}</p>
+              )}
             </label>
           )}
           <div className="grid grid-cols-2 gap-4">
@@ -322,14 +340,15 @@ export default function AdminTimeSlotsPage() {
             <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
               Sức chứa (xe)
             </span>
-            <input
-              type="number"
-              min="1"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.maxCapacity}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
-            />
+              <input
+                type="number"
+                min="1"
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.maxCapacity}
+                placeholder="VD: 3"
+                disabled={saving}
+                onChange={(e) => setForm((f) => ({ ...f, maxCapacity: e.target.value }))}
+              />
           </label>
           <label className="flex items-center gap-2 text-sm text-on-surface">
             <input

@@ -419,6 +419,7 @@ export default function AdminBookingsPage() {
                   <span className="font-medium text-on-surface">#{b.bookingId}</span>
                   <span className="font-semibold tracking-wide text-primary">{b.licensePlate}</span>
                   <StatusBadge status={b.status} />
+                  <StatusBadge status={b.paymentStatus ?? 'Unpaid'} />
                   <span className="text-on-surface">{b.customerName}</span>
                   <span className="text-on-surface-variant">{b.serviceName}</span>
                   <span className="text-on-surface-variant">
@@ -498,6 +499,7 @@ export default function AdminBookingsPage() {
                 <th className="px-4 py-3">Slot/Giờ</th>
                 <th className="px-4 py-3">Tier</th>
                 <th className="px-4 py-3">Trạng thái</th>
+                <th className="px-4 py-3">Thanh toán</th>
                 <th className="px-4 py-3">Số tiền</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
@@ -516,6 +518,9 @@ export default function AdminBookingsPage() {
                   <td className="px-4 py-3 text-on-surface">{booking.rankName}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={booking.status} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={booking.paymentStatus ?? 'Unpaid'} />
                   </td>
                   <td className="px-4 py-3 text-on-surface">{formatVnd(booking.finalAmount)}</td>
                   <td className="px-4 py-3">
@@ -560,6 +565,10 @@ export default function AdminBookingsPage() {
                 <StatusBadge status={detailBooking.status} />
               </div>
               <div>
+                <p className="text-xs text-on-surface-variant">Thanh toán</p>
+                <StatusBadge status={detailBooking.paymentStatus ?? 'Unpaid'} />
+              </div>
+              <div>
                 <p className="text-xs text-on-surface-variant">Ngày đặt</p>
                 <p className="text-on-surface">{detailBooking.scheduledDate || '—'}</p>
               </div>
@@ -570,6 +579,10 @@ export default function AdminBookingsPage() {
               <div>
                 <p className="text-xs text-on-surface-variant">Tổng tiền</p>
                 <p className="font-medium text-on-surface">{formatVnd(detailBooking.finalAmount)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-on-surface-variant">Khách hàng</p>
+                <p className="text-on-surface">{detailBooking.customerName}</p>
               </div>
               <div className="col-span-2">
                 <p className="text-xs text-on-surface-variant">QR fallback</p>

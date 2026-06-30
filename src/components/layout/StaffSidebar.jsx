@@ -2,10 +2,10 @@ import { NavLink } from 'react-router-dom'
 
 const navItems = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
+  { to: '/bookings', label: 'Booking', icon: 'event_available' },
   { to: '/queue', label: 'Hàng Chờ', icon: 'format_list_numbered' },
   { to: '/history', label: 'Lịch sử dịch vụ', icon: 'history' },
   { to: '/customers', label: 'Khách hàng', icon: 'group' },
-  { to: '/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
   { to: '/shifts', label: 'Ca làm', icon: 'calendar_month' },
 ]
 
@@ -17,12 +17,15 @@ export default function StaffSidebar({ station }) {
           <h1 className="font-sora text-[32px] leading-10 font-semibold tracking-tight text-primary">
             LuxeWash Pro
           </h1>
-          <p className="mt-1 text-xs font-semibold tracking-wider text-on-surface-variant">
-            {station} - Active
+          <p className="mt-1 text-xs font-semibold tracking-wider text-tertiary">
+            Staff Console
+          </p>
+          <p className="mt-1 text-xs font-medium text-on-surface-variant">
+            {station}
           </p>
         </div>
 
-        <div className="flex flex-grow flex-col gap-1">
+        <div className="flex flex-grow flex-col gap-1 overflow-y-auto">
           {navItems.map(({ to, label, icon, end }) => (
             <NavLink
               key={to}
@@ -66,7 +69,7 @@ export default function StaffSidebar({ station }) {
                 <span className={`material-symbols-outlined ${isActive ? 'filled' : ''}`}>
                   settings
                 </span>
-                <span className="text-sm font-medium tracking-wide">Settings</span>
+                <span className="text-sm font-medium tracking-wide">Cài đặt</span>
               </>
             )}
           </NavLink>

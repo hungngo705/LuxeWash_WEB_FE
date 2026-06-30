@@ -69,41 +69,55 @@ export default function HistoryPage() {
   const [txFilter, setTxFilter] = useState('all')
   const [search, setSearch] = useState('')
 
-  useEffect(() => {
-    fetchStaffLaneAssignment()
-      .then((a) => {
-        setLaneId(a.laneId ?? null)
-        setLaneLabel(formatStaffStationLabel(a))
-      })
-      .catch(() => {
-        setLaneId(null)
-        setLaneLabel('')
-      })
-  }, [])
+  const loadRecords = useCallback(
+    async (lid) => {
+      setLoading(true)
+      setFetchError('')
+      try {
+        const targetDate = toApiTargetDate(dateFilter)
+        const tasks = await fetchStaffServiceHistory(targetDate, { laneId: lid })
+        setAllRecords(tasks.map(mapHistoryRecord))
+      } catch (err) {
+        const msg =
+          err instanceof ApiError
+            ? err.isForbidden
+              ? 'Không có quyền xem lịch sử booking. Liên hệ quản trị viên.'
+              : err.message
+            : 'Không thể tải dữ liệu. Vui lòng thử lại.'
+        setFetchError(msg)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [dateFilter],
+  )
 
-  const loadRecords = useCallback(async () => {
+  // Separate refetch that also loads lane assignment (used by the error "Thử lại" button)
+  const refetch = useCallback(async () => {
     setLoading(true)
     setFetchError('')
     try {
-      const targetDate = toApiTargetDate(dateFilter)
-      const tasks = await fetchStaffServiceHistory(targetDate, { laneId })
+      const [assignment, tasks] = await Promise.all([
+        fetchStaffLaneAssignment(),
+        fetchStaffServiceHistory(toApiTargetDate(dateFilter), {}),
+      ])
+      setLaneId(assignment.laneId ?? null)
+      setLaneLabel(formatStaffStationLabel(assignment))
       setAllRecords(tasks.map(mapHistoryRecord))
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? err.isForbidden
-            ? 'Không có quyền xem lịch sử booking. Liên hệ quản trị viên.'
-            : err.message
-          : 'Không thể tải dữ liệu. Vui lòng thử lại.'
-      setFetchError(msg)
+      setFetchError(
+        err instanceof ApiError && err.isForbidden
+          ? 'Không có quyền xem lịch sử booking. Liên hệ quản trị viên.'
+          : 'Không thể tải dữ liệu. Vui lòng thử lại.',
+      )
     } finally {
       setLoading(false)
     }
-  }, [dateFilter, laneId])
+  }, [dateFilter])
 
   useEffect(() => {
-    loadRecords()
-  }, [loadRecords])
+    refetch()
+  }, [dateFilter])
 
   const filtered = useMemo(() => {
     return allRecords.filter((r) => {
@@ -155,7 +169,7 @@ export default function HistoryPage() {
           <button
             type="button"
             className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary"
-            onClick={loadRecords}
+            onClick={refetch}
           >
             Thử lại
           </button>
