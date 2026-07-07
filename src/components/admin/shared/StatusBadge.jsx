@@ -1,8 +1,10 @@
 const STATUS_STYLES = {
   Active: 'bg-primary-container/30 text-primary border-primary/30',
   Approved: 'bg-primary-container/30 text-primary border-primary/30',
+  OK: 'bg-primary-container/30 text-primary border-primary/30',
   Blocked: 'bg-error-container/30 text-error border-error/30',
   Rejected: 'bg-error-container/30 text-error border-error/30',
+  Discarded: 'bg-error-container/30 text-error border-error/30',
   Inactive: 'bg-surface-variant text-on-surface-variant border-outline-variant',
   Pending: 'bg-tertiary-container/40 text-on-tertiary-container border-tertiary/30',
   PendingApproval: 'bg-tertiary-container/40 text-on-tertiary-container border-tertiary/30',
@@ -17,6 +19,14 @@ const STATUS_STYLES = {
   Failed: 'bg-error-container/30 text-error border-error/30',
   Earn: 'bg-primary-container/30 text-primary border-primary/30',
   Redeem: 'bg-tertiary-container/40 text-on-tertiary-container border-tertiary/30',
+  'Low stock': 'bg-error-container/30 text-error border-error/30',
+  Available: 'bg-primary-container/30 text-primary border-primary/30',
+  Depleted: 'bg-surface-variant text-on-surface-variant border-outline-variant',
+  BranchImport: 'bg-primary-container/30 text-primary border-primary/30',
+  Usage: 'bg-secondary-container/40 text-on-secondary-container border-secondary/30',
+  ExtraUsage: 'bg-tertiary-container/40 text-on-tertiary-container border-tertiary/30',
+  Discard: 'bg-error-container/30 text-error border-error/30',
+  Adjustment: 'bg-surface-variant text-on-surface-variant border-outline-variant',
 }
 
 export default function StatusBadge({ status }) {
@@ -24,8 +34,9 @@ export default function StatusBadge({ status }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide uppercase ${style}`}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide uppercase ${style}`}
     >
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {status}
     </span>
   )

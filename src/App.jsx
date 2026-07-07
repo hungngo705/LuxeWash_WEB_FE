@@ -16,6 +16,7 @@ import AdminPendingCarModelsPage from './pages/admin/AdminPendingCarModelsPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminEmployeesPage from './pages/admin/AdminEmployeesPage'
 import AdminFleetApprovalsPage from './pages/admin/AdminFleetApprovalsPage'
+import AdminInventoryPage from './pages/admin/AdminInventoryPage'
 import AdminLanesPage from './pages/admin/AdminLanesPage'
 import AdminServicesPage from './pages/admin/AdminServicesPage'
 import AdminSettingsPage from './pages/admin/AdminSettingsPage'
@@ -45,6 +46,7 @@ import ManagerLanesPage from './pages/manager/ManagerLanesPage'
 import ManagerTimeSlotsPage from './pages/manager/ManagerTimeSlotsPage'
 import ManagerEmployeesPage from './pages/manager/ManagerEmployeesPage'
 import ManagerCustomersPage from './pages/manager/ManagerCustomersPage'
+import ManagerInventoryPage from './pages/manager/ManagerInventoryPage'
 import LandingPage from './pages/LandingPage'
 import BusinessRegisterPage from './pages/business/BusinessRegisterPage'
 import BusinessDashboardPage from './pages/business/BusinessDashboardPage'
@@ -118,6 +120,7 @@ export default function App() {
             <Route path="/admin/voucher-campaigns" element={<AdminVoucherCampaignsPage />} />
             <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route path="/admin/bookings" element={<AdminBookingsPage />} />
+            <Route path="/admin/inventory" element={<AdminInventoryPage />} />
             <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route
@@ -146,6 +149,7 @@ export default function App() {
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />
             <Route path="/manager/customers" element={<ManagerCustomersPage />} />
             <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
+            <Route path="/manager/inventory" element={<ManagerInventoryPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
             <Route
               path="/manager/business-applications"

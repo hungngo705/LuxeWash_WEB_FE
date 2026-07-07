@@ -3,6 +3,7 @@ export default function FormModal({
   title,
   children,
   submitLabel = 'Lưu',
+  submitting = false,
   onClose,
   onSubmit,
   size = 'md',
@@ -17,6 +18,7 @@ export default function FormModal({
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         aria-label="Đóng"
+        disabled={submitting}
         onClick={onClose}
       />
       <div
@@ -26,7 +28,8 @@ export default function FormModal({
           <h3 className="font-sora text-lg font-semibold text-on-surface">{title}</h3>
           <button
             type="button"
-            className="rounded-lg p-1 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+            className="rounded-lg p-1 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={submitting}
             onClick={onClose}
             aria-label="Đóng"
           >
@@ -44,16 +47,18 @@ export default function FormModal({
           <div className="flex shrink-0 justify-end gap-3 border-t border-outline-variant px-6 py-4">
             <button
               type="button"
-              className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-variant"
+              className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-variant disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={submitting}
               onClick={onClose}
             >
               Hủy
             </button>
             <button
               type="submit"
-              className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90"
+              className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:cursor-wait disabled:opacity-70"
+              disabled={submitting}
             >
-              {submitLabel}
+              {submitting ? 'Đang lưu...' : submitLabel}
             </button>
           </div>
         </form>

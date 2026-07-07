@@ -3,19 +3,91 @@ import { Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { fetchBookingDetail } from '../../api/business.api'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
+const STATUS_STYLES = {
+  Pending: { label: 'Đã đặt lịch', icon: 'event_available', className: 'bg-tertiary-container/30 text-tertiary border-tertiary/30' },
+  CheckedIn: { label: 'Đã check-in', icon: 'login', className: 'bg-secondary-container/40 text-secondary border-secondary/30' },
+  Processing: { label: 'Đang rửa', icon: 'local_car_wash', className: 'bg-primary-container/30 text-primary border-primary/30' },
+  Completed: { label: 'Hoàn tất', icon: 'task_alt', className: 'bg-primary-container/30 text-primary border-primary/30' },
+  Cancelled: { label: 'Đã hủy', icon: 'event_busy', className: 'bg-surface-variant text-on-surface-variant border-outline-variant' },
+}
+
 function StatusBadge({ status }) {
-  const map = {
-    Pending: { label: 'Đã đặt lịch', className: 'bg-blue-100 text-blue-800' },
-    CheckedIn: { label: 'Đã check-in', className: 'bg-purple-100 text-purple-800' },
-    Processing: { label: 'Đang rửa', className: 'bg-orange-100 text-orange-800' },
-    Completed: { label: 'Hoàn tất', className: 'bg-green-100 text-green-800' },
-    Cancelled: { label: 'Đã hủy', className: 'bg-gray-100 text-gray-600' },
+  const style = STATUS_STYLES[status] ?? {
+    label: status,
+    icon: 'help',
+    className: 'bg-surface-variant text-on-surface-variant border-outline-variant',
   }
-  const style = map[status] || { label: status, className: 'bg-gray-100 text-gray-600' }
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${style.className}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide uppercase ${style.className}`}>
+      <span className="material-symbols-outlined text-[14px]">{style.icon}</span>
       {style.label}
     </span>
+  )
+}
+
+function PaymentBadge({ status }) {
+  if (status === 'Paid') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary-container/20 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+        <span className="material-symbols-outlined text-[14px]">verified</span>
+        Đã thanh toán
+      </span>
+    )
+  }
+  if (status === 'Refunded') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-outline-variant bg-surface-variant px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+        <span className="material-symbols-outlined text-[14px]">undo</span>
+        Đã hoàn tiền
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-tertiary/30 bg-tertiary-container/20 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-tertiary">
+      <span className="material-symbols-outlined text-[14px]">schedule</span>
+      Chưa thanh toán
+    </span>
+  )
+}
+
+function GlassPanel({ children, className = '' }) {
+  return (
+    <div className={`glass-panel soft-shadow overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+function InfoItem({ icon, label, children }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-outline-variant/60 bg-surface-container-low/60 p-3">
+      <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-container/15 text-primary">
+        <span className="material-symbols-outlined text-[18px]">{icon}</span>
+      </span>
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">{label}</p>
+        <div className="mt-0.5 text-sm text-on-surface">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function Notice({ message }) {
+  if (!message) return null
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary-container/15 px-4 py-3 text-sm text-primary">
+      <span className="material-symbols-outlined mt-0.5 text-[18px]">check_circle</span>
+      <span className="font-medium">{message}</span>
+    </div>
+  )
+}
+
+function LoadingBlock({ label = 'Đang tải chi tiết đặt lịch...' }) {
+  return (
+    <GlassPanel className="flex items-center justify-center gap-3 px-6 py-14 text-sm font-medium text-on-surface-variant">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary" />
+      {label}
+    </GlassPanel>
   )
 }
 
@@ -29,26 +101,34 @@ export default function BusinessBookingDetailPage() {
 
   useEffect(() => {
     fetchBookingDetail(id)
-      .then(setBooking)
+      .then((data) => setBooking(data || null))
       .catch(() => setError('Không thể tải chi tiết đặt lịch.'))
       .finally(() => setLoading(false))
   }, [id])
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <div className="mx-auto w-full max-w-3xl space-y-4">
+        <div className="h-4 w-32 rounded-full bg-surface-container" />
+        <LoadingBlock />
       </div>
     )
   }
 
   if (error || !booking) {
     return (
-      <div className="space-y-4">
-        <p className="text-sm text-red-700">{error || 'Không tìm thấy đặt lịch.'}</p>
-        <button onClick={() => navigate('/business/bookings')} className="text-sm text-primary hover:underline">
-          ← Quay lại danh sách
+      <div className="mx-auto w-full max-w-3xl space-y-4">
+        <button
+          onClick={() => navigate('/business/bookings')}
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+        >
+          <span className="material-symbols-outlined text-base">arrow_back</span>
+          Quay lại danh sách
         </button>
+        <div className="flex items-start gap-3 rounded-xl border border-error-container bg-error-container/25 px-4 py-3 text-sm text-error">
+          <span className="material-symbols-outlined mt-0.5 text-[18px]">error</span>
+          <span className="font-medium">{error || 'Không tìm thấy đặt lịch.'}</span>
+        </div>
       </div>
     )
   }
@@ -64,30 +144,48 @@ export default function BusinessBookingDetailPage() {
         )
       : 0)
 
+  const licensePlate = booking.licensePlate || booking.fleetVehicle?.licensePlate
+  const vehicleType = booking.vehicleType || booking.fleetVehicle?.vehicleType || booking.fleetVehicle?.vehicleTypeName
+  const branchName = booking.branchName || booking.branch?.name
+  const laneName = booking.laneName || (booking.laneId ? `Làn #${booking.laneId}` : null)
+  const scheduledTime = booking.scheduledTime || booking.createdAt
+
   return (
-    <div className="space-y-6 max-w-2xl">
-      {location.state?.successMessage && (
-        <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-          {location.state.successMessage}
-        </div>
-      )}
-      <button onClick={() => navigate('/business/bookings')} className="text-sm text-on-surface-variant hover:text-on-surface flex items-center gap-1">
+    <div className="mx-auto w-full max-w-3xl space-y-5">
+      <Notice message={location.state?.successMessage} />
+
+      <button
+        onClick={() => navigate('/business/bookings')}
+        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+      >
         <span className="material-symbols-outlined text-base">arrow_back</span>
         Quay lại danh sách
       </button>
 
-      <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant overflow-hidden">
-        <div className="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
-          <h2 className="font-sora text-lg font-semibold text-on-surface">
-            Đặt lịch #{id}
-          </h2>
-          <div className="flex items-center gap-3">
+      <GlassPanel>
+        <div className="flex flex-col gap-4 border-b border-outline-variant bg-surface-container-low px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary-container/15 text-primary">
+              <span className="material-symbols-outlined text-[24px]">event_note</span>
+            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">Đặt lịch</p>
+              <h2 className="font-sora text-2xl font-semibold text-on-surface">#{id}</h2>
+              {licensePlate && (
+                <p className="mt-1 text-sm font-medium text-on-surface-variant">
+                  {licensePlate}
+                  {vehicleType ? ` · ${vehicleType}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             {booking.status === 'Pending' && (
               <Link
                 to={`/business/bookings/${id}/reschedule`}
-                className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary hover:bg-primary/90"
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98]"
               >
-                <span className="material-symbols-outlined text-sm">event_repeat</span>
+                <span className="material-symbols-outlined text-[18px]">event_repeat</span>
                 Đổi lịch
               </Link>
             )}
@@ -95,108 +193,116 @@ export default function BusinessBookingDetailPage() {
           </div>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Biển số xe</p>
-              <p className="text-sm font-medium text-on-surface">
-                {booking.licensePlate || booking.fleetVehicle?.licensePlate || '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Loại xe</p>
-              <p className="text-sm text-on-surface">
-                {booking.vehicleType || booking.fleetVehicle?.vehicleType || booking.fleetVehicle?.vehicleTypeName || '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Chi nhánh</p>
-              <p className="text-sm text-on-surface">
-                {booking.branchName || booking.branch?.name || '—'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Làn rửa</p>
-              <p className="text-sm text-on-surface">
-                {booking.laneName || (booking.laneId ? `Làn #${booking.laneId}` : '—')}
-              </p>
-              {booking.isBusinessLane && (
-                <span className="mt-1 inline-flex rounded-full border border-secondary/30 bg-secondary-container/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
-                  Doanh nghiệp
-                </span>
+        <div className="space-y-5 p-6">
+          <section>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">Thông tin chung</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <InfoItem icon="directions_car" label="Biển số xe">
+                <span className="font-medium">{licensePlate || '—'}</span>
+              </InfoItem>
+              <InfoItem icon="category" label="Loại xe">
+                {vehicleType || '—'}
+              </InfoItem>
+              <InfoItem icon="store" label="Chi nhánh">
+                {branchName || '—'}
+              </InfoItem>
+              <InfoItem icon="garage" label="Làn rửa">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>{laneName || '—'}</span>
+                  {booking.isBusinessLane && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-secondary/30 bg-secondary-container/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
+                      <span className="material-symbols-outlined text-[12px]">corporate_fare</span>
+                      Doanh nghiệp
+                    </span>
+                  )}
+                </div>
+              </InfoItem>
+              <InfoItem icon="calendar_month" label="Ngày đặt">
+                {scheduledTime ? formatDateTime(scheduledTime) : '—'}
+              </InfoItem>
+              <InfoItem icon="payments" label="Thanh toán">
+                <PaymentBadge status={booking.paymentStatus} />
+              </InfoItem>
+              {booking.startTime && (
+                <InfoItem icon="schedule" label="Khung giờ">
+                  {booking.startTime} — {booking.endTime}
+                </InfoItem>
+              )}
+              {booking.estimatedStart && (
+                <InfoItem icon="play_circle" label="Bắt đầu dự kiến">
+                  {formatDateTime(booking.estimatedStart)}
+                </InfoItem>
+              )}
+              {booking.estimatedEnd && (
+                <InfoItem icon="flag" label="Kết thúc dự kiến">
+                  {formatDateTime(booking.estimatedEnd)}
+                </InfoItem>
               )}
             </div>
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Ngày đặt</p>
-              <p className="text-sm text-on-surface">
-                {formatDateTime(booking.scheduledTime || booking.createdAt)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-on-surface-variant mb-1">Trạng thái thanh toán</p>
-              <p className="text-sm text-on-surface">
-                {booking.paymentStatus === 'Paid' ? (
-                  <span className="font-medium text-primary">Đã thanh toán</span>
-                ) : booking.paymentStatus === 'Refunded' ? (
-                  <span className="text-on-surface-variant">Đã hoàn tiền</span>
-                ) : (
-                  <span className="text-on-surface-variant">Chưa thanh toán</span>
-                )}
-              </p>
-            </div>
-            {booking.startTime && (
-              <div>
-                <p className="text-xs text-on-surface-variant mb-1">Khung giờ</p>
-                <p className="text-sm text-on-surface">{booking.startTime} — {booking.endTime}</p>
-              </div>
-            )}
-            {booking.estimatedStart && (
-              <div>
-                <p className="text-xs text-on-surface-variant mb-1">Bắt đầu dự kiến</p>
-                <p className="text-sm text-on-surface">{formatDateTime(booking.estimatedStart)}</p>
-              </div>
-            )}
-            {booking.estimatedEnd && (
-              <div>
-                <p className="text-xs text-on-surface-variant mb-1">Kết thúc dự kiến</p>
-                <p className="text-sm text-on-surface">{formatDateTime(booking.estimatedEnd)}</p>
-              </div>
-            )}
-            {(booking.oldScheduledTime || booking.newScheduledTime) && (
-              <div className="col-span-2 rounded-lg border border-outline-variant/60 bg-surface-container-low p-3 text-xs">
-                <p className="font-semibold uppercase tracking-wider text-on-surface-variant">
-                  Lịch đổi gần nhất
-                </p>
-                <p className="mt-1 text-on-surface">
-                  Từ: <span className="text-on-surface-variant">{booking.oldScheduledTime ? formatDateTime(booking.oldScheduledTime) : '—'}</span>
-                  {' → '}
-                  Đến: <span className="font-medium text-on-surface">{booking.newScheduledTime ? formatDateTime(booking.newScheduledTime) : '—'}</span>
-                </p>
-              </div>
-            )}
-          </div>
+          </section>
 
-          {Array.isArray(booking.services) && booking.services.length > 0 && (
-            <div className="border-t border-outline-variant pt-4">
-              <p className="text-xs text-on-surface-variant mb-2">Dịch vụ</p>
-              <div className="space-y-2">
-                {booking.services.map((svc, idx) => (
-                  <div key={idx} className="flex justify-between text-sm gap-4">
-                    <span className="text-on-surface">{svc.name || '—'}</span>
-                    {svc.price != null && Number.isFinite(Number(svc.price)) ? (
-                      <span className="font-medium text-primary shrink-0">{formatVnd(svc.price)}</span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <div className="flex justify-between text-base font-semibold mt-3 pt-3 border-t border-outline-variant">
-                <span className="text-on-surface">Tổng cộng</span>
-                <span className="text-primary">{formatVnd(total)}</span>
+          {(booking.oldScheduledTime || booking.newScheduledTime) && (
+            <div className="flex items-start gap-3 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-container/15 text-primary">
+                <span className="material-symbols-outlined text-[18px]">event_repeat</span>
+              </span>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">Lịch đổi gần nhất</p>
+                <p className="mt-1 text-on-surface">
+                  Từ:{' '}
+                  <span className="text-on-surface-variant">
+                    {booking.oldScheduledTime ? formatDateTime(booking.oldScheduledTime) : '—'}
+                  </span>
+                  {' → '}
+                  Đến:{' '}
+                  <span className="font-semibold text-on-surface">
+                    {booking.newScheduledTime ? formatDateTime(booking.newScheduledTime) : '—'}
+                  </span>
+                </p>
               </div>
             </div>
           )}
+
+          {Array.isArray(booking.services) && booking.services.length > 0 && (
+            <section className="border-t border-outline-variant pt-5">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">Dịch vụ đã chọn</p>
+                <p className="text-xs text-on-surface-variant">{booking.services.length} dịch vụ</p>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-outline-variant">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface-container-low text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
+                    <tr>
+                      <th className="px-4 py-2.5">Dịch vụ</th>
+                      <th className="px-4 py-2.5 text-right">Thành tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/60">
+                    {booking.services.map((svc, idx) => (
+                      <tr key={idx} className="transition-colors hover:bg-surface-container-low/60">
+                        <td className="px-4 py-3 text-on-surface">{svc.name || '—'}</td>
+                        <td className="px-4 py-3 text-right font-medium text-primary">
+                          {svc.price != null && Number.isFinite(Number(svc.price)) ? formatVnd(svc.price) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between rounded-xl border border-primary/20 bg-primary-container/10 px-4 py-3">
+                <div className="flex items-center gap-2 text-on-surface">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-container/20 text-primary">
+                    <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+                  </span>
+                  <span className="text-sm font-semibold uppercase tracking-wide">Tổng cộng</span>
+                </div>
+                <span className="font-sora text-xl font-semibold text-primary">{formatVnd(total)}</span>
+              </div>
+            </section>
+          )}
         </div>
-      </div>
+      </GlassPanel>
     </div>
   )
 }
