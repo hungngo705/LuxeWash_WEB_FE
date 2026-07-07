@@ -14,7 +14,9 @@ import {
   fleetWalkIn,
   formatStaffStationLabel,
   formatPaymentMethodLabel,
+  fetchMaterials,
   normalizeStaffTask,
+  reportStaffExtraMaterialUsage,
   smartLookupLicensePlate,
   staffCheckinBooking,
   updateStaffBookingStatus,
@@ -210,7 +212,7 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
         <div className="flex items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
           <div>
             <h3 className="font-sora text-lg font-semibold text-on-surface">
-              Thanh toan PayOS
+              Thanh toán PayOS
             </h3>
             <p className="text-xs text-on-surface-variant">
               {payment.licensePlate} - Booking #{payment.bookingId || "-"} - {formatVnd(payment.amount)}
@@ -226,7 +228,7 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
               <span className="material-symbols-outlined text-[16px]">
                 {verifying ? "sync" : "check_circle"}
               </span>
-              {verifying ? "Dang kiem tra" : "Da thanh toan"}
+              {verifying ? "Đang kiểm tra" : "Đã thanh toán"}
             </button>
             <a
               className="flex items-center gap-1 rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-surface-variant"
@@ -235,13 +237,13 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
               rel="noreferrer"
             >
               <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-              Mo tab
+              Mở tab
             </a>
             <button
               type="button"
               className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant"
               onClick={onClose}
-              aria-label="Dong PayOS"
+              aria-label="Đóng PayOS"
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>
@@ -256,6 +258,116 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
             allow="clipboard-read; clipboard-write; payment *"
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ExtraMaterialUsageModal({ booking, form, materials, saving, onChange, onClose, onSubmit }) {
+  const selectedMaterial = useMemo(
+    () => materials.find((material) => Number(material.materialId) === Number(form.materialId)),
+    [form.materialId, materials],
+  );
+  const canSubmit = Boolean(form.materialId && Number(form.quantity) > 0);
+
+  if (!booking) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+      <div className="glass-panel soft-shadow w-full max-w-lg overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-outline-variant bg-surface-container-low p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-container/15 text-primary">
+              <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+            </span>
+            <div>
+              <h3 className="font-sora text-lg font-semibold text-on-surface">
+                Báo vật tư phát sinh
+              </h3>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Booking #{booking.bookingId} · {booking.licensePlate}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={onClose}
+            aria-label="Đóng"
+            disabled={saving}
+          >
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+        <form className="space-y-4 p-5" onSubmit={onSubmit}>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              Vật tư
+            </span>
+            <select
+              className="h-11 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-surface-container-low disabled:text-on-surface-variant"
+              value={form.materialId}
+              onChange={(event) => onChange({ materialId: event.target.value })}
+              required
+              disabled={saving}
+            >
+              <option value="">Chọn vật tư</option>
+              {materials.map((material) => (
+                <option key={material.materialId} value={material.materialId}>
+                  {material.name} ({material.unit})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              Số lượng
+            </span>
+            <input
+              type="number"
+              min="0.0001"
+              step="0.0001"
+              className="h-11 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-surface-container-low disabled:text-on-surface-variant"
+              value={form.quantity}
+              onChange={(event) => onChange({ quantity: event.target.value })}
+              required
+              disabled={saving}
+            />
+            <span className="block rounded-lg bg-primary-container/10 px-3 py-2 text-xs text-primary">
+              {selectedMaterial?.unit ? `Đơn vị tính: ${selectedMaterial.unit}` : "Chọn vật tư để xem đơn vị tính"}
+            </span>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
+              Ghi chú
+            </span>
+            <textarea
+              className="min-h-24 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:bg-surface-container-low disabled:text-on-surface-variant"
+              value={form.note}
+              onChange={(event) => onChange({ note: event.target.value })}
+              disabled={saving}
+              placeholder="Ví dụ: xe quá bẩn, dùng thêm hóa chất"
+            />
+          </label>
+          <div className="flex justify-end gap-3 border-t border-outline-variant pt-4">
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-outline-variant px-4 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-variant disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+              disabled={saving || !canSubmit}
+            >
+              <span className="material-symbols-outlined text-[18px]">send</span>
+              {saving ? "Đang gửi..." : "Gửi yêu cầu"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -641,6 +753,7 @@ function CustomerInfoPanel({
   error,
   onStartProcessing,
   onCheckin,
+  onReportExtraUsage,
   onSkip,
   onViewDetail,
   confirming,
@@ -811,8 +924,18 @@ function CustomerInfoPanel({
             </button>
           )}
           {isProcessing && (
-            <div className="flex flex-1 items-center justify-center rounded-xl border border-secondary/35 bg-secondary/10 px-4 py-3 text-sm font-semibold text-secondary">
-              Xe đang rửa — hoàn thành ở cột bên phải
+            <div className="flex flex-1 flex-col gap-2">
+              <div className="flex items-center justify-center rounded-xl border border-secondary/35 bg-secondary/10 px-4 py-3 text-sm font-semibold text-secondary">
+                Xe đang rửa — hoàn thành ở cột bên phải
+              </div>
+              <button
+                type="button"
+                className="flex items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/20"
+                onClick={() => onReportExtraUsage(booking)}
+              >
+                <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                Báo vật tư phát sinh
+              </button>
             </div>
           )}
           {booking.status === "Pending" && !isProcessing ? (
@@ -942,6 +1065,10 @@ export default function DashboardPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [laneAssignment, setLaneAssignment] = useState(null);
   const [toast, setToast] = useState(null);
+  const [materials, setMaterials] = useState([]);
+  const [extraUsageBooking, setExtraUsageBooking] = useState(null);
+  const [extraUsageForm, setExtraUsageForm] = useState({ materialId: "", quantity: "", note: "" });
+  const [submittingExtraUsage, setSubmittingExtraUsage] = useState(false);
   const [walkInDraft, setWalkInDraft] = useState(null);
   const [walkInServices, setWalkInServices] = useState([]);
   const [vehicleTypes, setVehicleTypes] = useState([]);
@@ -976,7 +1103,7 @@ export default function DashboardPage() {
       ),
     );
     setPayOsPayment(null);
-    showToast(`Da ghi nhan thanh toan PayOS cho booking #${payment.bookingId}.`);
+    showToast(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
   }, [payOsPayment]);
 
   const verifyPayOsPaymentStatus = useCallback(async (payment = payOsPayment, { silent = false } = {}) => {
@@ -992,7 +1119,7 @@ export default function DashboardPage() {
         return true;
       }
       if (!silent) {
-        showToast("PayOS chua xac nhan thanh toan. Vui long thu lai sau vai giay.", "error");
+        showToast("PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau vài giây.", "error");
       }
       return false;
     } catch (err) {
@@ -1000,7 +1127,7 @@ export default function DashboardPage() {
         showToast(
           err instanceof ApiError
             ? err.message
-            : "Khong the kiem tra trang thai thanh toan PayOS.",
+            : "Không thể kiểm tra trạng thái thanh toán PayOS.",
           "error",
         );
       }
@@ -1087,6 +1214,16 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const loadMaterials = useCallback(async () => {
+    try {
+      const data = await fetchMaterials()
+      setMaterials(Array.isArray(data) ? data : [])
+    } catch (err) {
+      console.warn('Failed to load materials:', err)
+      setMaterials([])
+    }
+  }, [])
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load with abort cleanup
@@ -1101,6 +1238,7 @@ export default function DashboardPage() {
         if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
       })
     loadVehicleTypes()
+    loadMaterials()
 
     const interval = setInterval(() => {
       loadStaffTasks({ signal: controller.signal })
@@ -1109,7 +1247,7 @@ export default function DashboardPage() {
       controller.abort()
       clearInterval(interval)
     }
-  }, [loadStaffTasks, loadVehicleTypes])
+  }, [loadMaterials, loadStaffTasks, loadVehicleTypes])
 
   const checkedInQueue = useMemo(
     () => staffTasks.filter((b) => b.status === "Checked-in"),
@@ -1299,7 +1437,7 @@ export default function DashboardPage() {
         if (!branchId) {
           setSelectedBooking(null);
           setLookupError(
-            "Xe doanh nghiep hop le, nhung chua xac dinh duoc chi nhanh/lan cua nhan vien de check-in.",
+            "Xe doanh nghiệp hợp lệ, nhưng chưa xác định được chi nhánh/làn của nhân viên để check-in.",
           );
           return;
         }
@@ -1309,16 +1447,16 @@ export default function DashboardPage() {
           setSelectedBooking(null);
           setPlateInput("");
           setLookupError("");
-          showToast(`Xe doanh nghiep ${plate} da duoc tiep nhan va ghi no cong ty.`);
+          showToast(`Xe doanh nghiệp ${plate} đã được tiếp nhận và ghi nợ công ty.`);
           return;
         } catch (err) {
           setSelectedBooking(null);
           setLookupError(
             err instanceof ApiError && err.status === 404
-              ? "Khong tim thay phuong tien trong doi xe. Vui long chuyen sang luong khach vang lai ca nhan va thu tien mat/chuyen khoan truc tiep."
+              ? "Không tìm thấy phương tiện trong đội xe. Vui lòng chuyển sang luồng khách vãng lai cá nhân và thu tiền mặt/chuyển khoản trực tiếp."
               : err instanceof ApiError
               ? err.message
-              : "Khong the check-in xe doanh nghiep. Vui long thu lai.",
+              : "Không thể check-in xe doanh nghiệp. Vui lòng thử lại.",
           );
           return;
         }
@@ -1357,10 +1495,10 @@ export default function DashboardPage() {
 
       setWalkInDraft(null);
       setSelectedBooking(null);
-      setLookupError("Khong xac dinh duoc loai khach hang cho bien so nay.");
+      setLookupError("Không xác định được loại khách hàng cho biển số này.");
     } catch (err) {
       setWalkInDraft(null);
-      setLookupError(err instanceof ApiError ? err.message : "Khong the tra cuu. Vui long thu lai.");
+      setLookupError(err instanceof ApiError ? err.message : "Không thể tra cứu. Vui lòng thử lại.");
       setSelectedBooking(null);
     } finally {
       setLoadingLookup(false);
@@ -1613,6 +1751,41 @@ export default function DashboardPage() {
     setLookupError("");
   }, []);
 
+  const openExtraUsage = useCallback((booking) => {
+    setExtraUsageBooking(booking);
+    setExtraUsageForm({ materialId: "", quantity: "", note: "" });
+  }, []);
+
+  const handleExtraUsageSubmit = useCallback(async (event) => {
+    event.preventDefault();
+    if (
+      !extraUsageBooking?.bookingId
+      || submittingExtraUsage
+      || !extraUsageForm.materialId
+      || Number(extraUsageForm.quantity) <= 0
+    ) return;
+    setSubmittingExtraUsage(true);
+    try {
+      await reportStaffExtraMaterialUsage(extraUsageBooking.bookingId, {
+        materialId: Number(extraUsageForm.materialId),
+        quantity: Number(extraUsageForm.quantity),
+        note: extraUsageForm.note.trim() || null,
+      });
+      setExtraUsageBooking(null);
+      setExtraUsageForm({ materialId: "", quantity: "", note: "" });
+      showToast("Đã gửi yêu cầu vật tư phát sinh.");
+    } catch (err) {
+      showToast(
+        err instanceof ApiError
+          ? err.message
+          : "Không gửi được yêu cầu vật tư phát sinh.",
+        "error",
+      );
+    } finally {
+      setSubmittingExtraUsage(false);
+    }
+  }, [extraUsageBooking, extraUsageForm, submittingExtraUsage]);
+
   const handleSelectFromQueue = useCallback(
     async (item) => {
       setWalkInDraft(null);
@@ -1652,6 +1825,17 @@ export default function DashboardPage() {
           onClose={() => setPayOsPayment(null)}
           onPaid={() => verifyPayOsPaymentStatus(payOsPayment)}
           verifying={verifyingPayOsPayment}
+        />
+      )}
+      {extraUsageBooking && (
+        <ExtraMaterialUsageModal
+          booking={extraUsageBooking}
+          form={extraUsageForm}
+          materials={materials}
+          saving={submittingExtraUsage}
+          onChange={(patch) => setExtraUsageForm((form) => ({ ...form, ...patch }))}
+          onClose={() => !submittingExtraUsage && setExtraUsageBooking(null)}
+          onSubmit={handleExtraUsageSubmit}
         />
       )}
 
@@ -1719,6 +1903,7 @@ export default function DashboardPage() {
             error={lookupError}
             onStartProcessing={handleStartProcessing}
             onCheckin={handleCheckin}
+            onReportExtraUsage={openExtraUsage}
             onSkip={handleSkip}
             onViewDetail={setDetailBooking}
             confirming={confirming}

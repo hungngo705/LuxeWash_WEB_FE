@@ -11,10 +11,11 @@ const navItems = [
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
   { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
   { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
+  { to: '/manager/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
   { to: '/manager/business-applications', label: 'Đơn DN', icon: 'business' },
 ]
 
-export default function ManagerSidebar({ station }) {
+export default function ManagerSidebar() {
   return (
     <nav className="bg-surface-container-lowest fixed top-0 left-0 z-50 h-screen w-64 border-r border-outline-variant shadow-sm">
       <div className="flex h-full flex-col py-6">

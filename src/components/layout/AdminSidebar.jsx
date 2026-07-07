@@ -16,6 +16,7 @@ const navItems = [
   { to: '/admin/voucher-campaigns', label: 'Voucher tự cấp', icon: 'campaign' },
   { to: '/admin/users', label: 'Người dùng', icon: 'group' },
   { to: '/admin/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
+  { to: '/admin/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
   { to: '/admin/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
   { to: '/admin/transactions', label: 'Giao dịch', icon: 'payments' },
   { to: '/admin/business-applications', label: 'Đơn DN', icon: 'business' },
