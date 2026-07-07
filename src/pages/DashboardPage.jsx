@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import LiveLprFeed from "../components/dashboard/LiveLprFeed";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
 import {
   ApiError,
   apiRequest,
+  cameraCheckInByPlate,
   createWalkInBooking,
   enrichStaffBooking,
   fetchBookingPaymentStatus,
@@ -10,6 +12,7 @@ import {
   fetchStaffTasks,
   fetchVehicleTypes,
   fleetWalkIn,
+  formatStaffStationLabel,
   formatPaymentMethodLabel,
   normalizeStaffTask,
   smartLookupLicensePlate,
@@ -17,9 +20,6 @@ import {
   updateStaffBookingStatus,
 } from "../api";
 import { formatDateTime, formatVnd } from "../utils/format";
-
-const CAMERA_IMAGE =
-  "https://lh3.googleusercontent.com/aida-public/AB6AXuClp7ADyI2iBVUMA7EIoPJsEAYC2R4QW-wLfbu4V-aXdn2Mz-TQbaCcFYwtlZAX9KsIFU7XGtg5P5AR6HmgOL12_CBKkQdCh9I-BO7ZutWni9cVeBvi07Qicp7uFO9EVhZ3lpQueRoPAmxh8p_bGfItEe3Q60cAdRRZDEUlgQ93Hj6MZEy9-MlXay4Ab63PaE6vJ6tQIlxr64EslF4K7_d4wmwqOG_XztDYgbI4RSQGLu2p4iTRecovl8-Wcs-iPQ7biJH3ov3inmPr";
 
 function normalizePlate(plate) {
   return String(plate ?? "")
@@ -312,13 +312,13 @@ function PlateLookupPanel({
           </div>
         </div>
         <div
-          className="relative overflow-hidden rounded-xl bg-black"
+          className="hidden"
           style={{ minHeight: "140px" }}
         >
           <img
             alt=""
             className="h-full w-full object-cover opacity-50"
-            src={CAMERA_IMAGE}
+            src=""
           />
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <span className="material-symbols-outlined text-4xl text-primary opacity-80">
@@ -1077,9 +1077,11 @@ export default function DashboardPage() {
       const data = await fetchStaffTasks({ signal })
       if (signal?.aborted) return
       setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
+      return data
     } catch (err) {
       if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
       console.warn('Failed to load staff tasks:', err)
+      return []
     } finally {
       if (!signal?.aborted) setInitialLoading(false)
     }
@@ -1134,6 +1136,11 @@ export default function DashboardPage() {
       return task;
     });
   }, [staffTasks, selectedBooking]);
+
+  const laneLabel = useMemo(
+    () => formatStaffStationLabel(laneAssignment),
+    [laneAssignment],
+  );
 
   const applySelectedBooking = useCallback(async (booking, options = {}) => {
     setWalkInDraft(null);
@@ -1360,6 +1367,156 @@ export default function DashboardPage() {
     }
   }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
 
+  const handleCameraPlateDetected = useCallback(async (plateText) => {
+    const plate = String(plateText ?? "").trim().toUpperCase();
+    if (!plate) {
+      return {
+        status: "needs-action",
+        type: "error",
+        message: "Camera returned an empty plate.",
+      };
+    }
+
+    setPlateInput(plate);
+    setLookupError("");
+    setLoadingLookup(true);
+
+    const fallbackCameraCheckIn = async () => {
+      const cameraBooking = await cameraCheckInByPlate(plate);
+      await applySelectedBooking(cameraBooking);
+      await loadStaffTasks();
+      showToast(`Camera endpoint checked in ${plate}.`);
+      return { message: `Camera endpoint checked in ${plate}.` };
+    };
+
+    try {
+      const normalized = normalizePlate(plate);
+      const existing = staffTasks.find(
+        (task) => normalizePlate(task.licensePlate) === normalized,
+      );
+
+      if (existing) {
+        await applySelectedBooking(existing);
+        return {
+          status: existing.status === "Pending" ? "needs-action" : undefined,
+          message: `${plate} is already in Staff queue (${existing.status}).`,
+        };
+      }
+
+      const lookup = await smartLookupLicensePlate(plate);
+
+      if (lookup.customerType === "PreBooked" && lookup.booking) {
+        const booking = normalizeStaffTask(lookup.booking);
+
+        if (booking.status === "Pending") {
+          try {
+            await staffCheckinBooking(booking.bookingId);
+            const checkedInBooking = { ...booking, status: "Checked-in" };
+            await applySelectedBooking(checkedInBooking);
+
+            const freshTasks = await loadStaffTasks();
+            const updated = Array.isArray(freshTasks)
+              ? freshTasks.find(
+                  (task) => Number(task.bookingId) === Number(booking.bookingId),
+                )
+              : null;
+            if (updated) await applySelectedBooking(updated);
+
+            showToast(`Camera AI checked in ${plate}.`);
+            return { message: `Staff lane check-in complete: ${plate}.` };
+          } catch {
+            return fallbackCameraCheckIn();
+          }
+        }
+
+        await applySelectedBooking(booking, {
+          message: plateLookupMessage(booking.status),
+        });
+
+        return {
+          status:
+            booking.status === "Checked-in" || booking.status === "Processing"
+              ? undefined
+              : "needs-action",
+          message: `Booking #${booking.bookingId} is ${booking.status}.`,
+        };
+      }
+
+      if (lookup.customerType === "Fleet") {
+        const branchId = Number(laneAssignment?.branchId);
+        setWalkInDraft(null);
+        setSelectedBooking(null);
+
+        if (!branchId) {
+          const message = "Fleet vehicle found, but Staff branch is missing.";
+          setLookupError(message);
+          return { status: "needs-action", type: "error", message };
+        }
+
+        await fleetWalkIn({ licensePlate: plate, branchId });
+        await loadStaffTasks();
+        showToast(`Camera AI received fleet vehicle ${plate}.`);
+        return { message: `Fleet vehicle received: ${plate}.` };
+      }
+
+      if (lookup.customerType === "WalkIn") {
+        const branchId = Number(laneAssignment?.branchId);
+        setSelectedBooking(null);
+
+        if (!branchId) {
+          const message = "Walk-in detected, but Staff branch is missing.";
+          setWalkInDraft(null);
+          setLookupError(message);
+          return { status: "needs-action", type: "error", message };
+        }
+
+        setWalkInDraft({
+          licensePlate: plate,
+          branchId,
+          serviceIds: [],
+          userId: lookup.walkInCustomer?.userId ?? 0,
+          customerName: lookup.walkInCustomer?.customerName ?? "",
+          phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+          vehicleId: lookup.walkInCustomer?.vehicleId,
+          vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
+          paymentMethod: "Cash",
+        });
+        setLookupError("Camera detected a personal walk-in. Select service to create check-in.");
+        await loadWalkInServices(branchId);
+        return { status: "needs-action", message: `Walk-in detected: ${plate}.` };
+      }
+
+      const message = "Camera plate lookup did not return a supported customer type.";
+      setSelectedBooking(null);
+      setWalkInDraft(null);
+      setLookupError(message);
+      return { status: "needs-action", type: "error", message };
+    } catch (err) {
+      try {
+        return await fallbackCameraCheckIn();
+      } catch (fallbackErr) {
+        const message =
+          fallbackErr instanceof ApiError
+            ? fallbackErr.message
+            : err instanceof ApiError
+              ? err.message
+              : "Camera check-in failed.";
+        setWalkInDraft(null);
+        setSelectedBooking(null);
+        setLookupError(message);
+        throw fallbackErr instanceof Error ? fallbackErr : err;
+      }
+    } finally {
+      setLoadingLookup(false);
+    }
+  }, [
+    applySelectedBooking,
+    laneAssignment,
+    loadStaffTasks,
+    loadWalkInServices,
+    staffTasks,
+  ]);
+
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
     setConfirming(true);
@@ -1514,6 +1671,13 @@ export default function DashboardPage() {
             {processingVehicles.length} đang rửa
           </span>
         </div>
+      </div>
+
+      <div className="mb-4">
+        <LiveLprFeed
+          laneLabel={laneLabel}
+          onPlateDetected={handleCameraPlateDetected}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">

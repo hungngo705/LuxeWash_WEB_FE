@@ -9,6 +9,13 @@ export {
   saveSession,
 } from './client'
 
+export {
+  CAMERA_AI_BASE_URL,
+  cameraCheckInByPlate,
+  checkCameraHasCar,
+  detectCameraPlate,
+} from './cameraAi.api'
+
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
 export {
