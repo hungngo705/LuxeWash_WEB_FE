@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { fetchCurrentUser, loginWithCredentials, refreshAccessToken } from '../api/auth.api'
-import { ApiError, setUnauthorizedHandler } from '../api/client'
+import { ApiError, setSessionRefreshedHandler, setUnauthorizedHandler } from '../api/client'
 import { clearSession, getStoredSession, saveSession } from '../api/session'
 
 const AuthContext = createContext(null)
@@ -61,7 +61,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => logout())
-    return () => setUnauthorizedHandler(null)
+    setSessionRefreshedHandler((session) => setUser(session))
+    return () => {
+      setUnauthorizedHandler(null)
+      setSessionRefreshedHandler(null)
+    }
   }, [logout])
 
   const login = useCallback(async (phoneOrEmail, password) => {

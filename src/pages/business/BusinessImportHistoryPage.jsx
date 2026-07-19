@@ -157,7 +157,12 @@ export default function BusinessImportHistoryPage() {
                         item.status === 'Failed' ? 'bg-red-100 text-red-800' :
                         'bg-yellow-100 text-yellow-800'
                       }`}>
-                        {item.status}
+                        {{
+                          Completed: 'Hoàn thành',
+                          Failed: 'Thất bại',
+                          Processing: 'Đang xử lý',
+                          Pending: 'Đang chờ',
+                        }[item.status] ?? item.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">

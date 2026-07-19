@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
-  enrichStaffTasks,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
   formatPaymentMethodLabel,
@@ -9,6 +8,7 @@ import {
   staffCheckinBooking,
   updateStaffBookingStatus,
 } from '../api'
+import { WashDurationBadge } from '../components/shared/WashTelemetry'
 
 function PaymentStatusBadge({ status }) {
   const raw = String(status ?? '').trim()
@@ -38,6 +38,18 @@ function PaymentStatusBadge({ status }) {
   )
 }
 
+function getBookingStatusLabel(status) {
+  const labels = {
+    Pending: 'Chờ check-in',
+    'Checked-in': 'Đã check-in',
+    Processing: 'Đang rửa',
+    Completed: 'Hoàn thành',
+    Cancelled: 'Đã hủy',
+    'No-show': 'Vắng mặt',
+  }
+  return labels[status] ?? status
+}
+
 export default function StaffQueuePage() {
   const [allBookings, setAllBookings] = useState([])
   const [loading, setLoading] = useState(true)
@@ -64,8 +76,7 @@ export default function StaffQueuePage() {
     setFetchError('')
     try {
       const data = await fetchStaffTasks()
-      const enriched = await enrichStaffTasks(data)
-      setAllBookings(enriched)
+      setAllBookings(Array.isArray(data) ? data : [])
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -80,6 +91,7 @@ export default function StaffQueuePage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async queue load with polling cleanup
     loadBookings()
     const interval = setInterval(loadBookings, 30_000)
     return () => clearInterval(interval)
@@ -144,7 +156,15 @@ export default function StaffQueuePage() {
         showToast(`Xe #${bookingId} bắt đầu rửa.`)
         setAllBookings((prev) =>
           prev.map((b) =>
-            Number(b.bookingId) === Number(bookingId) ? { ...b, status: 'Processing' } : b,
+            Number(b.bookingId) === Number(bookingId)
+              ? {
+                  ...b,
+                  status: 'Processing',
+                  processingStartTime: b.processingStartTime ?? new Date().toISOString(),
+                  completedTime: null,
+                  actualDurationMinutes: null,
+                }
+              : b,
           ),
         )
       } catch (err) {
@@ -290,6 +310,7 @@ export default function StaffQueuePage() {
                 <th className="px-4 py-3">Giờ hẹn</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thanh toán</th>
+                {tab === 'active' && <th className="px-4 py-3">Thời gian rửa</th>}
                 {tab === 'active' && <th className="px-4 py-3">Giá tiền</th>}
                 <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
@@ -333,7 +354,7 @@ export default function StaffQueuePage() {
                       }`}
                     >
                       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {booking.status}
+                      {getBookingStatusLabel(booking.status)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -342,6 +363,11 @@ export default function StaffQueuePage() {
                       {formatPaymentMethodLabel(booking.paymentMethod)}
                     </p>
                   </td>
+                  {tab === 'active' && (
+                    <td className="px-4 py-3">
+                      <WashDurationBadge booking={booking} />
+                    </td>
+                  )}
                   {tab === 'active' && (
                     <td className="px-4 py-3 font-semibold text-on-surface">
                       {booking.finalAmount

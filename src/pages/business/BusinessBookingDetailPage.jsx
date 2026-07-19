@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams, useNavigate } from 'react-router-dom'
 import { fetchBookingDetail } from '../../api/business.api'
+import WashTelemetry from '../../components/shared/WashTelemetry'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 const STATUS_STYLES = {
@@ -262,6 +263,8 @@ export default function BusinessBookingDetailPage() {
               </div>
             </div>
           )}
+
+          <WashTelemetry booking={booking} />
 
           {Array.isArray(booking.services) && booking.services.length > 0 && (
             <section className="border-t border-outline-variant pt-5">

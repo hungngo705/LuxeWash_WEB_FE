@@ -29,15 +29,49 @@ const STATUS_STYLES = {
   Adjustment: 'bg-surface-variant text-on-surface-variant border-outline-variant',
 }
 
+const STATUS_LABELS = {
+  Active: 'Đang hoạt động',
+  Approved: 'Đã duyệt',
+  OK: 'Ổn định',
+  Blocked: 'Đã chặn',
+  Rejected: 'Từ chối',
+  Discarded: 'Đã hủy bỏ',
+  Inactive: 'Ngừng hoạt động',
+  Pending: 'Chờ xử lý',
+  PendingApproval: 'Chờ duyệt',
+  Processing: 'Đang xử lý',
+  Completed: 'Hoàn thành',
+  'Checked-in': 'Đã check-in',
+  Cancelled: 'Đã hủy',
+  'No-show': 'Vắng mặt',
+  Expired: 'Hết hạn',
+  Paid: 'Đã thanh toán',
+  Unpaid: 'Chưa thanh toán',
+  Refunded: 'Đã hoàn tiền',
+  Success: 'Thành công',
+  Failed: 'Thất bại',
+  Earn: 'Cộng điểm',
+  Redeem: 'Đổi điểm',
+  'Low stock': 'Sắp hết hàng',
+  Available: 'Có sẵn',
+  Depleted: 'Đã hết',
+  BranchImport: 'Nhập kho chi nhánh',
+  Usage: 'Sử dụng',
+  ExtraUsage: 'Sử dụng phát sinh',
+  Discard: 'Hủy bỏ',
+  Adjustment: 'Điều chỉnh',
+}
+
 export default function StatusBadge({ status }) {
   const style = STATUS_STYLES[status] ?? 'bg-surface-variant text-on-surface-variant border-outline-variant'
+  const label = STATUS_LABELS[status] ?? status
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide uppercase ${style}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status}
+      {label}
     </span>
   )
 }

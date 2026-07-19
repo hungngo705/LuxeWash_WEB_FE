@@ -3,14 +3,22 @@ import {
   API_DEFAULT_TIMEOUT_MS,
 } from './config'
 import { ApiError } from './errors'
-import { getAccessToken } from './session'
+import { getAccessToken, getStoredSession, saveSession } from './session'
 
 /** @type {(() => void) | null} */
 let onUnauthorized = null
+/** @type {((session: Record<string, unknown>) => void) | null} */
+let onSessionRefreshed = null
+/** @type {Promise<Record<string, unknown>> | null} */
+let refreshPromise = null
 
 /** Register handler for 401 — wired in auth layer (commit 2). */
 export function setUnauthorizedHandler(handler) {
   onUnauthorized = handler ?? null
+}
+
+export function setSessionRefreshedHandler(handler) {
+  onSessionRefreshed = handler ?? null
 }
 
 function buildUrl(path) {
@@ -49,6 +57,81 @@ function shouldLogoutOnUnauthorized(body) {
   return true
 }
 
+async function refreshStoredSession(timeoutMs) {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    const session = getStoredSession()
+    if (!session?.token || !session?.refreshToken) {
+      throw new ApiError('Missing refresh token', 401)
+    }
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    let response
+    try {
+      response = await fetch(buildUrl('/auth/refresh-token'), {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accessToken: session.token,
+          refreshToken: session.refreshToken,
+        }),
+        signal: controller.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+    }
+
+    const body = await parseResponseBody(response)
+    if (!response.ok) {
+      throw new ApiError(
+        getErrorMessage(body) || `HTTP ${response.status}`,
+        response.status,
+        body,
+      )
+    }
+
+    const data =
+      body && typeof body === 'object' && 'statusCode' in body
+        ? body.data
+        : body
+
+    if (!data || typeof data !== 'object') {
+      throw new ApiError('Invalid refresh token response', 401, body)
+    }
+
+    const token = data.token ?? data.accessToken
+    if (typeof token !== 'string' || !token) {
+      throw new ApiError('Refresh response did not include an access token', 401, body)
+    }
+
+    const nextSession = {
+      ...session,
+      userId: data.userId ?? session.userId,
+      phoneNumber: data.phoneNumber ?? session.phoneNumber,
+      fullName: data.fullName ?? session.fullName,
+      role: data.role ?? session.role,
+      token,
+      refreshToken: data.refreshToken ?? session.refreshToken,
+    }
+
+    saveSession(nextSession)
+    onSessionRefreshed?.(nextSession)
+    return nextSession
+  })()
+
+  try {
+    return await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
 /**
  * SmartWash API wrapper — response shape: { statusCode, message, data }
  *
@@ -58,6 +141,10 @@ function shouldLogoutOnUnauthorized(body) {
  * @returns {Promise<unknown>} `data` field from API wrapper
  */
 export async function apiRequest(path, options = {}) {
+  return apiRequestInternal(path, options, false)
+}
+
+async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
   const {
     auth = true,
     timeoutMs = API_DEFAULT_TIMEOUT_MS,
@@ -125,9 +212,22 @@ export async function apiRequest(path, options = {}) {
   const body = await parseResponseBody(response)
 
   if (response.status === 401) {
-    if (shouldLogoutOnUnauthorized(body)) {
+    if (auth && !hasRetriedAfterRefresh && shouldLogoutOnUnauthorized(body)) {
+      try {
+        const refreshedSession = await refreshStoredSession(timeoutMs)
+        const retryOptions = {
+          ...options,
+          headers: new Headers(options.headers),
+        }
+        retryOptions.headers.set('Authorization', `Bearer ${refreshedSession.token}`)
+        return apiRequestInternal(path, retryOptions, true)
+      } catch {
+        onUnauthorized?.()
+      }
+    } else if (shouldLogoutOnUnauthorized(body)) {
       onUnauthorized?.()
     }
+
     throw new ApiError(
       getErrorMessage(body) || 'Unauthorized',
       401,
@@ -151,7 +251,21 @@ export async function apiRequest(path, options = {}) {
 
     if (wrapper.statusCode >= 400) {
       if (wrapper.statusCode === 401 && shouldLogoutOnUnauthorized(body)) {
-        onUnauthorized?.()
+        if (auth && !hasRetriedAfterRefresh) {
+          try {
+            const refreshedSession = await refreshStoredSession(timeoutMs)
+            const retryOptions = {
+              ...options,
+              headers: new Headers(options.headers),
+            }
+            retryOptions.headers.set('Authorization', `Bearer ${refreshedSession.token}`)
+            return apiRequestInternal(path, retryOptions, true)
+          } catch {
+            onUnauthorized?.()
+          }
+        } else {
+          onUnauthorized?.()
+        }
       }
       throw new ApiError(wrapper.message ?? 'Request failed', wrapper.statusCode, body)
     }

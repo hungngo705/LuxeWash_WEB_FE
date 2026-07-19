@@ -461,6 +461,9 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   branchName?: string
  *   processingLaneId?: number
  *   processingLaneName?: string
+ *   processingStartTime?: string | null
+ *   completedTime?: string | null
+ *   actualDurationMinutes?: number | null
  *   vehicleType: string
  *   vehicleDisplayName: string
  *   lastVisitDate?: string | null
@@ -522,6 +525,24 @@ export function normalizeStaffTask(item) {
         : flat.laneName != null
           ? String(flat.laneName)
           : undefined,
+    processingStartTime:
+      flat.processingStartTime != null
+        ? String(flat.processingStartTime)
+        : flat.ProcessingStartTime != null
+          ? String(flat.ProcessingStartTime)
+          : null,
+    completedTime:
+      flat.completedTime != null
+        ? String(flat.completedTime)
+        : flat.CompletedTime != null
+          ? String(flat.CompletedTime)
+          : null,
+    actualDurationMinutes:
+      flat.actualDurationMinutes != null
+        ? Number(flat.actualDurationMinutes)
+        : flat.ActualDurationMinutes != null
+          ? Number(flat.ActualDurationMinutes)
+          : null,
     vehicleType: String(
       flat.vehicleType ??
         flat.vehicleTypeName ??

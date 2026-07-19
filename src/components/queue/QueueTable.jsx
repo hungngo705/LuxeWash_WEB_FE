@@ -3,7 +3,12 @@ import { formatVnd } from '../../utils/format'
 function StatusBadge({ status }) {
   const isPending = status === 'Pending'
   const isProcessing = status === 'Processing'
-  const isCheckedIn = status === 'Checked-in'
+  const labels = {
+    Pending: 'Chờ check-in',
+    'Checked-in': 'Đã check-in',
+    Processing: 'Đang rửa',
+    Completed: 'Hoàn thành',
+  }
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${
@@ -19,7 +24,7 @@ function StatusBadge({ status }) {
           isPending ? 'bg-tertiary-container' : isProcessing ? 'bg-secondary-container animate-pulse' : 'bg-primary-container'
         }`}
       />
-      {status}
+      {labels[status] ?? status}
     </span>
   )
 }

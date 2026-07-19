@@ -8,37 +8,37 @@ const MAX_LOGS = 9
 const STATUS_META = {
   booting: {
     icon: 'videocam',
-    label: 'Starting camera',
+    label: 'Đang mở camera',
     className: 'border-outline-variant bg-surface-variant text-on-surface-variant',
   },
   scanning: {
     icon: 'radar',
-    label: 'Scanning',
+    label: 'Đang quét',
     className: 'border-primary/35 bg-primary/10 text-primary',
   },
   processing: {
     icon: 'memory',
-    label: 'AI processing',
+    label: 'AI đang xử lý',
     className: 'border-tertiary/40 bg-tertiary/10 text-tertiary',
   },
   found: {
     icon: 'pin',
-    label: 'Plate detected',
+    label: 'Đã nhận biển số',
     className: 'border-secondary/40 bg-secondary/10 text-secondary',
   },
   checkedIn: {
     icon: 'task_alt',
-    label: 'Check-in complete',
+    label: 'Đã check-in',
     className: 'border-primary-container/40 bg-primary-container/10 text-primary-container',
   },
   paused: {
     icon: 'pause_circle',
-    label: 'Paused',
+    label: 'Tạm dừng',
     className: 'border-outline-variant bg-surface-variant text-on-surface-variant',
   },
   error: {
     icon: 'warning',
-    label: 'Camera/API error',
+    label: 'Lỗi camera/API',
     className: 'border-error/40 bg-error-container/50 text-error',
   },
 }
@@ -51,7 +51,7 @@ function formatLogTime(date = new Date()) {
   })
 }
 
-function getErrorMessage(err, fallback = 'Camera AI request failed.') {
+function getErrorMessage(err, fallback = 'Yêu cầu Camera AI thất bại.') {
   if (err instanceof Error && err.message) return err.message
   return fallback
 }
@@ -83,6 +83,7 @@ export default function LiveLprFeed({
 
   const [cameraReady, setCameraReady] = useState(false)
   const [scanEnabled, setScanEnabled] = useState(true)
+  const [autoStart, setAutoStart] = useState(true)
   const [status, setStatus] = useState('booting')
   const [busy, setBusy] = useState(false)
   const [lastPlate, setLastPlate] = useState('')
@@ -94,7 +95,7 @@ export default function LiveLprFeed({
       id: 'init',
       time: formatLogTime(),
       type: 'normal',
-      message: 'Camera AI feed initialized.',
+      message: 'Đã khởi tạo camera AI.',
     },
   ])
 
@@ -142,7 +143,7 @@ export default function LiveLprFeed({
 
       if (!navigator.mediaDevices?.getUserMedia) {
         setStatus('error')
-        addLog('This browser does not expose camera access.', 'error')
+        addLog('Trình duyệt không cho phép truy cập camera.', 'error')
         return
       }
 
@@ -169,11 +170,11 @@ export default function LiveLprFeed({
 
         setCameraReady(true)
         setStatus(scanEnabledRef.current && !disabledRef.current ? 'scanning' : 'paused')
-        addLog('Camera connected.')
+        addLog('Camera đã kết nối.')
       } catch (err) {
         if (cancelled) return
         setStatus('error')
-        addLog(`Camera error: ${getErrorMessage(err)}`, 'error')
+        addLog(`Lỗi camera: ${getErrorMessage(err)}`, 'error')
       }
     }
 
@@ -191,7 +192,7 @@ export default function LiveLprFeed({
     const canvas = canvasRef.current
 
     if (!video || !canvas || video.readyState < 2) {
-      return Promise.reject(new Error('Camera frame is not ready.'))
+      return Promise.reject(new Error('Khung hình camera chưa sẵn sàng.'))
     }
 
     const width = video.videoWidth || 640
@@ -200,14 +201,14 @@ export default function LiveLprFeed({
     canvas.height = height
 
     const ctx = canvas.getContext('2d')
-    if (!ctx) return Promise.reject(new Error('Cannot read camera canvas.'))
+    if (!ctx) return Promise.reject(new Error('Không thể đọc khung hình camera.'))
 
     ctx.drawImage(video, 0, 0, width, height)
 
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob)
-        else reject(new Error('Cannot capture camera frame.'))
+        else reject(new Error('Không thể chụp khung hình camera.'))
       }, 'image/jpeg', 0.82)
     })
   }, [])
@@ -243,7 +244,7 @@ export default function LiveLprFeed({
       }
 
       setCarCount(carResult.carCount)
-      addLog(`Vehicle detected (${carResult.carCount || 1}). OCR running.`)
+      addLog(`Đã phát hiện xe (${carResult.carCount || 1}). Đang đọc biển số.`)
 
       const plateResult = await detectCameraPlate(imageBlob, {
         signal: controller.signal,
@@ -253,9 +254,10 @@ export default function LiveLprFeed({
       setLastPlate(plate)
       setConfidence(plateResult.confidence)
       setStatus('found')
-      addLog(`Plate read: ${plate}`, 'success')
+      addLog(`Đã đọc biển số: ${plate}`, 'success')
 
       const result = await onPlateDetected?.(plate, {
+        autoStart,
         confidence: plateResult.confidence,
         source: 'camera-ai',
       })
@@ -285,6 +287,7 @@ export default function LiveLprFeed({
     disabled,
     onPlateDetected,
     restoreScanningStatus,
+    autoStart,
     scanEnabled,
   ])
 
@@ -306,10 +309,10 @@ export default function LiveLprFeed({
       if (!next) {
         scanAbortRef.current?.abort()
         setStatus('paused')
-        addLog('Scanning paused.')
+        addLog('Đã tạm dừng quét.')
       } else {
         setStatus(cameraReady && !disabled ? 'scanning' : 'paused')
-        addLog('Scanning resumed.')
+        addLog('Đã tiếp tục quét.')
       }
       return next
     })
@@ -326,10 +329,10 @@ export default function LiveLprFeed({
           <span className="material-symbols-outlined text-primary">linked_camera</span>
           <div className="min-w-0">
             <h2 className="font-sora text-lg font-semibold text-on-surface">
-              Camera AI Live View
+              Camera AI trực tiếp
             </h2>
             <p className="truncate text-xs font-medium text-on-surface-variant">
-              {laneLabel || 'No lane assigned'} · AI {aiHostLabel}
+              {laneLabel || 'Chưa phân làn'} · AI {aiHostLabel}
             </p>
           </div>
         </div>
@@ -353,7 +356,7 @@ export default function LiveLprFeed({
 
           {!cameraReady && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-sm font-semibold text-white">
-              {status === 'error' ? 'Camera unavailable' : 'Opening camera...'}
+              {status === 'error' ? 'Không dùng được camera' : 'Đang mở camera...'}
             </div>
           )}
 
@@ -367,7 +370,7 @@ export default function LiveLprFeed({
           <div className="absolute right-4 bottom-4 left-4 flex flex-wrap items-end justify-between gap-3">
             <div className="rounded-lg border border-white/15 bg-black/70 px-3 py-2 text-white backdrop-blur">
               <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
-                Last plate
+                Biển số gần nhất
               </p>
               <p className="font-sora text-3xl font-bold tracking-widest">
                 {lastPlate || '---'}
@@ -375,7 +378,7 @@ export default function LiveLprFeed({
             </div>
             <div className="rounded-lg border border-white/15 bg-black/70 px-3 py-2 text-right text-white backdrop-blur">
               <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
-                Confidence
+                Độ tin cậy
               </p>
               <p className="font-sora text-2xl font-semibold">
                 {formatConfidence(confidence)}
@@ -388,7 +391,7 @@ export default function LiveLprFeed({
           <div className="grid grid-cols-3 gap-2">
             <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
               <p className="text-[10px] font-semibold tracking-wide text-on-surface-variant uppercase">
-                Cars
+                Số xe
               </p>
               <p className="mt-1 font-sora text-2xl font-semibold text-on-surface">
                 {carCount}
@@ -396,7 +399,7 @@ export default function LiveLprFeed({
             </div>
             <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
               <p className="text-[10px] font-semibold tracking-wide text-on-surface-variant uppercase">
-                Cadence
+                Chu kỳ quét
               </p>
               <p className="mt-1 font-sora text-2xl font-semibold text-on-surface">
                 {SCAN_INTERVAL_MS / 1000}s
@@ -404,18 +407,27 @@ export default function LiveLprFeed({
             </div>
             <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3">
               <p className="text-[10px] font-semibold tracking-wide text-on-surface-variant uppercase">
-                State
+                Trạng thái
               </p>
               <p className="mt-1 truncate text-sm font-semibold text-on-surface">
-                {busy ? 'Busy' : scanEnabled ? 'Ready' : 'Paused'}
+                {busy ? 'Đang xử lý' : scanEnabled ? 'Sẵn sàng' : 'Tạm dừng'}
               </p>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={autoStart}
+                onChange={(event) => setAutoStart(event.target.checked)}
+              />
+              Tự bắt đầu rửa
+            </label>
             <button
               type="button"
-              title={scanEnabled ? 'Pause scan' : 'Resume scan'}
+              title={scanEnabled ? 'Tạm dừng quét' : 'Tiếp tục quét'}
               className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-variant disabled:opacity-50"
               onClick={toggleScanning}
               disabled={!cameraReady && status !== 'error'}
@@ -423,27 +435,27 @@ export default function LiveLprFeed({
               <span className="material-symbols-outlined text-[18px]">
                 {scanEnabled ? 'pause' : 'play_arrow'}
               </span>
-              {scanEnabled ? 'Pause' : 'Resume'}
+              {scanEnabled ? 'Tạm dừng' : 'Tiếp tục'}
             </button>
             <button
               type="button"
-              title="Scan now"
+              title="Quét ngay"
               className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/10 px-3 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
               onClick={runScan}
               disabled={!cameraReady || busy || disabled || !scanEnabled}
             >
               <span className="material-symbols-outlined text-[18px]">center_focus_strong</span>
-              Scan
+              Quét
             </button>
             {status === 'error' && (
               <button
                 type="button"
-                title="Retry camera"
+                title="Thử lại camera"
                 className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-variant"
                 onClick={retryCamera}
               >
                 <span className="material-symbols-outlined text-[18px]">refresh</span>
-                Retry
+                Thử lại
               </button>
             )}
           </div>
@@ -451,7 +463,7 @@ export default function LiveLprFeed({
           <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
             <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <span className="material-symbols-outlined text-[16px]">terminal</span>
-              Scan log
+              Nhật ký quét
             </div>
             <div className="max-h-[190px] space-y-1 overflow-y-auto p-3">
               {logs.map((log) => (

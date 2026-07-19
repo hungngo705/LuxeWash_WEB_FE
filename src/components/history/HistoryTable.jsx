@@ -2,6 +2,11 @@ import { formatVnd } from '../../utils/format'
 
 function BookingStatusBadge({ status }) {
   const completed = status === 'Completed'
+  const labels = {
+    Completed: 'Hoàn thành',
+    Cancelled: 'Đã hủy',
+    'No-show': 'Vắng mặt',
+  }
   return (
     <span
       className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${
@@ -10,7 +15,7 @@ function BookingStatusBadge({ status }) {
           : 'bg-surface-variant text-on-surface-variant'
       }`}
     >
-      {status}
+      {labels[status] ?? status}
     </span>
   )
 }
@@ -21,9 +26,14 @@ function TxStatusBadge({ status }) {
     Failed: 'bg-error-container/30 text-error',
     Refunded: 'bg-tertiary-container/15 text-tertiary-container',
   }
+  const labels = {
+    Success: 'Thành công',
+    Failed: 'Thất bại',
+    Refunded: 'Đã hoàn tiền',
+  }
   return (
     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${styles[status] ?? ''}`}>
-      {status}
+      {labels[status] ?? status}
     </span>
   )
 }

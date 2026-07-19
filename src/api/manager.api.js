@@ -116,6 +116,24 @@ export function normalizeManagerBooking(item) {
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
+    processingStartTime:
+      item.processingStartTime != null
+        ? String(item.processingStartTime)
+        : item.ProcessingStartTime != null
+          ? String(item.ProcessingStartTime)
+          : null,
+    completedTime:
+      item.completedTime != null
+        ? String(item.completedTime)
+        : item.CompletedTime != null
+          ? String(item.CompletedTime)
+          : null,
+    actualDurationMinutes:
+      item.actualDurationMinutes != null
+        ? Number(item.actualDurationMinutes)
+        : item.ActualDurationMinutes != null
+          ? Number(item.ActualDurationMinutes)
+          : null,
     isBusinessLane: item.isBusinessLane === true || item.IsBusinessLane === true,
     details: Array.isArray(details)
       ? details.map((d, i) => ({

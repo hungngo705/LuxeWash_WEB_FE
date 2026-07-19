@@ -12,6 +12,12 @@ import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const TX_STATUS_OPTIONS = ['All', 'Success', 'Failed', 'Refunded']
+const TX_STATUS_LABELS = {
+  All: 'Tất cả',
+  Success: 'Thành công',
+  Failed: 'Thất bại',
+  Refunded: 'Đã hoàn tiền',
+}
 
 export default function AdminTransactionsPage() {
   const [tab, setTab] = useState('transactions')
@@ -43,6 +49,7 @@ export default function AdminTransactionsPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async transactions load
     loadData()
   }, [loadData])
 
@@ -109,7 +116,7 @@ export default function AdminTransactionsPage() {
                     }`}
                     onClick={() => setStatusFilter(status)}
                   >
-                    {status === 'All' ? 'Tất cả' : status}
+                    {TX_STATUS_LABELS[status] ?? status}
                   </button>
                 ))}
               </div>

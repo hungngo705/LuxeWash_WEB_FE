@@ -38,6 +38,7 @@ const UI_STATUS_MAP = {
   Pending: 'Pending',
   CheckedIn: 'Checked-in',
   'Checked-in': 'Checked-in',
+  Processing: 'Processing',
   Completed: 'Completed',
   Cancelled: 'Cancelled',
   NoShow: 'No-show',
@@ -175,6 +176,24 @@ export function normalizeAdminBooking(item) {
         : item.laneName != null
           ? String(item.laneName)
           : undefined,
+    processingStartTime:
+      item.processingStartTime != null
+        ? String(item.processingStartTime)
+        : item.ProcessingStartTime != null
+          ? String(item.ProcessingStartTime)
+          : null,
+    completedTime:
+      item.completedTime != null
+        ? String(item.completedTime)
+        : item.CompletedTime != null
+          ? String(item.CompletedTime)
+          : null,
+    actualDurationMinutes:
+      item.actualDurationMinutes != null
+        ? Number(item.actualDurationMinutes)
+        : item.ActualDurationMinutes != null
+          ? Number(item.ActualDurationMinutes)
+          : null,
     details: Array.isArray(details) ? details.map(normalizeBookingDetail) : [],
   }
 }
