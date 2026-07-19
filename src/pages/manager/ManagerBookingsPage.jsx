@@ -3,16 +3,17 @@ import { Link } from 'react-router-dom'
 import { ApiError, fetchManagerBookings, normalizeManagerBooking } from '../../api'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const STATUS_FILTERS = [
   { id: 'all', label: 'Tất cả' },
-  { id: 'Pending', label: 'Pending' },
-  { id: 'Checked-in', label: 'Checked-in' },
-  { id: 'Processing', label: 'Processing' },
-  { id: 'Completed', label: 'Completed' },
-  { id: 'No-show', label: 'No-show' },
-  { id: 'Cancelled', label: 'Cancelled' },
+  { id: 'Pending', label: 'Chờ check-in' },
+  { id: 'Checked-in', label: 'Đã check-in' },
+  { id: 'Processing', label: 'Đang rửa' },
+  { id: 'Completed', label: 'Hoàn thành' },
+  { id: 'No-show', label: 'Vắng mặt' },
+  { id: 'Cancelled', label: 'Đã hủy' },
 ]
 
 export default function ManagerBookingsPage() {
@@ -68,7 +69,7 @@ export default function ManagerBookingsPage() {
     <div className="w-full">
       <PageHeader
         title="Lịch đặt"
-        description="Theo dõi booking chi nhánh — Pending, Checked-in, Processing"
+        description="Theo dõi booking chi nhánh: chờ check-in, đã check-in và đang rửa"
       />
 
       <div className="mb-4 flex justify-end">
@@ -97,9 +98,9 @@ export default function ManagerBookingsPage() {
           <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
               { label: 'Tổng lịch', value: stats.total },
-              { label: 'Pending', value: stats.pending },
-              { label: 'Checked-in', value: stats.checkedIn },
-              { label: 'Processing', value: stats.processing },
+              { label: 'Chờ check-in', value: stats.pending },
+              { label: 'Đã check-in', value: stats.checkedIn },
+              { label: 'Đang rửa', value: stats.processing },
             ].map((s) => (
               <div
                 key={s.label}
@@ -150,7 +151,7 @@ export default function ManagerBookingsPage() {
             </div>
           ) : (
             <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-              <table className="w-full min-w-[960px] text-left text-sm">
+              <table className="w-full min-w-[1040px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                     <th className="px-4 py-3">#</th>
@@ -194,7 +195,10 @@ export default function ManagerBookingsPage() {
                       <td className="px-4 py-3">
                         <StatusBadge status={b.status} />
                       </td>
-                      <td className="px-4 py-3 font-medium">{formatVnd(b.finalAmount)}</td>
+                      <td className="px-4 py-3 font-medium">
+                        <div>{formatVnd(b.finalAmount)}</div>
+                        <WashDurationBadge booking={b} className="mt-2" />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

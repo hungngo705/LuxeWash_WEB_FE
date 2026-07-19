@@ -57,9 +57,9 @@ async function cameraRequest(path, options = {}) {
         abortErr.name = 'AbortError'
         throw abortErr
       }
-      throw new ApiError('Camera AI request timed out.', 408)
+      throw new ApiError('Yêu cầu Camera AI quá thời gian chờ.', 408)
     }
-    throw new ApiError(err instanceof Error ? err.message : 'Camera AI network error', 0)
+    throw new ApiError(err instanceof Error ? err.message : 'Lỗi kết nối Camera AI', 0)
   } finally {
     clearTimeout(timeoutId)
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
@@ -74,7 +74,7 @@ async function cameraRequest(path, options = {}) {
   if (body && typeof body === 'object' && 'statusCode' in body) {
     const statusCode = Number(body.statusCode)
     if (statusCode >= 400) {
-      throw new ApiError(getMessage(body, 'Camera AI request failed'), statusCode, body)
+      throw new ApiError(getMessage(body, 'Yêu cầu Camera AI thất bại'), statusCode, body)
     }
   }
 
@@ -120,7 +120,7 @@ export async function detectCameraPlate(imageBlob, options = {}) {
   const plateText = String(payload.plateText ?? '').trim()
 
   if (!plateText) {
-    throw new ApiError('No license plate was detected.', 404, data)
+    throw new ApiError('Không phát hiện được biển số.', 404, data)
   }
 
   return {
@@ -132,6 +132,25 @@ export async function detectCameraPlate(imageBlob, options = {}) {
 export async function cameraCheckInByPlate(licensePlate, options = {}) {
   const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
   const data = await cameraRequest(`/api/v1/camera/check-in?${params}`, {
+    method: 'POST',
+    timeoutMs: 30_000,
+    ...options,
+  })
+  const root = data && typeof data === 'object' ? data : {}
+  const payload = root.data && typeof root.data === 'object' ? root.data : root
+  return normalizeStaffTask(payload)
+}
+
+export async function automatedWashCheckIn(
+  { licensePlate, branchId = 1, autoStart = true },
+  options = {},
+) {
+  const params = new URLSearchParams({
+    plate: String(licensePlate ?? '').trim(),
+    branchId: String(branchId ?? 1),
+    autoStart: String(autoStart !== false),
+  })
+  const data = await cameraRequest(`/api/v1/automated-wash/check-in?${params}`, {
     method: 'POST',
     timeoutMs: 30_000,
     ...options,

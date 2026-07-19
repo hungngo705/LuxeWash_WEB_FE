@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchBusinessDashboard, fetchBusinessBookings } from '../../api/business.api'
+import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 function KpiCard({ icon, label, value, sub, color = 'text-primary', bg = 'bg-primary/10' }) {
@@ -148,6 +149,7 @@ export default function BusinessDashboardPage() {
                     <p className="text-xs text-on-surface-variant">
                       {formatDateTime(booking.scheduledTime || booking.createdAt)}
                     </p>
+                    <WashDurationBadge booking={booking} className="mt-2" />
                   </div>
                   <StatusBadge status={booking.status} />
                 </div>

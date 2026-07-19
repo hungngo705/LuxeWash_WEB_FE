@@ -1,4 +1,4 @@
-export default function QueueStats({ stats, avgWaitMinutes }) {
+export default function QueueStats({ stats }) {
   const cards = [
     {
       label: 'Tổng hàng đợi',
@@ -10,21 +10,21 @@ export default function QueueStats({ stats, avgWaitMinutes }) {
     {
       label: 'Chờ xử lý',
       value: stats.pending,
-      suffix: 'Pending',
+      suffix: 'chờ',
       icon: 'schedule',
       accent: 'text-tertiary-container',
     },
     {
       label: 'Đã check-in',
       value: stats.checkedIn,
-      suffix: 'Checked-in',
+      suffix: 'đã check-in',
       icon: 'login',
       accent: 'text-primary-container',
     },
     {
       label: 'Đang rửa',
       value: stats.processing ?? 0,
-      suffix: 'Processing',
+      suffix: 'đang rửa',
       icon: 'wash',
       accent: 'text-secondary',
     },

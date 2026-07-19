@@ -149,7 +149,7 @@ export default function HistoryPage() {
           <h1 className="font-sora text-2xl font-semibold text-on-surface">Lịch sử dịch vụ</h1>
           <p className="mt-1 text-sm text-on-surface-variant">
             {laneLabel ? `${laneLabel} — ` : ''}
-            Completed / Cancelled / No-show theo ngày
+            Hoàn thành / Đã hủy / Vắng mặt theo ngày
           </p>
         </div>
         <label className="flex items-center gap-2 text-sm">

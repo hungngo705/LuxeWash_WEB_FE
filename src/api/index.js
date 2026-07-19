@@ -11,6 +11,7 @@ export {
 
 export {
   CAMERA_AI_BASE_URL,
+  automatedWashCheckIn,
   cameraCheckInByPlate,
   checkCameraHasCar,
   detectCameraPlate,

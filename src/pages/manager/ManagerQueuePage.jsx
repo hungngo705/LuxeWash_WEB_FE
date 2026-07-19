@@ -12,6 +12,7 @@ import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatVnd } from '../../utils/format'
 import { useAuth } from '../../context/AuthContext'
 
@@ -40,7 +41,7 @@ function normalizeBookingWithStatus(item) {
 export default function ManagerQueuePage() {
   const { user } = useAuth()
   const [bookings, setBookings] = useState([])
-  const [staffs, setStaffs] = useState([])
+  const [, setStaffs] = useState([])
   const [lanes, setLanes] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -251,7 +252,10 @@ export default function ManagerQueuePage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={b.status} />
                   </td>
-                  <td className="px-4 py-3 text-on-surface">{formatVnd(b.finalAmount)}</td>
+                  <td className="px-4 py-3 text-on-surface">
+                    <div>{formatVnd(b.finalAmount)}</div>
+                    <WashDurationBadge booking={b} className="mt-2" />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1.5">
                       {canAssign(b) && (

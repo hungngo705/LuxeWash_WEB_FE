@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchBusinessHistory, fetchFleetVehicles } from '../../api/business.api'
 import { fetchBranches } from '../../api/admin.branches.api'
+import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 export default function BusinessHistoryPage() {
@@ -164,7 +165,10 @@ export default function BusinessHistoryPage() {
                     <td className="px-4 py-3 text-sm text-on-surface">{item.vehicleType || '—'}</td>
                     <td className="px-4 py-3 text-sm text-on-surface">{item.branchName || '—'}</td>
                     <td className="px-4 py-3 text-sm text-on-surface">{formatDateTime(item.checkInTime || item.createdAt)}</td>
-                    <td className="px-4 py-3 text-sm text-on-surface">{formatDateTime(item.completedTime || item.completedAt)}</td>
+                    <td className="px-4 py-3 text-sm text-on-surface">
+                      <div>{formatDateTime(item.completedTime || item.completedAt)}</div>
+                      <WashDurationBadge booking={item} className="mt-2" />
+                    </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                         item.status === 'Completed' ? 'bg-green-100 text-green-800' :

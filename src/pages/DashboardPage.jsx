@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import LiveLprFeed from "../components/dashboard/LiveLprFeed";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
+import WashTelemetry, { WashDurationBadge } from "../components/shared/WashTelemetry";
 import {
   ApiError,
   apiRequest,
+  automatedWashCheckIn,
   cameraCheckInByPlate,
   createWalkInBooking,
   enrichStaffBooking,
@@ -105,6 +107,18 @@ function plateLookupMessage(status) {
   return "";
 }
 
+function getBookingStatusLabel(status) {
+  const labels = {
+    Pending: "Chờ check-in",
+    "Checked-in": "Đã check-in",
+    Processing: "Đang rửa",
+    Completed: "Hoàn thành",
+    Cancelled: "Đã hủy",
+    "No-show": "Vắng mặt",
+  };
+  return labels[status] ?? status;
+}
+
 function StatusBadge({ status }) {
   const styles = {
     Pending:
@@ -121,7 +135,7 @@ function StatusBadge({ status }) {
       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${styles[status] ?? styles.Pending}`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status}
+      {getBookingStatusLabel(status)}
     </span>
   );
 }
@@ -497,6 +511,7 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
                   <p className="text-xs text-on-surface-variant">
                     {item.serviceName} · {item.slotLabel}
                   </p>
+                  <WashDurationBadge booking={item} className="mt-2" />
                 </div>
               </button>
             );
@@ -885,6 +900,8 @@ function CustomerInfoPanel({
           </div>
         </div>
 
+        <WashTelemetry booking={booking} />
+
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-outline-variant bg-surface-container-low p-3">
             <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -1020,7 +1037,7 @@ function ProcessingVehiclesPanel({
                   </span>
                   <span className="flex items-center gap-1 rounded-full border border-secondary/25 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold text-secondary uppercase">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
-                    Processing
+                    Đang rửa
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -1034,6 +1051,7 @@ function ProcessingVehiclesPanel({
                     {getPaymentMethodDisplay(v.paymentMethod, v.paymentStatus)} ·{" "}
                     {formatVnd(v.finalAmount)}
                   </p>
+                  <WashDurationBadge booking={v} className="mt-2" />
                 </div>
               </button>
               <button
@@ -1282,38 +1300,16 @@ export default function DashboardPage() {
 
   const applySelectedBooking = useCallback(async (booking, options = {}) => {
     setWalkInDraft(null);
-    setSelectedBooking(booking);
     if (options.message !== undefined) setLookupError(options.message);
 
-    try {
-      let enriched = await enrichStaffBooking(booking, { allowStandaloneFetch: true });
-      if (Number(enriched?.bookingId)) {
-        try {
-          const payment = await fetchBookingPaymentStatus(enriched.bookingId);
-          enriched = {
-            ...enriched,
-            paymentStatus: payment?.paymentStatus
-              ? String(payment.paymentStatus)
-              : enriched.paymentStatus,
-            paymentMethod: payment?.paymentMethod
-              ? String(payment.paymentMethod)
-              : enriched.paymentMethod,
-          };
-        } catch {
-          // Keep the booking payload if payment verification is temporarily unavailable.
-        }
-      }
-      if (
-        enriched.status === "Processing" ||
-        enriched.status === "Checked-in"
-      ) {
-        setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
-      }
-      setSelectedBooking(enriched);
-    } catch {
-      if (booking.status === "Processing" || booking.status === "Checked-in") {
-        setStaffTasks((prev) => upsertStaffTaskList(prev, booking));
-      }
+    const normalized = normalizeStaffTask(booking);
+    setSelectedBooking(normalized);
+
+    if (
+      normalized.status === "Processing" ||
+      normalized.status === "Checked-in"
+    ) {
+      setStaffTasks((prev) => upsertStaffTaskList(prev, normalized));
     }
   }, []);
 
@@ -1505,13 +1501,13 @@ export default function DashboardPage() {
     }
   }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
 
-  const handleCameraPlateDetected = useCallback(async (plateText) => {
+  const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
     const plate = String(plateText ?? "").trim().toUpperCase();
     if (!plate) {
       return {
         status: "needs-action",
         type: "error",
-        message: "Camera returned an empty plate.",
+        message: "Camera chưa đọc được biển số.",
       };
     }
 
@@ -1519,12 +1515,52 @@ export default function DashboardPage() {
     setLookupError("");
     setLoadingLookup(true);
 
+    const shouldAutoStart = meta?.autoStart !== false;
+    const branchId = Number(laneAssignment?.branchId) || 1;
+
+    const syncFreshBooking = async (booking) => {
+      const freshTasks = await loadStaffTasks();
+      const updated = Array.isArray(freshTasks)
+        ? freshTasks.find((task) => Number(task.bookingId) === Number(booking.bookingId))
+        : null;
+      const next = updated ?? booking;
+      await applySelectedBooking(next);
+      return next;
+    };
+
+    const checkInAndMaybeStart = async (booking) => {
+      let next = booking;
+
+      if (next.status === "Pending") {
+        await staffCheckinBooking(next.bookingId);
+        next = { ...next, status: "Checked-in" };
+      }
+
+      if (shouldAutoStart && next.status === "Checked-in") {
+        await updateStaffBookingStatus(next.bookingId, "Processing");
+        next = {
+          ...next,
+          status: "Processing",
+          processingStartTime: next.processingStartTime ?? new Date().toISOString(),
+          completedTime: null,
+          actualDurationMinutes: null,
+        };
+      }
+
+      return syncFreshBooking(next);
+    };
+
     const fallbackCameraCheckIn = async () => {
-      const cameraBooking = await cameraCheckInByPlate(plate);
+      const cameraBooking = shouldAutoStart
+        ? await automatedWashCheckIn({ licensePlate: plate, branchId, autoStart: true })
+        : await cameraCheckInByPlate(plate);
       await applySelectedBooking(cameraBooking);
       await loadStaffTasks();
-      showToast(`Camera endpoint checked in ${plate}.`);
-      return { message: `Camera endpoint checked in ${plate}.` };
+      const message = shouldAutoStart
+        ? `Camera đã tự động bắt đầu rửa xe ${plate}.`
+        : `Camera đã check-in xe ${plate}.`;
+      showToast(message);
+      return { message };
     };
 
     try {
@@ -1534,10 +1570,10 @@ export default function DashboardPage() {
       );
 
       if (existing) {
-        await applySelectedBooking(existing);
+        const updated = await checkInAndMaybeStart(existing);
         return {
-          status: existing.status === "Pending" ? "needs-action" : undefined,
-          message: `${plate} is already in Staff queue (${existing.status}).`,
+          status: updated.status === "Pending" ? "needs-action" : undefined,
+          message: `${plate} đang ở hàng đợi Staff (${getBookingStatusLabel(updated.status)}).`,
         };
       }
 
@@ -1546,22 +1582,15 @@ export default function DashboardPage() {
       if (lookup.customerType === "PreBooked" && lookup.booking) {
         const booking = normalizeStaffTask(lookup.booking);
 
-        if (booking.status === "Pending") {
+        if (booking.status === "Pending" || (shouldAutoStart && booking.status === "Checked-in")) {
           try {
-            await staffCheckinBooking(booking.bookingId);
-            const checkedInBooking = { ...booking, status: "Checked-in" };
-            await applySelectedBooking(checkedInBooking);
-
-            const freshTasks = await loadStaffTasks();
-            const updated = Array.isArray(freshTasks)
-              ? freshTasks.find(
-                  (task) => Number(task.bookingId) === Number(booking.bookingId),
-                )
-              : null;
-            if (updated) await applySelectedBooking(updated);
-
-            showToast(`Camera AI checked in ${plate}.`);
-            return { message: `Staff lane check-in complete: ${plate}.` };
+            const updated = await checkInAndMaybeStart(booking);
+            const message =
+              updated.status === "Processing"
+                ? `Đã tự động bắt đầu rửa xe ${plate}.`
+                : `Đã check-in xe ${plate} vào làn Staff.`;
+            showToast(message);
+            return { message };
           } catch {
             return fallbackCameraCheckIn();
           }
@@ -1576,7 +1605,7 @@ export default function DashboardPage() {
             booking.status === "Checked-in" || booking.status === "Processing"
               ? undefined
               : "needs-action",
-          message: `Booking #${booking.bookingId} is ${booking.status}.`,
+          message: `Booking #${booking.bookingId} đang ở trạng thái ${getBookingStatusLabel(booking.status)}.`,
         };
       }
 
@@ -1586,15 +1615,15 @@ export default function DashboardPage() {
         setSelectedBooking(null);
 
         if (!branchId) {
-          const message = "Fleet vehicle found, but Staff branch is missing.";
+          const message = "Đã nhận diện xe doanh nghiệp nhưng chưa xác định được chi nhánh Staff.";
           setLookupError(message);
           return { status: "needs-action", type: "error", message };
         }
 
         await fleetWalkIn({ licensePlate: plate, branchId });
         await loadStaffTasks();
-        showToast(`Camera AI received fleet vehicle ${plate}.`);
-        return { message: `Fleet vehicle received: ${plate}.` };
+        showToast(`Camera AI đã tiếp nhận xe doanh nghiệp ${plate}.`);
+        return { message: `Đã tiếp nhận xe doanh nghiệp ${plate}.` };
       }
 
       if (lookup.customerType === "WalkIn") {
@@ -1602,7 +1631,7 @@ export default function DashboardPage() {
         setSelectedBooking(null);
 
         if (!branchId) {
-          const message = "Walk-in detected, but Staff branch is missing.";
+          const message = "Đã nhận diện khách vãng lai nhưng chưa xác định được chi nhánh Staff.";
           setWalkInDraft(null);
           setLookupError(message);
           return { status: "needs-action", type: "error", message };
@@ -1619,12 +1648,12 @@ export default function DashboardPage() {
           vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
           paymentMethod: "Cash",
         });
-        setLookupError("Camera detected a personal walk-in. Select service to create check-in.");
+        setLookupError("Camera đã nhận diện khách vãng lai cá nhân. Chọn dịch vụ để tạo check-in.");
         await loadWalkInServices(branchId);
-        return { status: "needs-action", message: `Walk-in detected: ${plate}.` };
+        return { status: "needs-action", message: `Đã nhận diện khách vãng lai: ${plate}.` };
       }
 
-      const message = "Camera plate lookup did not return a supported customer type.";
+      const message = "Tra cứu biển số từ camera không trả về loại khách được hỗ trợ.";
       setSelectedBooking(null);
       setWalkInDraft(null);
       setLookupError(message);
@@ -1638,7 +1667,7 @@ export default function DashboardPage() {
             ? fallbackErr.message
             : err instanceof ApiError
               ? err.message
-              : "Camera check-in failed.";
+              : "Camera check-in thất bại.";
         setWalkInDraft(null);
         setSelectedBooking(null);
         setLookupError(message);
@@ -1660,7 +1689,13 @@ export default function DashboardPage() {
     setConfirming(true);
     try {
       await updateStaffBookingStatus(selectedBooking.bookingId, "Processing");
-      let processingBooking = { ...selectedBooking, status: "Processing" };
+      let processingBooking = {
+        ...selectedBooking,
+        status: "Processing",
+        processingStartTime: selectedBooking.processingStartTime ?? new Date().toISOString(),
+        completedTime: null,
+        actualDurationMinutes: null,
+      };
       try {
         processingBooking = await enrichStaffBooking(processingBooking, { allowStandaloneFetch: true });
       } catch {

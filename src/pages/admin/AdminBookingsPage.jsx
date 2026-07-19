@@ -23,9 +23,20 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import WashTelemetry, { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatVnd } from '../../utils/format'
 
-const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Completed', 'Cancelled', 'No-show']
+const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Processing', 'Completed', 'Cancelled', 'No-show']
+
+const STATUS_LABELS = {
+  All: 'Tất cả',
+  Pending: 'Chờ check-in',
+  'Checked-in': 'Đã check-in',
+  Processing: 'Đang rửa',
+  Completed: 'Hoàn thành',
+  Cancelled: 'Đã hủy',
+  'No-show': 'Vắng mặt',
+}
 
 const VEHICLE_CONDITIONS = [
   { value: 1, label: 'Sạch (Clean)' },
@@ -393,7 +404,7 @@ export default function AdminBookingsPage() {
             >
               {STATUS_OPTIONS.filter((s) => s !== 'All').map((status) => (
                 <option key={status} value={status}>
-                  {status}
+                  {STATUS_LABELS[status] ?? status}
                 </option>
               ))}
             </select>
@@ -458,7 +469,7 @@ export default function AdminBookingsPage() {
               }`}
               onClick={() => setStatusFilter(status)}
             >
-              {status === 'All' ? 'Tất cả' : status}
+              {STATUS_LABELS[status] ?? status}
             </button>
           ))}
         </div>
@@ -489,7 +500,7 @@ export default function AdminBookingsPage() {
         <EmptyState icon="calendar_month" title="Không có booking" />
       ) : (
         <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[1080px] text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">Booking ID</th>
@@ -522,7 +533,10 @@ export default function AdminBookingsPage() {
                   <td className="px-4 py-3">
                     <StatusBadge status={booking.paymentStatus ?? 'Unpaid'} />
                   </td>
-                  <td className="px-4 py-3 text-on-surface">{formatVnd(booking.finalAmount)}</td>
+                  <td className="px-4 py-3 text-on-surface">
+                    <div>{formatVnd(booking.finalAmount)}</div>
+                    <WashDurationBadge booking={booking} className="mt-2" />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button
@@ -590,6 +604,8 @@ export default function AdminBookingsPage() {
               </div>
             </div>
 
+            <WashTelemetry booking={detailBooking} />
+
             {canChangeStatus(detailBooking.status) && (
               <div className="flex flex-wrap gap-2 border-t border-outline-variant/60 pt-4">
                 {detailBooking.status === 'Pending' && (
@@ -629,11 +645,11 @@ export default function AdminBookingsPage() {
                   onClick={() =>
                     runBookingAction(
                       () => markBookingNoShow(detailBooking.bookingId),
-                      'Đã đánh dấu no-show',
+                      'Đã đánh dấu vắng mặt',
                     )
                   }
                 >
-                  No-show
+                  Vắng mặt
                 </button>
                 <button
                   type="button"

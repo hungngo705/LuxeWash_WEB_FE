@@ -6,19 +6,19 @@ export default function HistoryStats({ stats }) {
     {
       label: 'Hoàn thành',
       value: stats.completed,
-      suffix: 'Completed',
+      suffix: 'hoàn thành',
       icon: 'check_circle',
       accent: 'text-primary-container',
     },
     {
       label: 'Đã hủy',
       value: stats.cancelled,
-      suffix: 'Cancelled',
+      suffix: 'đã hủy',
       icon: 'cancel',
       accent: 'text-on-surface-variant',
     },
     {
-      label: 'Doanh thu (Success)',
+      label: 'Doanh thu thành công',
       value: formatVnd(stats.revenue),
       isText: true,
       icon: 'payments',

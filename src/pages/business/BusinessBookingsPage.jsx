@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchBusinessBookings, cancelBooking } from '../../api/business.api'
+import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatDateTime } from '../../utils/format'
 
 function StatusBadge({ status }) {
@@ -135,7 +136,8 @@ export default function BusinessBookingsPage() {
                       {booking.licensePlate || booking.fleetVehicle?.licensePlate || '—'}
                     </td>
                     <td className="px-4 py-3 text-sm text-on-surface">
-                      {formatDateTime(booking.scheduledTime || booking.createdAt)}
+                      <div>{formatDateTime(booking.scheduledTime || booking.createdAt)}</div>
+                      <WashDurationBadge booking={booking} className="mt-2" />
                     </td>
                     <td className="px-4 py-3 text-sm text-on-surface">
                       {booking.branch?.name || booking.branchName || '—'}

@@ -44,6 +44,15 @@ export function normalizeBusinessBooking(item) {
           : '',
     scheduledTime: item.scheduledTime ?? item.targetDate ?? item.createdAt,
     finalAmount: item.finalAmount != null ? Number(item.finalAmount) : undefined,
+    processingStartTime:
+      item.processingStartTime ?? item.ProcessingStartTime ?? null,
+    completedTime: item.completedTime ?? item.CompletedTime ?? null,
+    actualDurationMinutes:
+      item.actualDurationMinutes != null
+        ? Number(item.actualDurationMinutes)
+        : item.ActualDurationMinutes != null
+          ? Number(item.ActualDurationMinutes)
+          : null,
   }
 }
 
@@ -287,6 +296,15 @@ export function normalizeBusinessBookingDetail(item) {
     newScheduledTime: record.newScheduledTime ?? null,
     status: String(record.status ?? ''),
     paymentStatus: String(record.paymentStatus ?? 'Unpaid'),
+    processingStartTime:
+      record.processingStartTime ?? record.ProcessingStartTime ?? null,
+    completedTime: record.completedTime ?? record.CompletedTime ?? null,
+    actualDurationMinutes:
+      record.actualDurationMinutes != null
+        ? Number(record.actualDurationMinutes)
+        : record.ActualDurationMinutes != null
+          ? Number(record.ActualDurationMinutes)
+          : null,
     originalPrice,
     finalAmount,
     totalAmount: total,
@@ -660,15 +678,25 @@ function normalizeBusinessHistoryItem(item) {
     fleetVehicleId: item.fleetVehicleId != null ? Number(item.fleetVehicleId) : null,
     checkInTime:
       item.checkInTime ?? item.checkedInAt ?? item.scheduledTime ?? item.createdAt ?? null,
+    processingStartTime:
+      item.processingStartTime ?? item.ProcessingStartTime ?? null,
     completedTime:
       item.completedTime ??
+      item.CompletedTime ??
       item.completedAt ??
       (item.status === 'Completed' ? item.scheduledTime : null),
     createdAt: item.createdAt ?? item.scheduledTime ?? null,
     completedAt:
       item.completedAt ??
       item.completedTime ??
+      item.CompletedTime ??
       (item.status === 'Completed' ? item.scheduledTime : null),
+    actualDurationMinutes:
+      item.actualDurationMinutes != null
+        ? Number(item.actualDurationMinutes)
+        : item.ActualDurationMinutes != null
+          ? Number(item.ActualDurationMinutes)
+          : null,
     status: String(item.status ?? ''),
     totalAmount: amount != null ? Number(amount) : 0,
     cost: amount != null ? Number(amount) : 0,
@@ -790,6 +818,9 @@ async function fetchBusinessHistoryFromBookings(filter = {}) {
           vehicle?.vehicleType || vehicle?.vehicleTypeName || booking.vehicleType,
         fleetVehicleId: vehicle?.fleetVehicleId,
         scheduledTime: booking.scheduledTime,
+        processingStartTime: booking.processingStartTime,
+        completedTime: booking.completedTime,
+        actualDurationMinutes: booking.actualDurationMinutes,
         status: booking.status,
         finalAmount: booking.finalAmount,
       })

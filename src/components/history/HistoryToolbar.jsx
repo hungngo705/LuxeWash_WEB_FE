@@ -1,14 +1,14 @@
 const BOOKING_FILTERS = [
   { id: 'all', label: 'Tất cả' },
-  { id: 'Completed', label: 'Completed' },
-  { id: 'Cancelled', label: 'Cancelled' },
+  { id: 'Completed', label: 'Hoàn thành' },
+  { id: 'Cancelled', label: 'Đã hủy' },
 ]
 
 const TX_FILTERS = [
   { id: 'all', label: 'Mọi TT thanh toán' },
-  { id: 'Success', label: 'Success' },
-  { id: 'Failed', label: 'Failed' },
-  { id: 'Refunded', label: 'Refunded' },
+  { id: 'Success', label: 'Thành công' },
+  { id: 'Failed', label: 'Thất bại' },
+  { id: 'Refunded', label: 'Đã hoàn tiền' },
 ]
 
 export default function HistoryToolbar({

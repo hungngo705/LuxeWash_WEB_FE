@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { enrichStaffBooking, fetchUserById, formatPaymentMethodLabel } from '../../api'
 import { mapUserDetailToCustomerView } from '../../api/staff.customers.api'
+import WashTelemetry from '../shared/WashTelemetry'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 function DetailRow({ label, value }) {
@@ -148,6 +149,8 @@ export default function StaffBookingDetailModal({ booking, onClose }) {
               )}
             </dl>
           </section>
+
+          <WashTelemetry booking={displayBooking} />
 
           <section>
             <h3 className="mb-3 font-sora text-sm font-semibold tracking-wide text-primary uppercase">

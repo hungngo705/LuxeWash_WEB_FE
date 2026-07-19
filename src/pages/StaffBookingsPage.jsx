@@ -13,10 +13,21 @@ import {
   updateBookingStatusByLicensePlate,
 } from '../api'
 import StatusBadge from '../components/admin/shared/StatusBadge'
+import WashTelemetry, { WashDurationBadge } from '../components/shared/WashTelemetry'
 import { formatVnd } from '../utils/format'
 
-const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Completed', 'Cancelled', 'No-show']
+const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Processing', 'Completed', 'Cancelled', 'No-show']
 const UPDATE_STATUS_OPTIONS = ['Pending', 'Checked-in', 'Completed', 'Cancelled', 'No-show']
+
+const STATUS_LABELS = {
+  All: 'Tất cả',
+  Pending: 'Chờ check-in',
+  'Checked-in': 'Đã check-in',
+  Processing: 'Đang rửa',
+  Completed: 'Hoàn thành',
+  Cancelled: 'Đã hủy',
+  'No-show': 'Vắng mặt',
+}
 
 const VEHICLE_CONDITIONS = [
   { value: 1, label: 'Sạch' },
@@ -295,7 +306,7 @@ export default function StaffBookingsPage() {
               >
                 {STATUS_OPTIONS.map((status) => (
                   <option key={status} value={status}>
-                    {status}
+                    {STATUS_LABELS[status] ?? status}
                   </option>
                 ))}
               </select>
@@ -395,6 +406,7 @@ export default function StaffBookingsPage() {
                     <p className="mt-2 text-sm font-semibold text-on-surface">
                       {formatVnd(booking.finalAmount)}
                     </p>
+                    <WashDurationBadge booking={booking} className="mt-2" />
                   </button>
 
                   <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
@@ -411,7 +423,7 @@ export default function StaffBookingsPage() {
                       >
                         {UPDATE_STATUS_OPTIONS.map((status) => (
                           <option key={status} value={status}>
-                            {status}
+                            {STATUS_LABELS[status] ?? status}
                           </option>
                         ))}
                       </select>
@@ -438,7 +450,7 @@ export default function StaffBookingsPage() {
                         disabled={actionKey === `noshow-${booking.bookingId}`}
                         onClick={() => handleNoShow(booking)}
                       >
-                        No-show
+                        Vắng mặt
                       </button>
                     </div>
                   </div>
@@ -477,7 +489,7 @@ export default function StaffBookingsPage() {
                 >
                   {UPDATE_STATUS_OPTIONS.map((status) => (
                     <option key={status} value={status}>
-                      {status}
+                      {STATUS_LABELS[status] ?? status}
                     </option>
                   ))}
                 </select>
@@ -565,6 +577,8 @@ export default function StaffBookingsPage() {
                     })
                   }
                 />
+
+                <WashTelemetry booking={selectedBooking} />
 
                 {mismatchForm.detailId != null && (
                   <div className="rounded-lg border border-tertiary/30 bg-tertiary-container/10 p-3">
