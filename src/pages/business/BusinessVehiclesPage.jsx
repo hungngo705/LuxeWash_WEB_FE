@@ -104,13 +104,13 @@ export default function BusinessVehiclesPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Link
+          {/* <Link
             to="/business/vehicles/history"
             className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-xl hover:bg-primary/5 transition-colors flex items-center gap-2"
           >
             <span className="material-symbols-outlined text-sm">history</span>
             Lịch sử nhập
-          </Link>
+          </Link> */}
           <Link
             to="/business/vehicles/import"
             className="px-4 py-2 text-sm font-medium text-on-primary bg-primary rounded-xl hover:bg-primary/90 transition-colors flex items-center gap-2"
