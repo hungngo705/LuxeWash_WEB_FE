@@ -80,6 +80,12 @@ function formatScheduledSlotLabel(scheduledTime) {
   return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function getLocalDateKey() {
+  const now = new Date()
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
 function normalizeServiceNames(value) {
   if (Array.isArray(value)) {
     const names = value.map((v) => String(v ?? '').trim()).filter(Boolean)
@@ -123,7 +129,12 @@ function flattenBookingSource(item) {
     normalizeServiceNames(nestedService.name ?? nestedService.serviceName) ??
     normalizeServiceNames(firstDetail?.serviceName)
 
-  const scheduledTime = item.scheduledTime ?? item.scheduledDate ?? item.affectedDate
+  const scheduledTime =
+    item.scheduledTime ??
+    item.scheduleTime ??
+    item.ScheduledTime ??
+    item.scheduledDate ??
+    item.affectedDate
 
   return {
     ...item,
@@ -144,12 +155,26 @@ function flattenBookingSource(item) {
       customer.phone,
     userId: item.userId ?? item.customerId ?? customer.userId ?? customer.id ?? customer.customerId,
     tierName:
+      item.customerTierName ??
+      item.tierName ??
+      item.rankName ??
+      customer.tierName ??
+      customer.rankName ??
+      customer.membershipTier,
+    // Alias so consumers reading `rankName` (StaffQueuePage, DashboardPage) get the tier too.
+    rankName:
+      item.customerTierName ??
       item.tierName ??
       item.rankName ??
       customer.tierName ??
       customer.rankName ??
       customer.membershipTier,
     rankId: item.rankId ?? item.tierId ?? customer.rankId ?? customer.tierId,
+    customerTierPoints:
+      item.customerTierPoints ??
+      item.tierPoints ??
+      customer.customerTierPoints ??
+      customer.tierPoints,
     paymentMethod:
       item.paymentMethod ??
       item.payMethod ??
@@ -268,20 +293,20 @@ export async function enrichStaffBooking(booking, context = {}) {
       (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
     )
     if (match) {
-      merged = normalizeStaffTask({ ...match, bookingId: booking.bookingId })
+      merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
     }
   } else if (signal !== undefined || context.allowStandaloneFetch) {
     // Fallback: when called outside the batched enrichStaffTasks context.
     try {
       const dateKey =
         merged.scheduledTime?.slice(0, 10) ??
-        new Date().toISOString().slice(0, 10)
+        getLocalDateKey()
       const data = await fetchBookingsByDate(toApiTargetDate(dateKey), fetchOpts)
       const match = asBookingList(data).find(
         (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
       )
       if (match) {
-        merged = normalizeStaffTask({ ...match, bookingId: booking.bookingId })
+        merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
       }
     } catch {
       // continue
@@ -342,7 +367,7 @@ export async function enrichStaffTasks(tasks, options = {}) {
 
   for (const t of list) {
     const dateKey =
-      t.scheduledTime?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+      t.scheduledTime?.slice(0, 10) ?? getLocalDateKey()
     dates.add(dateKey)
 
     const normalized = normalizeStaffTask(t)
@@ -447,6 +472,7 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   phoneMasked: string
  *   rankName: string
  *   rankId?: number
+ *   customerTierPoints?: number
  *   serviceName: string
  *   slotLabel: string
  *   scheduledTime: string | null
@@ -461,6 +487,7 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   branchName?: string
  *   processingLaneId?: number
  *   processingLaneName?: string
+ *   isWaitingForLane: boolean
  *   processingStartTime?: string | null
  *   completedTime?: string | null
  *   actualDurationMinutes?: number | null
@@ -487,7 +514,13 @@ export function normalizeStaffTask(item) {
   const firstDetail = Array.isArray(details) ? details[0] : null
   const phoneRaw = flat.phoneNumber ?? ''
 
-  const scheduledRaw = flat.scheduledTime ?? flat.scheduledDate ?? flat.affectedDate ?? null
+  const scheduledRaw =
+    flat.scheduledTime ??
+    flat.scheduleTime ??
+    flat.ScheduledTime ??
+    flat.scheduledDate ??
+    flat.affectedDate ??
+    null
 
   let slotLabel =
     flat.slotLabel ??
@@ -506,6 +539,8 @@ export function normalizeStaffTask(item) {
     phoneMasked: maskPhoneNumber(String(phoneRaw || '')),
     rankName: String(flat.rankName ?? flat.tierName ?? flat.membershipTier ?? '—'),
     rankId: flat.rankId != null ? Number(flat.rankId) : flat.tierId != null ? Number(flat.tierId) : undefined,
+    customerTierPoints:
+      flat.customerTierPoints != null ? Number(flat.customerTierPoints) : undefined,
     serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
@@ -518,13 +553,24 @@ export function normalizeStaffTask(item) {
     fallbackQrCode: String(flat.fallbackQrCode ?? flat.qrCode ?? '—'),
     branchId: flat.branchId != null ? Number(flat.branchId) : undefined,
     branchName: flat.branchName != null ? String(flat.branchName) : undefined,
-    processingLaneId: flat.processingLaneId ?? flat.laneId ?? undefined,
+    processingLaneId:
+      flat.processingLaneId != null
+        ? Number(flat.processingLaneId)
+        : flat.laneId != null
+          ? Number(flat.laneId)
+          : undefined,
     processingLaneName:
       flat.processingLaneName != null
         ? String(flat.processingLaneName)
         : flat.laneName != null
           ? String(flat.laneName)
           : undefined,
+    isWaitingForLane:
+      flat.isWaitingForLane === true ||
+      flat.IsWaitingForLane === true ||
+      (normalizeBookingStatus(flat.status ?? flat.bookingStatus) === 'Checked-in' &&
+        flat.processingLaneId == null &&
+        flat.laneId == null),
     processingStartTime:
       flat.processingStartTime != null
         ? String(flat.processingStartTime)
@@ -626,6 +672,10 @@ export function normalizeStaffLaneAssignment(item) {
 
 export function formatStaffStationLabel(assignment) {
   if (!assignment) return 'Chưa phân công làn'
+  if (Number(assignment.laneId) === 0) {
+    const allLanes = assignment.laneName || 'Mọi làn rửa xe (All Lanes)'
+    return assignment.branchName ? `${allLanes} · ${assignment.branchName}` : allLanes
+  }
   if (assignment.laneName && assignment.branchName) {
     return `${assignment.laneName} · ${assignment.branchName}`
   }
@@ -665,7 +715,7 @@ export function consumeStaffVoucher(payload) {
 
 /**
  * GET /api/v1/operation-staff/tasks
- * Returns bookings assigned to the logged-in Staff member's lane (CheckedIn or Processing).
+ * Returns all CheckedIn/Processing bookings in the Staff member's branch.
  * @param {{ date?: string, signal?: AbortSignal }} [options]
  * @returns {Promise<StaffTask[]>}
  */

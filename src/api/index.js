@@ -1,6 +1,8 @@
 export {
   apiRequest,
+  aiApiRequest,
   setUnauthorizedHandler,
+  AI_API_BASE_URL,
   API_BASE_URL,
   ApiError,
   clearSession,
@@ -13,6 +15,7 @@ export {
   CAMERA_AI_BASE_URL,
   automatedWashCheckIn,
   cameraCheckInByPlate,
+  cameraCheckOutByPlate,
   checkCameraHasCar,
   detectCameraPlate,
 } from './cameraAi.api'
@@ -156,6 +159,18 @@ export {
 export { fetchDashboardStats } from './admin.dashboard.api'
 
 export {
+  approveRevenueStimulusProposal,
+  checkManagerRevenueStimulus,
+  evaluateBranchRevenue,
+  fetchRevenueStimulusProposals,
+  generateComprehensiveRevenueProposals,
+  modifyRevenueStimulusProposal,
+  rejectRevenueStimulusProposal,
+  triggerAllRevenueCampaigns,
+  triggerBranchRevenueCampaign,
+} from './revenueAnalytics.api'
+
+export {
   fetchManagerBookings,
   fetchManagerStaffs,
   assignStaffToLane,
@@ -277,6 +292,7 @@ export {
 
 export {
   checkAvailableSlots,
+  checkSlotsWithSuggestions,
   checkCompatibility,
   createBooking,
   fetchBookingPaymentStatus,

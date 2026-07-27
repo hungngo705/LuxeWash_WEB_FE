@@ -4,6 +4,7 @@ import BusinessRoute from './components/auth/BusinessRoute'
 import ManagerRoute from './components/auth/ManagerRoute'
 import RootRedirect from './components/auth/RootRedirect'
 import StaffRoute from './components/auth/StaffRoute'
+import OperationsDisplayRoute from './components/auth/OperationsDisplayRoute'
 import AdminLayout from './components/layout/AdminLayout'
 import BusinessLayout from './components/layout/BusinessLayout'
 import ManagerLayout from './components/layout/ManagerLayout'
@@ -71,6 +72,7 @@ import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicatio
 import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
 import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
 import ManagerShiftsPage from './pages/manager/ManagerShiftsPage'
+import LaneAssignmentDisplayPage from './pages/display/LaneAssignmentDisplayPage'
 
 export default function App() {
   return (
@@ -80,6 +82,14 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/business/register" element={<BusinessRegisterPage />} />
+          <Route
+            path="/display/lane"
+            element={
+              <OperationsDisplayRoute>
+                <LaneAssignmentDisplayPage />
+              </OperationsDisplayRoute>
+            }
+          />
 
           <Route
             element={

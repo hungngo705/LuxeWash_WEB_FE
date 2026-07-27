@@ -19,7 +19,7 @@ export function formatDateTime(iso) {
 
 export function formatWashDuration(minutes) {
   const value = Number(minutes)
-  if (!Number.isFinite(value) || value <= 0) return 'â€”'
+  if (!Number.isFinite(value) || value <= 0) return '—'
 
   const rounded = Math.max(1, Math.round(value))
   const hours = Math.floor(rounded / 60)

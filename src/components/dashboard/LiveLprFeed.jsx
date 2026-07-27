@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CAMERA_AI_BASE_URL, checkCameraHasCar, detectCameraPlate } from '../../api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { checkCameraHasCar, detectCameraPlate } from '../../api'
 
 const SCAN_INTERVAL_MS = 3000
 const PLATE_COOLDOWN_MS = 8000
@@ -29,6 +29,11 @@ const STATUS_META = {
   checkedIn: {
     icon: 'task_alt',
     label: 'Đã check-in',
+    className: 'border-primary-container/40 bg-primary-container/10 text-primary-container',
+  },
+  checkedOut: {
+    icon: 'output_circle',
+    label: 'Barie đang mở',
     className: 'border-primary-container/40 bg-primary-container/10 text-primary-container',
   },
   paused: {
@@ -83,7 +88,8 @@ export default function LiveLprFeed({
 
   const [cameraReady, setCameraReady] = useState(false)
   const [scanEnabled, setScanEnabled] = useState(true)
-  const [autoStart, setAutoStart] = useState(true)
+  const [autoStart, setAutoStart] = useState(false)
+  const [operationMode, setOperationMode] = useState('entry')
   const [status, setStatus] = useState('booting')
   const [busy, setBusy] = useState(false)
   const [lastPlate, setLastPlate] = useState('')
@@ -100,14 +106,6 @@ export default function LiveLprFeed({
   ])
 
   const statusMeta = STATUS_META[status] ?? STATUS_META.scanning
-  const aiHostLabel = useMemo(() => {
-    try {
-      return new URL(CAMERA_AI_BASE_URL).host
-    } catch {
-      return CAMERA_AI_BASE_URL
-    }
-  }, [])
-
   const addLog = useCallback((message, type = 'normal') => {
     setLogs((items) => [
       {
@@ -258,6 +256,7 @@ export default function LiveLprFeed({
 
       const result = await onPlateDetected?.(plate, {
         autoStart,
+        operationMode,
         confidence: plateResult.confidence,
         source: 'camera-ai',
       })
@@ -266,7 +265,13 @@ export default function LiveLprFeed({
         addLog(result.message, result.type === 'error' ? 'error' : 'success')
       }
 
-      setStatus(result?.status === 'needs-action' ? 'found' : 'checkedIn')
+      setStatus(
+        result?.status === 'needs-action'
+          ? 'found'
+          : operationMode === 'exit'
+            ? 'checkedOut'
+            : 'checkedIn',
+      )
       cooldownUntilRef.current = Date.now() + PLATE_COOLDOWN_MS
       restoreScanningStatus()
     } catch (err) {
@@ -286,6 +291,7 @@ export default function LiveLprFeed({
     captureFrame,
     disabled,
     onPlateDetected,
+    operationMode,
     restoreScanningStatus,
     autoStart,
     scanEnabled,
@@ -332,7 +338,7 @@ export default function LiveLprFeed({
               Camera AI trực tiếp
             </h2>
             <p className="truncate text-xs font-medium text-on-surface-variant">
-              {laneLabel || 'Chưa phân làn'} · AI {aiHostLabel}
+              {laneLabel || 'Chưa xác định chi nhánh/làn Staff'}
             </p>
           </div>
         </div>
@@ -416,15 +422,39 @@ export default function LiveLprFeed({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <label className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface">
+            <div className="inline-flex rounded-lg border border-outline-variant bg-surface-container-low p-1">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  operationMode === 'entry'
+                    ? 'bg-primary text-on-primary'
+                    : 'text-on-surface-variant hover:bg-surface-variant'
+                }`}
+                onClick={() => setOperationMode('entry')}
+              >
+                Cổng vào
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  operationMode === 'exit'
+                    ? 'bg-secondary text-on-secondary'
+                    : 'text-on-surface-variant hover:bg-surface-variant'
+                }`}
+                onClick={() => setOperationMode('exit')}
+              >
+                Cổng ra
+              </button>
+            </div>
+            {operationMode === 'entry' && <label className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface">
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-primary"
                 checked={autoStart}
                 onChange={(event) => setAutoStart(event.target.checked)}
               />
-              Tự bắt đầu rửa
-            </label>
+              Tự bắt đầu rửa sau check-in
+            </label>}
             <button
               type="button"
               title={scanEnabled ? 'Tạm dừng quét' : 'Tiếp tục quét'}
@@ -460,12 +490,12 @@ export default function LiveLprFeed({
             )}
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-outline-variant bg-surface-container-low">
             <div className="flex items-center gap-2 border-b border-outline-variant px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <span className="material-symbols-outlined text-[16px]">terminal</span>
               Nhật ký quét
             </div>
-            <div className="max-h-[190px] space-y-1 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-scroll p-3">
               {logs.map((log) => (
                 <div
                   key={log.id}

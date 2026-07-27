@@ -141,6 +141,22 @@ export async function cameraCheckInByPlate(licensePlate, options = {}) {
   return normalizeStaffTask(payload)
 }
 
+/**
+ * POST /api/v1/camera/check-out?plate=
+ * Hoàn tất lượt rửa và chỉ cho phép mở barie khi booking đã thanh toán.
+ */
+export async function cameraCheckOutByPlate(licensePlate, options = {}) {
+  const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
+  const data = await cameraRequest(`/api/v1/camera/check-out?${params}`, {
+    method: 'POST',
+    timeoutMs: 30_000,
+    ...options,
+  })
+  const root = data && typeof data === 'object' ? data : {}
+  const payload = root.data && typeof root.data === 'object' ? root.data : root
+  return normalizeStaffTask(payload)
+}
+
 export async function automatedWashCheckIn(
   { licensePlate, branchId = 1, autoStart = true },
   options = {},

@@ -116,6 +116,11 @@ export function normalizeManagerBooking(item) {
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,
+    isWaitingForLane:
+      item.isWaitingForLane === true ||
+      (normalizeBookingStatus(item.status ?? item.bookingStatus) === 'Checked-in' &&
+        item.processingLaneId == null &&
+        item.laneId == null),
     processingStartTime:
       item.processingStartTime != null
         ? String(item.processingStartTime)
