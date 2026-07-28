@@ -40,10 +40,10 @@ const VIEW_CONFIG = {
     glow: 'from-emerald-500/30 to-cyan-500/10',
   },
   waiting: {
-    eyebrow: 'ĐÃ TIẾP NHẬN XE',
+    eyebrow: 'CHƯA CÓ LÀN TRỐNG',
     icon: 'hourglass_top',
-    title: 'VUI LÒNG ĐỖ TẠI KHU VỰC CHỜ',
-    message: 'Làn rửa sẽ được hiển thị ngay khi sẵn sàng',
+    title: 'VUI LÒNG GIỮ NGUYÊN VỊ TRÍ',
+    message: 'Xe đang chờ trước barie. Nhân viên sẽ hướng dẫn khi có làn trống',
     accent: 'text-amber-300',
     glow: 'from-amber-500/25 to-orange-600/10',
   },

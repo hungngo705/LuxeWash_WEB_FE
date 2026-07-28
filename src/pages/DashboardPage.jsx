@@ -11,7 +11,6 @@ import {
 import {
   ApiError,
   apiRequest,
-  automatedWashCheckIn,
   cameraCheckInByPlate,
   cameraCheckOutByPlate,
   createWalkInBooking,
@@ -46,6 +45,60 @@ function normalizePlate(plate) {
     .toUpperCase()
     .replace(/\s/g, "")
     .replace(/\./g, "");
+}
+
+const MANUAL_COMPLETION_STORAGE_KEY = "luxewash:manual-completions";
+const MANUAL_COMPLETION_TTL_MS = 10 * 60 * 1000;
+
+function getRecentManualCompletions() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(MANUAL_COMPLETION_STORAGE_KEY) || "[]",
+    );
+    if (!Array.isArray(stored)) return [];
+    const cutoff = Date.now() - MANUAL_COMPLETION_TTL_MS;
+    return stored.filter(
+      (item) =>
+        normalizePlate(item?.licensePlate) &&
+        Number(item?.completedAt) >= cutoff,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function findRecentManualCompletion(licensePlate) {
+  const normalized = normalizePlate(licensePlate);
+  if (!normalized) return null;
+  return (
+    getRecentManualCompletions().find(
+      (item) => normalizePlate(item.licensePlate) === normalized,
+    ) ?? null
+  );
+}
+
+function rememberManualCompletion(booking) {
+  const licensePlate = normalizePlate(booking?.licensePlate);
+  if (!licensePlate || typeof window === "undefined") return;
+  try {
+    const remaining = getRecentManualCompletions().filter(
+      (item) => normalizePlate(item.licensePlate) !== licensePlate,
+    );
+    window.localStorage.setItem(
+      MANUAL_COMPLETION_STORAGE_KEY,
+      JSON.stringify([
+        {
+          licensePlate,
+          bookingId: booking?.bookingId,
+          completedAt: Date.now(),
+        },
+        ...remaining,
+      ].slice(0, 20)),
+    );
+  } catch {
+    // The fallback still completes the booking even if browser storage is unavailable.
+  }
 }
 
 // Cache of userId -> customer name so we don't refetch /admin/users/{id} every poll.
@@ -1129,11 +1182,15 @@ function ProcessingVehiclesPanel({
               </button>
               <button
                 type="button"
-                className="w-full rounded-xl border border-primary bg-primary/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary uppercase transition-colors hover:bg-primary/20 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-amber-700 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-50"
                 onClick={() => onComplete(v.bookingId)}
                 disabled={completingId === v.bookingId}
+                title="Chỉ dùng khi camera cổng ra không nhận diện được biển số"
               >
-                {completingId === v.bookingId ? "Đang xử lý…" : "Hoàn thành"}
+                <span className="material-symbols-outlined text-[17px]">warning</span>
+                {completingId === v.bookingId
+                  ? "Đang xử lý…"
+                  : "Hoàn thành thủ công"}
               </button>
             </div>
           ))}
@@ -1692,9 +1749,6 @@ export default function DashboardPage() {
       publishLaneDisplayEvent({ type: "reading", plate });
     }
 
-    const shouldAutoStart = meta?.autoStart === true;
-    const branchId = Number(laneAssignment?.branchId) || 1;
-
     const syncFreshBooking = async (booking) => {
       const freshTasks = await loadStaffTasks();
       const updated = Array.isArray(freshTasks)
@@ -1705,7 +1759,7 @@ export default function DashboardPage() {
       return next;
     };
 
-    const checkInAndMaybeStart = async (booking) => {
+    const checkInBooking = async (booking) => {
       let next = booking;
 
       if (next.status === "Pending") {
@@ -1724,49 +1778,34 @@ export default function DashboardPage() {
         next = await syncFreshBooking(next);
       }
 
-      if (shouldAutoStart && canStartWash(next)) {
-        await updateStaffBookingStatus(next.bookingId, "Processing");
-        next = {
-          ...next,
-          status: "Processing",
-          processingStartTime: next.processingStartTime ?? new Date().toISOString(),
-          completedTime: null,
-          actualDurationMinutes: null,
-        };
-        next = await syncFreshBooking(next);
-      }
-
       publishBookingLaneState(next);
       return next;
     };
 
     const fallbackCameraCheckIn = async () => {
-      const cameraBooking = shouldAutoStart
-        ? await automatedWashCheckIn({ licensePlate: plate, branchId, autoStart: false })
-        : await cameraCheckInByPlate(plate);
+      const cameraBooking = await cameraCheckInByPlate(plate);
       const freshTasks = await loadStaffTasks();
       const freshBooking = Array.isArray(freshTasks)
         ? freshTasks.find((task) => Number(task.bookingId) === Number(cameraBooking.bookingId))
         : null;
-      let authoritativeBooking = freshBooking ?? cameraBooking;
-      if (shouldAutoStart && canStartWash(authoritativeBooking)) {
-        await updateStaffBookingStatus(authoritativeBooking.bookingId, "Processing");
-        const afterStartTasks = await loadStaffTasks();
-        authoritativeBooking = afterStartTasks?.find(
-          (task) => Number(task.bookingId) === Number(cameraBooking.bookingId),
-        ) ?? { ...authoritativeBooking, status: "Processing" };
-      }
+      const authoritativeBooking = freshBooking ?? cameraBooking;
       await applySelectedBooking(authoritativeBooking);
       publishBookingLaneState(authoritativeBooking);
-      const message = authoritativeBooking.status === "Processing"
-        ? `Camera đã tự động bắt đầu rửa xe ${plate}.`
-        : `Camera đã check-in xe ${plate}.`;
+      const message = `Camera đã check-in xe ${plate}.`;
       showToast(message);
       return { message };
     };
 
     try {
       if (meta?.operationMode === 'exit') {
+        const recentManualCompletion = findRecentManualCompletion(plate);
+        if (recentManualCompletion) {
+          const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
+          setBarrierAlert({ type: 'manual', message });
+          showToast(message);
+          return { status: 'needs-action', type: 'warning', message };
+        }
+
         try {
           const completed = await cameraCheckOutByPlate(plate);
           const duration = Number(completed.actualDurationMinutes);
@@ -1809,7 +1848,7 @@ export default function DashboardPage() {
       );
 
       if (existing) {
-        const updated = await checkInAndMaybeStart(existing);
+        const updated = await checkInBooking(existing);
         return {
           status: updated.status === "Pending" ? "needs-action" : undefined,
           message: `${plate} đang ở hàng đợi Staff (${getBookingStatusLabel(updated.status)}).`,
@@ -1821,15 +1860,13 @@ export default function DashboardPage() {
       if (lookup.customerType === "PreBooked" && lookup.booking) {
         const booking = normalizeStaffTask(lookup.booking);
 
-        if (booking.status === "Pending" || (shouldAutoStart && booking.status === "Checked-in")) {
+        if (booking.status === "Pending") {
           try {
-            const updated = await checkInAndMaybeStart(booking);
+            const updated = await checkInBooking(booking);
             const message =
-              updated.status === "Processing"
-                ? `Đã tự động bắt đầu rửa xe ${plate}.`
-                : updated.status === "Pending"
-                  ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
-                  : `Đã check-in xe ${plate} vào làn Staff.`;
+              updated.status === "Pending"
+                ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
+                : `Đã check-in xe ${plate} vào làn Staff.`;
             showToast(message);
             return { message };
           } catch {
@@ -2044,10 +2081,19 @@ export default function DashboardPage() {
         processingVehicles.find(
           (t) => Number(t.bookingId) === Number(bookingId),
         );
+      const confirmed = window.confirm(
+        `Chỉ dùng khi camera cổng ra không nhận diện được biển số ${task?.licensePlate ?? ""}.\n\n` +
+          "Booking sẽ được hoàn thành và làn được giải phóng. Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?",
+      );
+      if (!confirmed) return;
+
       setCompletingId(bookingId);
       try {
         await updateStaffBookingStatus(bookingId, "Completed");
-        showToast(`Xe ${task?.licensePlate ?? bookingId} đã hoàn thành.`);
+        rememberManualCompletion(task);
+        const message = `Xe ${task?.licensePlate ?? bookingId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
+        setBarrierAlert({ type: "manual", message });
+        showToast(message);
         setStaffTasks((prev) =>
           prev.filter((t) => Number(t.bookingId) !== Number(bookingId)),
         );
@@ -2203,19 +2249,27 @@ export default function DashboardPage() {
           className={`mb-4 flex items-start gap-3 rounded-xl border px-5 py-4 ${
             barrierAlert.type === 'success'
               ? 'border-primary/40 bg-primary/10 text-primary'
-              : 'border-error/50 bg-error-container/30 text-error'
+              : barrierAlert.type === 'manual'
+                ? 'border-amber-500/50 bg-amber-500/10 text-amber-800'
+                : 'border-error/50 bg-error-container/30 text-error'
           }`}
           role="alert"
         >
           <span className="material-symbols-outlined text-3xl">
-            {barrierAlert.type === 'success' ? 'garage_door' : 'block'}
+            {barrierAlert.type === 'success'
+              ? 'garage_door'
+              : barrierAlert.type === 'manual'
+                ? 'warning'
+                : 'block'}
           </span>
           <div>
             <p className="font-sora text-lg font-bold uppercase">{barrierAlert.message}</p>
             <p className="mt-1 text-sm opacity-85">
               {barrierAlert.type === 'success'
                 ? 'Thanh toán hợp lệ, lượt rửa đã hoàn thành và vật tư đã được ghi nhận.'
-                : 'Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại.'}
+                : barrierAlert.type === 'manual'
+                  ? 'Hệ thống không tự mở barie trong luồng dự phòng này.'
+                  : 'Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại.'}
             </p>
           </div>
         </div>

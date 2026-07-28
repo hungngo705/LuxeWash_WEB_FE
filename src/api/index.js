@@ -192,6 +192,8 @@ export {
 export {
   fetchManagerTimeSlots,
   createManagerTimeSlot,
+  updateManagerTimeSlot,
+  deleteManagerTimeSlot,
 } from './manager.timeSlots.api'
 
 export {
