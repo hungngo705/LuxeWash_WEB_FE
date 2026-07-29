@@ -1,5 +1,15 @@
 # React + Vite
 
+## Cấu hình API
+
+Frontend tách hai nhóm backend trong `.env`:
+
+- `VITE_API_BASE_URL`: API nghiệp vụ, mặc định `https://smartwash-be.onrender.com/api/v1`.
+- `VITE_AI_API_BASE_URL`: các endpoint phân tích/gợi ý AI chạy local, mặc định `https://localhost:7063/api/v1`.
+- `VITE_CAMERA_AI_BASE_URL`: dịch vụ LPR và camera local, mặc định `https://localhost:7063`.
+
+Máy chạy frontend cần tin cậy chứng chỉ HTTPS local của backend để trình duyệt gọi được API AI/camera.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

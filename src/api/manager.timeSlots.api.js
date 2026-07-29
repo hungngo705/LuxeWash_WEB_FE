@@ -52,3 +52,32 @@ export function createManagerTimeSlot(payload) {
     }),
   })
 }
+
+/**
+ * PUT /api/v1/manager/timeslots/{slotId}
+ * Updates a time slot in the Manager's branch.
+ * @param {number} slotId
+ * @param {{ startTime: string; endTime: string; maxCapacity: number; isVipOnly: boolean }} payload
+ */
+export function updateManagerTimeSlot(slotId, payload) {
+  return apiRequest(`/manager/timeslots/${slotId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      startTime: toApiTimeValue(payload.startTime),
+      endTime: toApiTimeValue(payload.endTime),
+      maxCapacity: Number(payload.maxCapacity),
+      isVipOnly: Boolean(payload.isVipOnly),
+    }),
+  })
+}
+
+/**
+ * DELETE /api/v1/manager/timeslots/{slotId}
+ * Deletes a time slot in the Manager's branch.
+ * @param {number} slotId
+ */
+export function deleteManagerTimeSlot(slotId) {
+  return apiRequest(`/manager/timeslots/${slotId}`, {
+    method: 'DELETE',
+  })
+}

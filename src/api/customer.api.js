@@ -1,4 +1,15 @@
-import { apiRequest } from './client'
+import { aiApiRequest, apiRequest } from './client'
+
+/**
+ * POST /api/v1/bookings/check-slots-with-suggestions
+ * Trả về slot hiện tại cùng gợi ý đổi chi nhánh/voucher khi chi nhánh quá tải.
+ */
+export function checkSlotsWithSuggestions(payload) {
+  return aiApiRequest('/bookings/check-slots-with-suggestions', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
 
 /**
  * POST /api/v1/bookings/available-slots
@@ -63,6 +74,7 @@ export function createBooking(payload) {
  *   paymentMethod?: string
  *   returnUrl?: string
  *   cancelUrl?: string
+ *   forceOverrideCapacity?: boolean
  * }} payload
  */
 export function createWalkInBooking(payload) {
@@ -73,6 +85,7 @@ export function createWalkInBooking(payload) {
     userId: payload.userId ?? 0,
     pointsToUse: payload.pointsToUse ?? 0,
     paymentMethod: String(payload.paymentMethod ?? 'Cash'),
+    forceOverrideCapacity: payload.forceOverrideCapacity === true,
   }
 
   if (Number(payload.vehicleId) > 0) body.vehicleId = Number(payload.vehicleId)

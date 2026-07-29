@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchManagerBookings } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import { formatVnd } from '../../utils/format'
+import RevenueStimulusPanel from '../../components/manager/RevenueStimulusPanel'
 
 export default function ManagerDashboardPage() {
   const [stats, setStats] = useState({
@@ -42,6 +42,7 @@ export default function ManagerDashboardPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load
     loadData()
     const interval = setInterval(loadData, 30000)
     return () => clearInterval(interval)
@@ -143,6 +144,8 @@ export default function ManagerDashboardPage() {
           </div>
         )}
       </div>
+
+      <RevenueStimulusPanel />
     </div>
   )
 }

@@ -1,14 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
   formatPaymentMethodLabel,
   formatStaffStationLabel,
-  staffCheckinBooking,
   updateStaffBookingStatus,
 } from '../api'
+import LaneAssignmentBadge from '../components/shared/LaneAssignmentBadge'
 import { WashDurationBadge } from '../components/shared/WashTelemetry'
+import TierBadge from '../components/shared/TierBadge'
+import { publishLaneDisplayEvent } from '../services/laneDisplayChannel'
+import { canStartWash, getLaneDisplayName, hasAssignedLane } from '../utils/laneAssignment'
+
+function publishAssignedLane(booking) {
+  if (!booking?.licensePlate || !hasAssignedLane(booking)) return
+  publishLaneDisplayEvent({
+    type: 'assigned',
+    plate: booking.licensePlate,
+    bookingId: booking.bookingId,
+    laneId: booking.processingLaneId,
+    laneName: getLaneDisplayName(booking, ''),
+  })
+}
 
 function PaymentStatusBadge({ status }) {
   const raw = String(status ?? '').trim()
@@ -55,10 +69,10 @@ export default function StaffQueuePage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [laneLabel, setLaneLabel] = useState('')
-  const [tab, setTab] = useState('pending')
+  const [tab, setTab] = useState('waiting')
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState(null)
-  const [checkingIn, setCheckingIn] = useState(null)
+  const laneSnapshotRef = useRef(null)
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -71,12 +85,28 @@ export default function StaffQueuePage() {
       .catch(() => setLaneLabel('Chưa phân công làn'))
   }, [])
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true)
-    setFetchError('')
+  const loadBookings = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
+    if (!silent) setFetchError('')
     try {
       const data = await fetchStaffTasks()
-      setAllBookings(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      const nextSnapshot = new Map(
+        list.map((booking) => [
+          Number(booking.bookingId),
+          `${booking.processingLaneId ?? ''}|${booking.processingLaneName ?? ''}`,
+        ]),
+      )
+      if (laneSnapshotRef.current) {
+        for (const booking of list) {
+          const id = Number(booking.bookingId)
+          if (laneSnapshotRef.current.get(id) !== nextSnapshot.get(id)) {
+            publishAssignedLane(booking)
+          }
+        }
+      }
+      laneSnapshotRef.current = nextSnapshot
+      setAllBookings(list)
     } catch (err) {
       const msg =
         err instanceof ApiError
@@ -84,16 +114,16 @@ export default function StaffQueuePage() {
             ? 'Không có quyền xem hàng đợi. Liên hệ quản trị viên.'
             : err.message
           : 'Không thể tải dữ liệu. Vui lòng thử lại.'
-      setFetchError(msg)
+      if (!silent) setFetchError(msg)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async queue load with polling cleanup
     loadBookings()
-    const interval = setInterval(loadBookings, 30_000)
+    const interval = setInterval(() => loadBookings({ silent: true }), 10_000)
     return () => clearInterval(interval)
   }, [loadBookings])
 
@@ -109,64 +139,45 @@ export default function StaffQueuePage() {
     })
   }, [allBookings, search])
 
-  const pendingBookings = useMemo(
-    () => filteredBookings.filter((b) => b.status === 'Pending'),
+  const waitingBookings = useMemo(
+    () => filteredBookings.filter((b) => b.status === 'Checked-in'),
     [filteredBookings],
   )
 
-  const activeBookings = useMemo(
-    () =>
-      filteredBookings.filter(
-        (b) => b.status === 'Checked-in' || b.status === 'Processing',
-      ),
+  const processingBookings = useMemo(
+    () => filteredBookings.filter((b) => b.status === 'Processing'),
     [filteredBookings],
   )
 
   const stats = useMemo(() => {
-    const pending = allBookings.filter((b) => b.status === 'Pending').length
-    const checkedIn = allBookings.filter((b) => b.status === 'Checked-in').length
+    const waiting = allBookings.filter(
+      (b) => b.status === 'Checked-in' && !hasAssignedLane(b),
+    ).length
+    const ready = allBookings.filter(
+      (b) => b.status === 'Checked-in' && hasAssignedLane(b),
+    ).length
     const processing = allBookings.filter((b) => b.status === 'Processing').length
-    return { pending, checkedIn, processing }
+    return { waiting, ready, processing }
   }, [allBookings])
-
-  const handleCheckin = useCallback(
-    async (bookingId) => {
-      if (checkingIn) return
-      setCheckingIn(bookingId)
-      try {
-        await staffCheckinBooking(bookingId)
-        showToast(`Xe #${bookingId} đã check-in thành công.`)
-        await loadBookings()
-      } catch (err) {
-        showToast(
-          err instanceof ApiError ? err.message : 'Lỗi khi check-in. Vui lòng thử lại.',
-          'error',
-        )
-      } finally {
-        setCheckingIn(null)
-      }
-    },
-    [checkingIn, loadBookings],
-  )
 
   const handleStartProcessing = useCallback(
     async (bookingId) => {
+      const booking = allBookings.find(
+        (item) => Number(item.bookingId) === Number(bookingId),
+      )
+      if (!canStartWash(booking)) {
+        showToast(
+          !hasAssignedLane(booking)
+            ? 'Xe đang chờ được phân làn.'
+            : 'Booking chưa hoàn tất thanh toán.',
+          'error',
+        )
+        return
+      }
       try {
         await updateStaffBookingStatus(bookingId, 'Processing')
         showToast(`Xe #${bookingId} bắt đầu rửa.`)
-        setAllBookings((prev) =>
-          prev.map((b) =>
-            Number(b.bookingId) === Number(bookingId)
-              ? {
-                  ...b,
-                  status: 'Processing',
-                  processingStartTime: b.processingStartTime ?? new Date().toISOString(),
-                  completedTime: null,
-                  actualDurationMinutes: null,
-                }
-              : b,
-          ),
-        )
+        await loadBookings({ silent: true })
       } catch (err) {
         showToast(
           err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.',
@@ -174,25 +185,23 @@ export default function StaffQueuePage() {
         )
       }
     },
-    [],
+    [allBookings, loadBookings],
   )
 
   const handleComplete = useCallback(async (bookingId) => {
     try {
       await updateStaffBookingStatus(bookingId, 'Completed')
       showToast(`Xe #${bookingId} đã hoàn thành.`)
-      setAllBookings((prev) =>
-        prev.filter((b) => Number(b.bookingId) !== Number(bookingId)),
-      )
+      await loadBookings({ silent: true })
     } catch (err) {
       showToast(
         err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.',
         'error',
       )
     }
-  }, [])
+  }, [loadBookings])
 
-  const displayed = tab === 'pending' ? pendingBookings : activeBookings
+  const displayed = tab === 'waiting' ? waitingBookings : processingBookings
 
   return (
     <div className="w-full">
@@ -214,41 +223,57 @@ export default function StaffQueuePage() {
       <div className="mb-6">
         <h1 className="font-sora text-2xl font-semibold text-on-surface">Quản lý hàng đợi</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          {laneLabel || 'Đang tải làn…'} — {tab === 'pending' ? 'Xe chờ check-in' : 'Xe đang được xử lý'}
+          {laneLabel || 'Đang tải làn…'} — {tab === 'waiting' ? 'Xe đã tiếp nhận, chờ xử lý' : 'Xe đang rửa'}
         </p>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[
+          { label: 'Chờ làn', value: stats.waiting, icon: 'hourglass_top', tone: 'text-amber-700' },
+          { label: 'Sẵn sàng vào làn', value: stats.ready, icon: 'garage', tone: 'text-primary' },
+          { label: 'Đang rửa', value: stats.processing, icon: 'wash', tone: 'text-secondary' },
+        ].map((item) => (
+          <div key={item.label} className="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-3">
+            <span className={`material-symbols-outlined ${item.tone}`}>{item.icon}</span>
+            <div>
+              <p className={`font-sora text-xl font-bold ${item.tone}`}>{item.value}</p>
+              <p className="text-xs font-medium text-on-surface-variant">{item.label}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="mb-4 flex items-center gap-3">
         <div className="flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1">
           <button
-            onClick={() => setTab('pending')}
+            onClick={() => setTab('waiting')}
             className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === 'pending'
+              tab === 'waiting'
                 ? 'bg-primary text-on-primary'
                 : 'text-on-surface-variant hover:bg-surface-variant'
             }`}
           >
-            <span className="material-symbols-outlined text-base">login</span>
-            Check-in
-            {stats.pending > 0 && (
+            <span className="material-symbols-outlined text-base">hourglass_top</span>
+            Chờ xử lý
+            {stats.waiting + stats.ready > 0 && (
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-tertiary-container px-1.5 text-xs font-bold text-on-tertiary-container">
-                {stats.pending}
+                {stats.waiting + stats.ready}
               </span>
             )}
           </button>
           <button
-            onClick={() => setTab('active')}
+            onClick={() => setTab('processing')}
             className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              tab === 'active'
+              tab === 'processing'
                 ? 'bg-primary text-on-primary'
                 : 'text-on-surface-variant hover:bg-surface-variant'
             }`}
           >
             <span className="material-symbols-outlined text-base">autorenew</span>
             Đang rửa
-            {stats.checkedIn + stats.processing > 0 && (
+            {stats.processing > 0 && (
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-secondary-container px-1.5 text-xs font-bold text-on-secondary-container">
-                {stats.checkedIn + stats.processing}
+                {stats.processing}
               </span>
             )}
           </button>
@@ -288,15 +313,15 @@ export default function StaffQueuePage() {
       ) : displayed.length === 0 ? (
         <div className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
           <span className="material-symbols-outlined mb-3 text-5xl text-outline">
-            {tab === 'pending' ? 'login' : 'autorenew'}
+            {tab === 'waiting' ? 'hourglass_top' : 'autorenew'}
           </span>
           <p className="font-sora text-lg font-semibold text-on-surface">
-            {tab === 'pending' ? 'Không có xe chờ check-in' : 'Không có xe đang xử lý'}
+            {tab === 'waiting' ? 'Không có xe chờ xử lý' : 'Không có xe đang rửa'}
           </p>
           <p className="mt-1 text-sm text-on-surface-variant">
-            {tab === 'pending'
-              ? 'Tất cả xe đã được check-in hoặc chưa có lịch hẹn.'
-              : 'Chưa có xe nào được check-in vào làn của bạn.'}
+            {tab === 'waiting'
+              ? 'Chưa có xe nào đã check-in đang chờ làn hoặc chờ bắt đầu rửa.'
+              : 'Chưa có xe nào đang rửa trong chi nhánh.'}
           </p>
         </div>
       ) : (
@@ -308,27 +333,31 @@ export default function StaffQueuePage() {
                 <th className="px-4 py-3">Khách hàng</th>
                 <th className="px-4 py-3">Dịch vụ</th>
                 <th className="px-4 py-3">Giờ hẹn</th>
+                <th className="px-4 py-3">Phân làn</th>
                 <th className="px-4 py-3">Trạng thái</th>
                 <th className="px-4 py-3">Thanh toán</th>
-                {tab === 'active' && <th className="px-4 py-3">Thời gian rửa</th>}
-                {tab === 'active' && <th className="px-4 py-3">Giá tiền</th>}
+                {tab === 'processing' && <th className="px-4 py-3">Thời gian rửa</th>}
+                {tab === 'processing' && <th className="px-4 py-3">Giá tiền</th>}
                 <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
               {displayed.map((booking) => (
                 <tr key={booking.bookingId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 font-mono text-base font-bold text-primary">
-                    {booking.licensePlate}
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col items-start gap-1.5">
+                      <span className="font-mono text-base font-bold text-primary">
+                        {booking.licensePlate}
+                      </span>
+                      <TierBadge
+                        tierName={booking.rankName}
+                        tierPoints={booking.customerTierPoints}
+                      />
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col">
                       <span className="font-medium text-on-surface">{booking.customerName}</span>
-                      {booking.rankName && booking.rankName !== '—' && (
-                        <span className="text-xs font-medium text-on-surface-variant">
-                          {booking.rankName}
-                        </span>
-                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-on-surface">{booking.serviceName}</td>
@@ -342,6 +371,9 @@ export default function StaffQueuePage() {
                             })
                           : '—')
                       : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <LaneAssignmentBadge booking={booking} />
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -363,12 +395,12 @@ export default function StaffQueuePage() {
                       {formatPaymentMethodLabel(booking.paymentMethod)}
                     </p>
                   </td>
-                  {tab === 'active' && (
+                  {tab === 'processing' && (
                     <td className="px-4 py-3">
                       <WashDurationBadge booking={booking} />
                     </td>
                   )}
-                  {tab === 'active' && (
+                  {tab === 'processing' && (
                     <td className="px-4 py-3 font-semibold text-on-surface">
                       {booking.finalAmount
                         ? booking.finalAmount.toLocaleString('vi-VN') + ' đ'
@@ -377,31 +409,21 @@ export default function StaffQueuePage() {
                   )}
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {tab === 'pending' ? (
-                        <button
-                          onClick={() => handleCheckin(booking.bookingId)}
-                          disabled={checkingIn === booking.bookingId}
-                          className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
-                        >
-                          {checkingIn === booking.bookingId ? (
-                            <>
-                              <div className="h-3.5 w-3.5 animate-spin rounded-full border border-on-primary/30 border-t-on-primary" />
-                              Đang check-in…
-                            </>
-                          ) : (
-                            <>
-                              <span className="material-symbols-outlined text-base">login</span>
-                              Check-in
-                            </>
-                          )}
-                        </button>
-                      ) : booking.status === 'Checked-in' ? (
+                      {tab === 'waiting' ? (
                         <button
                           onClick={() => handleStartProcessing(booking.bookingId)}
-                          className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium text-on-secondary transition-colors hover:bg-secondary/90"
+                          disabled={!canStartWash(booking)}
+                          title={
+                            !hasAssignedLane(booking)
+                              ? 'Xe đang chờ được phân làn'
+                              : 'Booking chưa hoàn tất thanh toán'
+                          }
+                          className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium text-on-secondary transition-colors hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                          <span className="material-symbols-outlined text-base">autorenew</span>
-                          Bắt đầu rửa
+                          <span className="material-symbols-outlined text-base">
+                            {canStartWash(booking) ? 'autorenew' : 'lock'}
+                          </span>
+                          {canStartWash(booking) ? 'Bắt đầu rửa' : 'Chưa sẵn sàng'}
                         </button>
                       ) : (
                         <button

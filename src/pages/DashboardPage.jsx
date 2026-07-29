@@ -1,18 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LiveLprFeed from "../components/dashboard/LiveLprFeed";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
 import WashTelemetry, { WashDurationBadge } from "../components/shared/WashTelemetry";
+import TierBadge from "../components/shared/TierBadge";
+import LaneAssignmentBadge from "../components/shared/LaneAssignmentBadge";
+import {
+  publishLaneDisplayEvent,
+  publishLaneDisplayHeartbeat,
+} from "../services/laneDisplayChannel";
 import {
   ApiError,
   apiRequest,
-  automatedWashCheckIn,
   cameraCheckInByPlate,
+  cameraCheckOutByPlate,
   createWalkInBooking,
   enrichStaffBooking,
+  enrichStaffTasks,
   fetchBookingPaymentStatus,
   fetchStaffLaneAssignment,
   fetchStaffTasks,
+  fetchUserById,
   fetchVehicleTypes,
+  maskPhoneNumber,
   fleetWalkIn,
   formatStaffStationLabel,
   formatPaymentMethodLabel,
@@ -24,12 +33,109 @@ import {
   updateStaffBookingStatus,
 } from "../api";
 import { formatDateTime, formatVnd } from "../utils/format";
+import {
+  canCheckIn,
+  canStartWash,
+  getLaneAssignmentState,
+  getLaneDisplayName,
+} from "../utils/laneAssignment";
 
 function normalizePlate(plate) {
   return String(plate ?? "")
     .toUpperCase()
     .replace(/\s/g, "")
     .replace(/\./g, "");
+}
+
+const MANUAL_COMPLETION_STORAGE_KEY = "luxewash:manual-completions";
+const MANUAL_COMPLETION_TTL_MS = 10 * 60 * 1000;
+
+function getRecentManualCompletions() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(
+      window.localStorage.getItem(MANUAL_COMPLETION_STORAGE_KEY) || "[]",
+    );
+    if (!Array.isArray(stored)) return [];
+    const cutoff = Date.now() - MANUAL_COMPLETION_TTL_MS;
+    return stored.filter(
+      (item) =>
+        normalizePlate(item?.licensePlate) &&
+        Number(item?.completedAt) >= cutoff,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function findRecentManualCompletion(licensePlate) {
+  const normalized = normalizePlate(licensePlate);
+  if (!normalized) return null;
+  return (
+    getRecentManualCompletions().find(
+      (item) => normalizePlate(item.licensePlate) === normalized,
+    ) ?? null
+  );
+}
+
+function rememberManualCompletion(booking) {
+  const licensePlate = normalizePlate(booking?.licensePlate);
+  if (!licensePlate || typeof window === "undefined") return;
+  try {
+    const remaining = getRecentManualCompletions().filter(
+      (item) => normalizePlate(item.licensePlate) !== licensePlate,
+    );
+    window.localStorage.setItem(
+      MANUAL_COMPLETION_STORAGE_KEY,
+      JSON.stringify([
+        {
+          licensePlate,
+          bookingId: booking?.bookingId,
+          completedAt: Date.now(),
+        },
+        ...remaining,
+      ].slice(0, 20)),
+    );
+  } catch {
+    // The fallback still completes the booking even if browser storage is unavailable.
+  }
+}
+
+// Cache of userId -> customer name so we don't refetch /admin/users/{id} every poll.
+const customerNameCache = new Map();
+
+// The staff-tasks API doesn't return the customer name, only userId + tier.
+// Enrich each registered-customer task by calling GET /admin/users/{userId}.
+async function enrichStaffTasksWithNames(tasks, { signal } = {}) {
+  const list = Array.isArray(tasks) ? tasks : [];
+  if (list.length === 0) return list;
+
+  const isMissingName = (name) => !name || name === "—";
+
+  const missingIds = [
+    ...new Set(
+      list
+        .filter((t) => isMissingName(t.customerName) && Number(t.userId) > 0)
+        .map((t) => Number(t.userId)),
+    ),
+  ].filter((id) => !customerNameCache.has(id));
+
+  await Promise.all(
+    missingIds.map(async (id) => {
+      try {
+        const user = await fetchUserById(id, { signal });
+        if (user?.fullName) customerNameCache.set(id, user.fullName);
+      } catch {
+        // ignore — fall back to plate/tier display
+      }
+    }),
+  );
+
+  return list.map((t) => {
+    if (!isMissingName(t.customerName)) return t;
+    const cached = customerNameCache.get(Number(t.userId));
+    return cached ? { ...t, customerName: cached } : t;
+  });
 }
 
 function isLocalAppHost(hostname) {
@@ -51,6 +157,35 @@ function getPayOsCallbackUrl(path) {
 function isPaidPaymentStatus(status) {
   const normalized = String(status ?? "").trim().toLowerCase();
   return ["completed", "paid", "success", "succeeded"].includes(normalized);
+}
+
+function publishBookingLaneState(booking) {
+  if (!booking?.licensePlate) return null;
+  const state = getLaneAssignmentState(booking);
+  if (state === "assigned" || state === "processing") {
+    return publishLaneDisplayEvent({
+      type: "assigned",
+      plate: booking.licensePlate,
+      bookingId: booking.bookingId,
+      laneId: booking.processingLaneId,
+      laneName: getLaneDisplayName(booking, ""),
+    });
+  }
+  if (state === "payment") {
+    return publishLaneDisplayEvent({
+      type: "payment",
+      plate: booking.licensePlate,
+      bookingId: booking.bookingId,
+    });
+  }
+  if (state === "waiting") {
+    return publishLaneDisplayEvent({
+      type: "waiting",
+      plate: booking.licensePlate,
+      bookingId: booking.bookingId,
+    });
+  }
+  return null;
 }
 
 function getPaymentMethodDisplay(method, paymentStatus) {
@@ -83,26 +218,16 @@ function upsertStaffTaskList(list, booking) {
   return [...list, booking];
 }
 
-/** Giữ xe Processing tra cứu local nếu poll tasks chưa trả về. */
-function mergeStaffTasksFromApi(prev, fromApi) {
-  const apiList = Array.isArray(fromApi) ? fromApi : [];
-  const localProcessing = prev.filter(
-    (b) =>
-      b.status === "Processing" &&
-      !apiList.some((a) => Number(a.bookingId) === Number(b.bookingId)),
-  );
-  let merged = [...apiList];
-  for (const local of localProcessing) {
-    merged = upsertStaffTaskList(merged, local);
-  }
-  return merged;
+/** Tasks API là nguồn trạng thái chính thức của hàng chờ Staff. */
+function mergeStaffTasksFromApi(_prev, fromApi) {
+  return Array.isArray(fromApi) ? fromApi : [];
 }
 
 function plateLookupMessage(status) {
   if (status === "Pending") return "";
   if (status === "Processing") return "";
   if (status !== "Checked-in") {
-    return "Xe chưa check-in vào làn của bạn.";
+    return "Xe chưa check-in vào khu vực xưởng.";
   }
   return "";
 }
@@ -140,23 +265,8 @@ function StatusBadge({ status }) {
   );
 }
 
-function RankBadge({ rankName, rankId }) {
-  const label = String(rankName ?? "—");
-  const isVip =
-    label.includes("VIP") ||
-    label.includes("PLATINUM") ||
-    (rankId != null && rankId >= 4);
-  return (
-    <span
-      className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase ${
-        isVip
-          ? "border-primary-container/30 bg-primary-container/10 text-primary-container"
-          : "border-outline-variant bg-surface-variant text-on-surface-variant"
-      }`}
-    >
-      {label}
-    </span>
-  );
+function RankBadge({ rankName, tierPoints }) {
+  return <TierBadge tierName={rankName} tierPoints={tierPoints} />;
 }
 
 function PaymentStatusBadge({ status }) {
@@ -479,7 +589,7 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
       <div className="max-h-72 space-y-2 overflow-y-auto p-3">
         {items.length === 0 ? (
           <p className="py-6 text-center text-sm text-on-surface-variant">
-            Chưa có xe check-in tại làn của bạn.
+            Chưa có xe check-in trong chi nhánh.
           </p>
         ) : (
           items.map((item) => {
@@ -503,15 +613,16 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
                     <span className="font-sora text-lg font-bold tracking-wide text-on-surface">
                       {item.licensePlate}
                     </span>
-                    <RankBadge rankName={item.rankName} rankId={item.rankId} />
+                    <RankBadge rankName={item.rankName} tierPoints={item.customerTierPoints} />
                   </div>
                   <p className="truncate text-sm text-on-surface">
-                    {item.customerName}
+                    {item.customerName && item.customerName !== "—"
+                      ? item.customerName
+                      : "Khách vãng lai"}
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    {item.serviceName} · {item.slotLabel}
+                    {item.serviceName}
                   </p>
-                  <WashDurationBadge booking={item} className="mt-2" />
                 </div>
               </button>
             );
@@ -807,11 +918,13 @@ function CustomerInfoPanel({
     );
   }
 
-  const canStart = booking.status === "Checked-in";
+  const isCheckedIn = booking.status === "Checked-in";
+  const canCheckinNow = canCheckIn(booking);
+  const canStart = canStartWash(booking);
   const isProcessing = booking.status === "Processing";
 
   const safeText = (v, fallback = "—") =>
-    v == null || v === "" ? fallback : v;
+    v == null || v === "" || v === "—" ? fallback : v;
 
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -851,7 +964,7 @@ function CustomerInfoPanel({
               {safeText(booking.phoneMasked, "Chưa có SĐT")}
             </p>
           </div>
-          <RankBadge rankName={booking.rankName} rankId={booking.rankId} />
+          <RankBadge rankName={booking.rankName} tierPoints={booking.customerTierPoints} />
         </div>
 
         <div className="flex items-center justify-between">
@@ -883,8 +996,6 @@ function CustomerInfoPanel({
               <span className="material-symbols-outlined mr-1 align-middle text-[14px]">
                 schedule
               </span>
-              {safeText(booking.slotLabel, "")}
-              {booking.slotLabel && booking.scheduledTime ? " — " : ""}
               {booking.scheduledTime
                 ? formatDateTime(booking.scheduledTime)
                 : ""}
@@ -897,6 +1008,9 @@ function CustomerInfoPanel({
                 Làn: {safeText(booking.processingLaneName)}
               </p>
             )}
+            <div className="pt-2">
+              <LaneAssignmentBadge booking={booking} />
+            </div>
           </div>
         </div>
 
@@ -930,14 +1044,25 @@ function CustomerInfoPanel({
         </div>
 
         <div className="flex gap-3 pt-2">
-          {canStart && (
+          {isCheckedIn && (
             <button
               type="button"
-              className="flex-1 rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+              className="flex-1 rounded-xl bg-primary px-4 py-3 text-center text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={onStartProcessing}
-              disabled={confirming}
+              disabled={confirming || !canStart}
+              title={
+                !booking.processingLaneId && !booking.processingLaneName
+                  ? "Xe đang chờ được phân làn"
+                  : !isPaidPaymentStatus(booking.paymentStatus) && Number(booking.finalAmount) > 0
+                    ? "Booking chưa hoàn tất thanh toán"
+                    : undefined
+              }
             >
-              {confirming ? "Đang xử lý…" : "Bắt đầu rửa"}
+              {confirming
+                ? "Đang xử lý…"
+                : canStart
+                  ? "Bắt đầu rửa"
+                  : "Chưa đủ điều kiện"}
             </button>
           )}
           {isProcessing && (
@@ -960,7 +1085,8 @@ function CustomerInfoPanel({
               type="button"
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
               onClick={onCheckin}
-              disabled={confirming}
+              disabled={confirming || checkingIn || !canCheckinNow}
+              title={!canCheckinNow ? "Booking chưa hoàn tất thanh toán" : undefined}
             >
               {checkingIn ? (
                 <>
@@ -972,7 +1098,7 @@ function CustomerInfoPanel({
                   <span className="material-symbols-outlined text-lg">
                     login
                   </span>
-                  Check-in ngay
+                  {canCheckinNow ? "Check-in ngay" : "Chưa thanh toán"}
                 </>
               )}
             </button>
@@ -1056,11 +1182,15 @@ function ProcessingVehiclesPanel({
               </button>
               <button
                 type="button"
-                className="w-full rounded-xl border border-primary bg-primary/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-primary uppercase transition-colors hover:bg-primary/20 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-amber-700 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-50"
                 onClick={() => onComplete(v.bookingId)}
                 disabled={completingId === v.bookingId}
+                title="Chỉ dùng khi camera cổng ra không nhận diện được biển số"
               >
-                {completingId === v.bookingId ? "Đang xử lý…" : "Hoàn thành"}
+                <span className="material-symbols-outlined text-[17px]">warning</span>
+                {completingId === v.bookingId
+                  ? "Đang xử lý…"
+                  : "Hoàn thành thủ công"}
               </button>
             </div>
           ))}
@@ -1095,6 +1225,8 @@ export default function DashboardPage() {
   const [creatingWalkIn, setCreatingWalkIn] = useState(false);
   const [payOsPayment, setPayOsPayment] = useState(null);
   const [verifyingPayOsPayment, setVerifyingPayOsPayment] = useState(false);
+  const [barrierAlert, setBarrierAlert] = useState(null);
+  const taskLaneSnapshotRef = useRef(null);
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
@@ -1107,6 +1239,8 @@ export default function DashboardPage() {
       bookingId: Number(payment.bookingId),
       paymentMethod: "PayOS",
       paymentStatus: "Completed",
+      processingLaneId: payment.processingLaneId ?? undefined,
+      processingLaneName: payment.processingLaneName ?? undefined,
     };
     setSelectedBooking((booking) =>
       Number(booking?.bookingId) === Number(payment.bookingId)
@@ -1121,6 +1255,12 @@ export default function DashboardPage() {
       ),
     );
     setPayOsPayment(null);
+    publishBookingLaneState({
+      ...payment,
+      ...paidPatch,
+      status: payment.status ?? "Checked-in",
+      finalAmount: Number(payment.amount ?? 0),
+    });
     showToast(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
   }, [payOsPayment]);
 
@@ -1133,6 +1273,8 @@ export default function DashboardPage() {
         markPayOsPaymentCompleted({
           ...payment,
           amount: Number(status?.amount ?? payment.amount ?? 0),
+          processingLaneId: status?.processingLaneId,
+          processingLaneName: status?.processingLaneName,
         });
         return true;
       }
@@ -1199,6 +1341,8 @@ export default function DashboardPage() {
           markPayOsPaymentCompleted({
             ...payOsPayment,
             amount: Number(status?.amount ?? payOsPayment.amount ?? 0),
+            processingLaneId: status?.processingLaneId,
+            processingLaneName: status?.processingLaneName,
           });
         }
       } catch {
@@ -1221,8 +1365,35 @@ export default function DashboardPage() {
     try {
       const data = await fetchStaffTasks({ signal })
       if (signal?.aborted) return
-      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
-      return data
+      const bookingDetails = await enrichStaffTasks(data, { signal })
+      if (signal?.aborted) return
+      const enriched = await enrichStaffTasksWithNames(bookingDetails, { signal })
+      if (signal?.aborted) return
+      const nextSnapshot = new Map(
+        enriched.map((task) => [
+          Number(task.bookingId),
+          `${task.status}|${task.processingLaneId ?? ''}|${task.processingLaneName ?? ''}`,
+        ]),
+      )
+      if (taskLaneSnapshotRef.current) {
+        for (const task of enriched) {
+          const previous = taskLaneSnapshotRef.current.get(Number(task.bookingId))
+          const current = nextSnapshot.get(Number(task.bookingId))
+          if (previous !== current && (task.processingLaneId || task.processingLaneName)) {
+            publishBookingLaneState(task)
+          }
+        }
+      }
+      taskLaneSnapshotRef.current = nextSnapshot
+      setStaffTasks((prev) => mergeStaffTasksFromApi(prev, enriched))
+      setSelectedBooking((current) => {
+        if (!current?.bookingId) return current
+        const fresh = enriched.find(
+          (task) => Number(task.bookingId) === Number(current.bookingId),
+        )
+        return fresh ? { ...current, ...fresh } : current
+      })
+      return enriched
     } catch (err) {
       if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
       console.warn('Failed to load staff tasks:', err)
@@ -1267,6 +1438,12 @@ export default function DashboardPage() {
     }
   }, [loadMaterials, loadStaffTasks, loadVehicleTypes])
 
+  useEffect(() => {
+    publishLaneDisplayHeartbeat()
+    const heartbeat = setInterval(publishLaneDisplayHeartbeat, 10_000)
+    return () => clearInterval(heartbeat)
+  }, [])
+
   const checkedInQueue = useMemo(
     () => staffTasks.filter((b) => b.status === "Checked-in"),
     [staffTasks],
@@ -1302,7 +1479,7 @@ export default function DashboardPage() {
     setWalkInDraft(null);
     if (options.message !== undefined) setLookupError(options.message);
 
-    const normalized = normalizeStaffTask(booking);
+    let normalized = normalizeStaffTask(booking);
     setSelectedBooking(normalized);
 
     if (
@@ -1310,6 +1487,42 @@ export default function DashboardPage() {
       normalized.status === "Checked-in"
     ) {
       setStaffTasks((prev) => upsertStaffTaskList(prev, normalized));
+    }
+
+    // Enrich name + phone for registered customers (staff-tasks API omits them).
+    const missingName =
+      !normalized.customerName || normalized.customerName === "—";
+    const missingPhone =
+      !normalized.phoneMasked || normalized.phoneMasked === "—";
+    if ((missingName || missingPhone) && Number(normalized.userId) > 0) {
+      try {
+        const user = await fetchUserById(Number(normalized.userId));
+        if (user?.fullName) {
+          customerNameCache.set(Number(normalized.userId), user.fullName);
+        }
+        const enriched = {
+          ...normalized,
+          customerName: user?.fullName ?? normalized.customerName,
+          phoneNumber: user?.phoneNumber ?? normalized.phoneNumber,
+          phoneMasked:
+            (user?.phoneNumber ? maskPhoneNumber(user.phoneNumber) : null) ??
+            normalized.phoneMasked,
+        };
+        normalized = enriched;
+        setSelectedBooking((prev) =>
+          Number(prev?.bookingId) === Number(enriched.bookingId)
+            ? enriched
+            : prev,
+        );
+        if (
+          enriched.status === "Processing" ||
+          enriched.status === "Checked-in"
+        ) {
+          setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
+        }
+      } catch {
+        // ignore — keep whatever name/phone we already have
+      }
     }
   }, []);
 
@@ -1369,14 +1582,27 @@ export default function DashboardPage() {
         returnUrl,
         cancelUrl: returnUrl,
       });
-      const booking = normalizeStaffTask(bookingResult);
-      if (bookingResult?.paymentUrl) {
+      const isPendingPayOs = Boolean(bookingResult?.paymentUrl);
+      const booking = {
+        ...normalizeStaffTask(bookingResult),
+        paymentMethod: walkInDraft.paymentMethod,
+        paymentStatus: isPendingPayOs ? "Pending" : "Completed",
+      };
+      if (isPendingPayOs) {
         setPayOsPayment({
           url: String(bookingResult.paymentUrl),
           bookingId: booking.bookingId || bookingResult.bookingId,
           licensePlate: booking.licensePlate || walkInDraft.licensePlate,
           amount: Number(booking.finalAmount ?? bookingResult.finalAmount ?? 0),
+          status: booking.status,
         });
+        publishLaneDisplayEvent({
+          type: "payment",
+          plate: booking.licensePlate || walkInDraft.licensePlate,
+          bookingId: booking.bookingId || bookingResult.bookingId,
+        });
+      } else {
+        publishBookingLaneState(booking);
       }
       setWalkInDraft(null);
       setPlateInput("");
@@ -1504,6 +1730,9 @@ export default function DashboardPage() {
   const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
     const plate = String(plateText ?? "").trim().toUpperCase();
     if (!plate) {
+      if (meta?.operationMode !== "exit") {
+        publishLaneDisplayEvent({ type: "error" });
+      }
       return {
         status: "needs-action",
         type: "error",
@@ -1513,10 +1742,12 @@ export default function DashboardPage() {
 
     setPlateInput(plate);
     setLookupError("");
+    setBarrierAlert(null);
     setLoadingLookup(true);
 
-    const shouldAutoStart = meta?.autoStart !== false;
-    const branchId = Number(laneAssignment?.branchId) || 1;
+    if (meta?.operationMode !== "exit") {
+      publishLaneDisplayEvent({ type: "reading", plate });
+    }
 
     const syncFreshBooking = async (booking) => {
       const freshTasks = await loadStaffTasks();
@@ -1528,49 +1759,96 @@ export default function DashboardPage() {
       return next;
     };
 
-    const checkInAndMaybeStart = async (booking) => {
+    const checkInBooking = async (booking) => {
       let next = booking;
 
       if (next.status === "Pending") {
+        if (!canCheckIn(next)) {
+          await applySelectedBooking(next);
+          publishLaneDisplayEvent({
+            type: "payment",
+            plate: next.licensePlate || plate,
+            bookingId: next.bookingId,
+          });
+          return next;
+        }
         await staffCheckinBooking(next.bookingId);
-        next = { ...next, status: "Checked-in" };
+        next = await syncFreshBooking({ ...next, status: "Checked-in" });
+      } else {
+        next = await syncFreshBooking(next);
       }
 
-      if (shouldAutoStart && next.status === "Checked-in") {
-        await updateStaffBookingStatus(next.bookingId, "Processing");
-        next = {
-          ...next,
-          status: "Processing",
-          processingStartTime: next.processingStartTime ?? new Date().toISOString(),
-          completedTime: null,
-          actualDurationMinutes: null,
-        };
-      }
-
-      return syncFreshBooking(next);
+      publishBookingLaneState(next);
+      return next;
     };
 
     const fallbackCameraCheckIn = async () => {
-      const cameraBooking = shouldAutoStart
-        ? await automatedWashCheckIn({ licensePlate: plate, branchId, autoStart: true })
-        : await cameraCheckInByPlate(plate);
-      await applySelectedBooking(cameraBooking);
-      await loadStaffTasks();
-      const message = shouldAutoStart
-        ? `Camera đã tự động bắt đầu rửa xe ${plate}.`
-        : `Camera đã check-in xe ${plate}.`;
+      const cameraBooking = await cameraCheckInByPlate(plate);
+      const freshTasks = await loadStaffTasks();
+      const freshBooking = Array.isArray(freshTasks)
+        ? freshTasks.find((task) => Number(task.bookingId) === Number(cameraBooking.bookingId))
+        : null;
+      const authoritativeBooking = freshBooking ?? cameraBooking;
+      await applySelectedBooking(authoritativeBooking);
+      publishBookingLaneState(authoritativeBooking);
+      const message = `Camera đã check-in xe ${plate}.`;
       showToast(message);
       return { message };
     };
 
     try {
+      if (meta?.operationMode === 'exit') {
+        const recentManualCompletion = findRecentManualCompletion(plate);
+        if (recentManualCompletion) {
+          const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
+          setBarrierAlert({ type: 'manual', message });
+          showToast(message);
+          return { status: 'needs-action', type: 'warning', message };
+        }
+
+        try {
+          const completed = await cameraCheckOutByPlate(plate);
+          const duration = Number(completed.actualDurationMinutes);
+          const durationLabel = Number.isFinite(duration) && duration > 0
+            ? ` (${duration} phút)`
+            : '';
+          const message = `Xe ${plate} hoàn tất dịch vụ${durationLabel} — đang mở barie.`;
+          setBarrierAlert({ type: 'success', message, booking: completed });
+          setStaffTasks((tasks) =>
+            tasks.filter((task) => Number(task.bookingId) !== Number(completed.bookingId)),
+          );
+          setSelectedBooking((booking) =>
+            Number(booking?.bookingId) === Number(completed.bookingId) ? null : booking,
+          );
+          showToast(message);
+          await loadStaffTasks();
+          return { message };
+        } catch (checkoutError) {
+          const rawMessage = checkoutError instanceof ApiError
+            ? checkoutError.message
+            : 'Không thể check-out xe tại cổng ra.';
+          const normalizedMessage = rawMessage.toLowerCase();
+          const unpaid = normalizedMessage.includes('unpaid') || normalizedMessage.includes('chưa thanh toán');
+          const notFound = normalizedMessage.includes('no active wash session') || normalizedMessage.includes('not found');
+          const message = unpaid
+            ? `Xe ${plate} chưa thanh toán — barie giữ đóng.`
+            : notFound
+              ? `Không tìm thấy lượt rửa đang hoạt động cho xe ${plate}.`
+              : rawMessage;
+          setBarrierAlert({ type: 'error', message });
+          setLookupError(message);
+          showToast(message, 'error');
+          throw checkoutError;
+        }
+      }
+
       const normalized = normalizePlate(plate);
       const existing = staffTasks.find(
         (task) => normalizePlate(task.licensePlate) === normalized,
       );
 
       if (existing) {
-        const updated = await checkInAndMaybeStart(existing);
+        const updated = await checkInBooking(existing);
         return {
           status: updated.status === "Pending" ? "needs-action" : undefined,
           message: `${plate} đang ở hàng đợi Staff (${getBookingStatusLabel(updated.status)}).`,
@@ -1582,12 +1860,12 @@ export default function DashboardPage() {
       if (lookup.customerType === "PreBooked" && lookup.booking) {
         const booking = normalizeStaffTask(lookup.booking);
 
-        if (booking.status === "Pending" || (shouldAutoStart && booking.status === "Checked-in")) {
+        if (booking.status === "Pending") {
           try {
-            const updated = await checkInAndMaybeStart(booking);
+            const updated = await checkInBooking(booking);
             const message =
-              updated.status === "Processing"
-                ? `Đã tự động bắt đầu rửa xe ${plate}.`
+              updated.status === "Pending"
+                ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
                 : `Đã check-in xe ${plate} vào làn Staff.`;
             showToast(message);
             return { message };
@@ -1599,6 +1877,7 @@ export default function DashboardPage() {
         await applySelectedBooking(booking, {
           message: plateLookupMessage(booking.status),
         });
+        publishBookingLaneState(booking);
 
         return {
           status:
@@ -1617,11 +1896,23 @@ export default function DashboardPage() {
         if (!branchId) {
           const message = "Đã nhận diện xe doanh nghiệp nhưng chưa xác định được chi nhánh Staff.";
           setLookupError(message);
+          publishLaneDisplayEvent({ type: "error", plate });
           return { status: "needs-action", type: "error", message };
         }
 
-        await fleetWalkIn({ licensePlate: plate, branchId });
+        const fleetResult = await fleetWalkIn({ licensePlate: plate, branchId });
         await loadStaffTasks();
+        if (fleetResult?.laneId || fleetResult?.laneName) {
+          publishLaneDisplayEvent({
+            type: "assigned",
+            plate,
+            bookingId: fleetResult?.bookingId ?? fleetResult?.fleetWashLogId,
+            laneId: fleetResult?.laneId,
+            laneName: fleetResult?.laneName,
+          });
+        } else {
+          publishLaneDisplayEvent({ type: "waiting", plate });
+        }
         showToast(`Camera AI đã tiếp nhận xe doanh nghiệp ${plate}.`);
         return { message: `Đã tiếp nhận xe doanh nghiệp ${plate}.` };
       }
@@ -1634,6 +1925,7 @@ export default function DashboardPage() {
           const message = "Đã nhận diện khách vãng lai nhưng chưa xác định được chi nhánh Staff.";
           setWalkInDraft(null);
           setLookupError(message);
+          publishLaneDisplayEvent({ type: "error", plate });
           return { status: "needs-action", type: "error", message };
         }
 
@@ -1649,6 +1941,13 @@ export default function DashboardPage() {
           paymentMethod: "Cash",
         });
         setLookupError("Camera đã nhận diện khách vãng lai cá nhân. Chọn dịch vụ để tạo check-in.");
+        publishLaneDisplayEvent({
+          type: "assistance",
+          plate,
+          message: lookup.walkInCustomer?.userId
+            ? "Quý khách chưa có lịch rửa hôm nay. Vui lòng đến khu vực tiếp nhận"
+            : "Nhân viên sẽ hỗ trợ tạo lượt rửa cho quý khách",
+        });
         await loadWalkInServices(branchId);
         return { status: "needs-action", message: `Đã nhận diện khách vãng lai: ${plate}.` };
       }
@@ -1657,8 +1956,10 @@ export default function DashboardPage() {
       setSelectedBooking(null);
       setWalkInDraft(null);
       setLookupError(message);
+      publishLaneDisplayEvent({ type: "error", plate });
       return { status: "needs-action", type: "error", message };
     } catch (err) {
+      if (meta?.operationMode === 'exit') throw err;
       try {
         return await fallbackCameraCheckIn();
       } catch (fallbackErr) {
@@ -1671,6 +1972,7 @@ export default function DashboardPage() {
         setWalkInDraft(null);
         setSelectedBooking(null);
         setLookupError(message);
+        publishLaneDisplayEvent({ type: "error", plate });
         throw fallbackErr instanceof Error ? fallbackErr : err;
       }
     } finally {
@@ -1686,13 +1988,24 @@ export default function DashboardPage() {
 
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
+    if (!canStartWash(selectedBooking)) {
+      showToast(
+        !selectedBooking.processingLaneId && !selectedBooking.processingLaneName
+          ? "Xe đang chờ được phân làn."
+          : "Booking chưa hoàn tất thanh toán.",
+        "error",
+      );
+      return;
+    }
     setConfirming(true);
     try {
       await updateStaffBookingStatus(selectedBooking.bookingId, "Processing");
-      let processingBooking = {
+      const freshTasks = await loadStaffTasks();
+      let processingBooking = freshTasks?.find(
+        (task) => Number(task.bookingId) === Number(selectedBooking.bookingId),
+      ) ?? {
         ...selectedBooking,
         status: "Processing",
-        processingStartTime: selectedBooking.processingStartTime ?? new Date().toISOString(),
         completedTime: null,
         actualDurationMinutes: null,
       };
@@ -1714,27 +2027,40 @@ export default function DashboardPage() {
     } finally {
       setConfirming(false);
     }
-  }, [selectedBooking]);
+  }, [selectedBooking, loadStaffTasks]);
 
   const handleCheckin = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Pending") return;
+    if (!canCheckIn(selectedBooking)) {
+      showToast("Booking chưa hoàn tất thanh toán nên chưa thể check-in.", "error");
+      publishLaneDisplayEvent({
+        type: "payment",
+        plate: selectedBooking.licensePlate,
+        bookingId: selectedBooking.bookingId,
+      });
+      return;
+    }
     setCheckingIn(true);
     try {
       await staffCheckinBooking(selectedBooking.bookingId);
       showToast(`Xe ${selectedBooking.licensePlate} đã check-in thành công.`);
-      await loadStaffTasks();
-      const updated = staffTasks.find(
+      const freshTasks = await loadStaffTasks();
+      const updated = freshTasks?.find(
         (t) => Number(t.bookingId) === Number(selectedBooking.bookingId),
       );
       if (updated) {
         setSelectedBooking(updated);
+        publishBookingLaneState(updated);
       } else {
         try {
           const enriched = await enrichStaffBooking(selectedBooking, { allowStandaloneFetch: true });
           setSelectedBooking(enriched);
           setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
+          publishBookingLaneState(enriched);
         } catch {
-          setSelectedBooking((prev) => ({ ...prev, status: "Checked-in" }));
+          const fallback = { ...selectedBooking, status: "Checked-in" };
+          setSelectedBooking(fallback);
+          publishBookingLaneState(fallback);
         }
       }
     } catch (err) {
@@ -1746,7 +2072,7 @@ export default function DashboardPage() {
     } finally {
       setCheckingIn(false);
     }
-  }, [selectedBooking, staffTasks, loadStaffTasks]);
+  }, [selectedBooking, loadStaffTasks]);
 
   const handleComplete = useCallback(
     async (bookingId) => {
@@ -1755,10 +2081,19 @@ export default function DashboardPage() {
         processingVehicles.find(
           (t) => Number(t.bookingId) === Number(bookingId),
         );
+      const confirmed = window.confirm(
+        `Chỉ dùng khi camera cổng ra không nhận diện được biển số ${task?.licensePlate ?? ""}.\n\n` +
+          "Booking sẽ được hoàn thành và làn được giải phóng. Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?",
+      );
+      if (!confirmed) return;
+
       setCompletingId(bookingId);
       try {
         await updateStaffBookingStatus(bookingId, "Completed");
-        showToast(`Xe ${task?.licensePlate ?? bookingId} đã hoàn thành.`);
+        rememberManualCompletion(task);
+        const message = `Xe ${task?.licensePlate ?? bookingId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
+        setBarrierAlert({ type: "manual", message });
+        showToast(message);
         setStaffTasks((prev) =>
           prev.filter((t) => Number(t.bookingId) !== Number(bookingId)),
         );
@@ -1766,6 +2101,7 @@ export default function DashboardPage() {
           setSelectedBooking(null);
           setPlateInput("");
         }
+        await loadStaffTasks();
       } catch (err) {
         const msg =
           err instanceof ApiError
@@ -1776,7 +2112,7 @@ export default function DashboardPage() {
         setCompletingId(null);
       }
     },
-    [staffTasks, selectedBooking, processingVehicles],
+    [staffTasks, selectedBooking, processingVehicles, loadStaffTasks],
   );
 
   const handleSkip = useCallback(() => {
@@ -1881,6 +2217,15 @@ export default function DashboardPage() {
           </h1>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface transition-colors hover:border-primary hover:text-primary"
+            onClick={() => window.open('/display/lane', 'luxewash-lane-display')}
+            title="Mở màn hình chỉ dẫn làn ở cửa sổ riêng"
+          >
+            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+            Màn hình chỉ dẫn
+          </button>
           <span className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
             <span className="material-symbols-outlined text-[16px]">login</span>
             {checkedInQueue.length} check-in
@@ -1898,6 +2243,37 @@ export default function DashboardPage() {
           onPlateDetected={handleCameraPlateDetected}
         />
       </div>
+
+      {barrierAlert && (
+        <div
+          className={`mb-4 flex items-start gap-3 rounded-xl border px-5 py-4 ${
+            barrierAlert.type === 'success'
+              ? 'border-primary/40 bg-primary/10 text-primary'
+              : barrierAlert.type === 'manual'
+                ? 'border-amber-500/50 bg-amber-500/10 text-amber-800'
+                : 'border-error/50 bg-error-container/30 text-error'
+          }`}
+          role="alert"
+        >
+          <span className="material-symbols-outlined text-3xl">
+            {barrierAlert.type === 'success'
+              ? 'garage_door'
+              : barrierAlert.type === 'manual'
+                ? 'warning'
+                : 'block'}
+          </span>
+          <div>
+            <p className="font-sora text-lg font-bold uppercase">{barrierAlert.message}</p>
+            <p className="mt-1 text-sm opacity-85">
+              {barrierAlert.type === 'success'
+                ? 'Thanh toán hợp lệ, lượt rửa đã hoàn thành và vật tư đã được ghi nhận.'
+                : barrierAlert.type === 'manual'
+                  ? 'Hệ thống không tự mở barie trong luồng dự phòng này.'
+                  : 'Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại.'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
         <div className="lg:col-span-4">

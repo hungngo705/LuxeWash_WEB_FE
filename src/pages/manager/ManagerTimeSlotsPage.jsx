@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   createManagerTimeSlot,
+  deleteManagerTimeSlot,
   fetchManagerTimeSlots,
   toTimeInputValue,
+  updateManagerTimeSlot,
 } from '../../api'
+import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
@@ -28,8 +31,11 @@ export default function ManagerTimeSlotsPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
   const [toast, setToast] = useState('')
 
   const showToast = (msg) => {
@@ -55,7 +61,19 @@ export default function ManagerTimeSlotsPage() {
   }, [loadSlots])
 
   const openCreate = () => {
+    setEditingId(null)
     setForm(emptyForm)
+    setModalOpen(true)
+  }
+
+  const openEdit = (slot) => {
+    setEditingId(slot.slotId)
+    setForm({
+      startTime: toTimeInputValue(slot.startTime),
+      endTime: toTimeInputValue(slot.endTime),
+      maxCapacity: slot.maxCapacity,
+      isVipOnly: slot.isVipOnly,
+    })
     setModalOpen(true)
   }
 
@@ -77,14 +95,35 @@ export default function ManagerTimeSlotsPage() {
 
     setSaving(true)
     try {
-      await createManagerTimeSlot(payload)
-      showToast('Đã thêm khung giờ mới')
+      if (editingId) {
+        await updateManagerTimeSlot(editingId, payload)
+        showToast('Đã cập nhật khung giờ')
+      } else {
+        await createManagerTimeSlot(payload)
+        showToast('Đã thêm khung giờ mới')
+      }
       setModalOpen(false)
       await loadSlots()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không lưu được khung giờ')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting) return
+
+    setDeleting(true)
+    try {
+      await deleteManagerTimeSlot(deleteTarget.slotId)
+      setDeleteTarget(null)
+      showToast('Đã xóa khung giờ')
+      await loadSlots()
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không xóa được khung giờ')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -131,6 +170,7 @@ export default function ManagerTimeSlotsPage() {
                 <th className="px-4 py-3">Thời gian kết thúc</th>
                 <th className="px-4 py-3">Sức chứa</th>
                 <th className="px-4 py-3">Phân loại</th>
+                <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
@@ -149,6 +189,24 @@ export default function ManagerTimeSlotsPage() {
                       <span className="text-on-surface-variant">Thường</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 font-medium text-primary hover:bg-primary-container/20"
+                        onClick={() => openEdit(slot)}
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 font-medium text-error hover:bg-error-container/20"
+                        onClick={() => setDeleteTarget(slot)}
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -158,9 +216,14 @@ export default function ManagerTimeSlotsPage() {
 
       <FormModal
         open={modalOpen}
-        title="Thêm khung giờ"
+        title={editingId ? 'Sửa khung giờ' : 'Thêm khung giờ'}
         submitLabel={saving ? 'Đang lưu...' : 'Lưu'}
-        onClose={() => !saving && setModalOpen(false)}
+        onClose={() => {
+          if (!saving) {
+            setModalOpen(false)
+            setEditingId(null)
+          }
+        }}
         onSubmit={handleSave}
       >
         <div className="space-y-4">
@@ -208,6 +271,20 @@ export default function ManagerTimeSlotsPage() {
           </label>
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Xóa khung giờ"
+        message={
+          deleteTarget
+            ? `Bạn chắc chắn muốn xóa khung giờ ${toTimeInputValue(deleteTarget.startTime)} – ${toTimeInputValue(deleteTarget.endTime)}?`
+            : ''
+        }
+        confirmLabel={deleting ? 'Đang xóa...' : 'Xóa'}
+        variant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
     </div>
   )
 }

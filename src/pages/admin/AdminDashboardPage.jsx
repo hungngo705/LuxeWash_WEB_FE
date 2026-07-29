@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchDashboardStats } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
+import RevenueAnalyticsPanel from '../../components/admin/dashboard/RevenueAnalyticsPanel'
 import { formatVnd } from '../../utils/format'
 
 const EMPTY_DASHBOARD = {
@@ -36,6 +37,7 @@ export default function AdminDashboardPage() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load
     loadDashboard()
     const timer = setInterval(() => loadDashboard(true), 60000)
     return () => clearInterval(timer)
@@ -175,6 +177,7 @@ export default function AdminDashboardPage() {
               )}
             </section>
           </div>
+          <RevenueAnalyticsPanel />
         </>
       )}
     </div>

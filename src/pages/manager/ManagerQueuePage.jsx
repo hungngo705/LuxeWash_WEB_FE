@@ -13,8 +13,11 @@ import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { WashDurationBadge } from '../../components/shared/WashTelemetry'
+import LaneAssignmentBadge from '../../components/shared/LaneAssignmentBadge'
 import { formatVnd } from '../../utils/format'
 import { useAuth } from '../../context/AuthContext'
+import { publishLaneDisplayEvent } from '../../services/laneDisplayChannel'
+import { hasAssignedLane } from '../../utils/laneAssignment'
 
 const STATUS_FILTERS = ['Tất cả', 'Chờ check-in', 'Đã check-in', 'Đang rửa']
 
@@ -61,9 +64,9 @@ export default function ManagerQueuePage() {
     setTimeout(() => setToast(''), 2500)
   }
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
+  const loadData = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true)
+    if (!silent) setLoadError('')
     try {
       const [bookingsResult, staffsResult, lanesResult] = await Promise.allSettled([
         fetchManagerBookings(),
@@ -83,21 +86,27 @@ export default function ManagerQueuePage() {
 
       if (bookingsResult.status === 'rejected') {
         const err = bookingsResult.reason
-        setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách booking.')
+        if (!silent) {
+          setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách booking.')
+        }
       }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async queue load with polling cleanup
     loadData()
+    const interval = setInterval(() => loadData({ silent: true }), 10_000)
+    return () => clearInterval(interval)
   }, [loadData])
 
   const stats = useMemo(() => ({
     total: bookings.length,
     pending: bookings.filter((b) => b.status === 'Chờ check-in').length,
-    checkedIn: bookings.filter((b) => b.status === 'Đã check-in').length,
+    waiting: bookings.filter((b) => b.status === 'Đã check-in' && !hasAssignedLane(b)).length,
+    ready: bookings.filter((b) => b.status === 'Đã check-in' && hasAssignedLane(b)).length,
     processing: bookings.filter((b) => b.status === 'Đang rửa').length,
   }), [bookings])
 
@@ -120,6 +129,14 @@ export default function ManagerQueuePage() {
       await checkinAssignBooking(assignTarget.bookingId, {
         laneId: Number(selectedLaneId),
         staffId: user?.userId ? Number(user.userId) : undefined,
+      })
+      const selectedLane = lanes.find((lane) => Number(lane.laneId) === Number(selectedLaneId))
+      publishLaneDisplayEvent({
+        type: 'assigned',
+        plate: assignTarget.licensePlate,
+        bookingId: assignTarget.bookingId,
+        laneId: Number(selectedLaneId),
+        laneName: selectedLane?.name ?? selectedLane?.laneName,
       })
       showToast(`Xe ${assignTarget.licensePlate} đã điều vào làn.`)
       setAssignTarget(null)
@@ -147,7 +164,8 @@ export default function ManagerQueuePage() {
     }
   }
 
-  const canAssign = (b) => b.status === 'Chờ check-in'
+  const canAssign = (b) =>
+    b.status === 'Chờ check-in' || (b.status === 'Đã check-in' && !hasAssignedLane(b))
   const canNoShow = (b) => b.status === 'Chờ check-in' || b.status === 'Đã check-in'
 
   return (
@@ -164,11 +182,12 @@ export default function ManagerQueuePage() {
       )}
 
       {/* Stats row */}
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         {[
           { label: 'Tổng', value: stats.total, color: 'text-on-surface' },
           { label: 'Chờ check-in', value: stats.pending, color: 'text-tertiary-container' },
-          { label: 'Đã check-in', value: stats.checkedIn, color: 'text-secondary-container' },
+          { label: 'Chờ làn', value: stats.waiting, color: 'text-tertiary-container' },
+          { label: 'Đã có làn', value: stats.ready, color: 'text-primary' },
           { label: 'Đang rửa', value: stats.processing, color: 'text-primary-container' },
         ].map((s) => (
           <div key={s.label} className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-center">
@@ -248,7 +267,7 @@ export default function ManagerQueuePage() {
                     <p className="text-on-surface">{b.slotLabel}</p>
                     <p className="text-xs text-on-surface-variant">{b.scheduledDate}</p>
                   </td>
-                  <td className="px-4 py-3 text-on-surface">{b.processingLaneName || '—'}</td>
+                  <td className="px-4 py-3"><LaneAssignmentBadge booking={{ ...b, status: b.status === 'Đã check-in' ? 'Checked-in' : b.status === 'Đang rửa' ? 'Processing' : b.status === 'Chờ check-in' ? 'Pending' : b.status }} /></td>
                   <td className="px-4 py-3">
                     <StatusBadge status={b.status} />
                   </td>
@@ -268,7 +287,7 @@ export default function ManagerQueuePage() {
                           }}
                           disabled={lanes.length === 0}
                         >
-                          Điều vào làn
+                          {b.status === 'Chờ check-in' ? 'Check-in & phân làn' : 'Phân làn thủ công'}
                         </button>
                       )}
                       {canNoShow(b) && (
@@ -292,14 +311,14 @@ export default function ManagerQueuePage() {
       {/* Assign Lane Modal */}
       <FormModal
         open={Boolean(assignTarget)}
-        title={`Điều xe ${assignTarget?.licensePlate ?? ''} vào làn`}
+        title={`${assignTarget?.status === 'Chờ check-in' ? 'Check-in và phân làn' : 'Phân làn thủ công'} · ${assignTarget?.licensePlate ?? ''}`}
         submitLabel={assigning ? 'Đang xử lý...' : 'Xác nhận điều'}
         onClose={() => !assigning && setAssignTarget(null)}
         onSubmit={handleAssignLane}
       >
         <div className="space-y-4">
           <p className="text-sm text-on-surface-variant">
-            Chọn làn để điều xe <strong className="text-on-surface">{assignTarget?.licensePlate}</strong> vào rửa.
+            Chọn làn cho xe <strong className="text-on-surface">{assignTarget?.licensePlate}</strong>. Xe đã check-in nhưng chưa có làn sẽ không bị check-in lại.
           </p>
           {lanes.length === 0 ? (
             <p className="text-sm text-error">

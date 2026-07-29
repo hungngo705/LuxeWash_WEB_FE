@@ -49,6 +49,7 @@ export default function ManagerWalkInPage() {
     vehicleTypeId: '',
     serviceIds: [],
     laneId: '',
+    forceOverrideCapacity: false,
   })
 
   const showToast = (msg) => {
@@ -125,6 +126,7 @@ export default function ManagerWalkInPage() {
         paymentMethod: 'Cash',
         returnUrl,
         cancelUrl: returnUrl,
+        forceOverrideCapacity: form.forceOverrideCapacity,
       })
       showToast(`Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`)
       setForm((f) => ({
@@ -133,6 +135,7 @@ export default function ManagerWalkInPage() {
         vehicleTypeId: '',
         serviceIds: [],
         laneId: '',
+        forceOverrideCapacity: false,
       }))
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Lỗi khi tiếp nhận khách vãng lai.')
@@ -284,6 +287,35 @@ export default function ManagerWalkInPage() {
               ))}
             </div>
           )}
+        </div>
+
+        <div className={`rounded-xl border p-5 ${
+          form.forceOverrideCapacity
+            ? 'border-tertiary bg-tertiary/10'
+            : 'border-outline-variant bg-surface-container-lowest'
+        }`}>
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 accent-tertiary"
+              checked={form.forceOverrideCapacity}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  forceOverrideCapacity: event.target.checked,
+                }))
+              }
+            />
+            <span>
+              <span className="block text-sm font-semibold text-on-surface">
+                Ghi đè sức chứa để lấp chỗ trống
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-on-surface-variant">
+                Chỉ bật khi khách đặt trước đã quá thời gian ân hạn nhưng booking vẫn đang giữ tải.
+                Xe walk-in sẽ vào trạng thái đang rửa ngay cả khi khung giờ đã đủ công suất.
+              </span>
+            </span>
+          </label>
         </div>
 
         <button

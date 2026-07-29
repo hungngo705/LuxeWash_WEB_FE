@@ -1,4 +1,5 @@
 import {
+  AI_API_BASE_URL,
   API_BASE_URL,
   API_DEFAULT_TIMEOUT_MS,
 } from './config'
@@ -21,12 +22,12 @@ export function setSessionRefreshedHandler(handler) {
   onSessionRefreshed = handler ?? null
 }
 
-function buildUrl(path) {
+function buildUrl(path, baseUrl = API_BASE_URL) {
   if (path.startsWith('http://') || path.startsWith('https://')) {
     return path
   }
   const normalized = path.startsWith('/') ? path : `/${path}`
-  return `${API_BASE_URL.replace(/\/$/, '')}${normalized}`
+  return `${baseUrl.replace(/\/$/, '')}${normalized}`
 }
 
 /**
@@ -141,10 +142,18 @@ async function refreshStoredSession(timeoutMs) {
  * @returns {Promise<unknown>} `data` field from API wrapper
  */
 export async function apiRequest(path, options = {}) {
-  return apiRequestInternal(path, options, false)
+  return apiRequestInternal(path, options, false, API_BASE_URL)
 }
 
-async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
+/**
+ * Request dành cho các endpoint AI chạy ở backend local.
+ * Vẫn dùng cùng JWT/session với API nghiệp vụ trên Render.
+ */
+export async function aiApiRequest(path, options = {}) {
+  return apiRequestInternal(path, options, false, AI_API_BASE_URL)
+}
+
+async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh, baseUrl) {
   const {
     auth = true,
     timeoutMs = API_DEFAULT_TIMEOUT_MS,
@@ -185,7 +194,7 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
 
   let response
   try {
-    response = await fetch(buildUrl(path), {
+    response = await fetch(buildUrl(path, baseUrl), {
       ...fetchOptions,
       headers,
       signal: controller.signal,
@@ -220,7 +229,7 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
           headers: new Headers(options.headers),
         }
         retryOptions.headers.set('Authorization', `Bearer ${refreshedSession.token}`)
-        return apiRequestInternal(path, retryOptions, true)
+        return apiRequestInternal(path, retryOptions, true, baseUrl)
       } catch {
         onUnauthorized?.()
       }
@@ -259,7 +268,7 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
               headers: new Headers(options.headers),
             }
             retryOptions.headers.set('Authorization', `Bearer ${refreshedSession.token}`)
-            return apiRequestInternal(path, retryOptions, true)
+            return apiRequestInternal(path, retryOptions, true, baseUrl)
           } catch {
             onUnauthorized?.()
           }
@@ -276,6 +285,6 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh) {
   return body
 }
 
-export { API_BASE_URL } from './config'
+export { AI_API_BASE_URL, API_BASE_URL } from './config'
 export { ApiError } from './errors'
 export { clearSession, getAccessToken, getStoredSession, saveSession } from './session'
