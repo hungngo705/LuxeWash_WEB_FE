@@ -223,6 +223,10 @@ function needsCustomerLookup(task) {
 async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
   if (booking.paymentMethod && booking.paymentMethod !== '—') return booking
 
+  const hasKnownPaymentStatus =
+    booking.paymentStatus &&
+    booking.paymentStatus !== '—'
+
   let tx = txIndex.get(Number(booking.bookingId))
   if (!tx && txIndex.size === 0) {
     try {
@@ -242,7 +246,9 @@ async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
     }
   }
 
-  if (booking.status === 'Pending') {
+  // Do not replace an explicit status from the booking/lookup API merely because
+  // the optional transactions lookup is unavailable or does not return a row.
+  if (booking.status === 'Pending' && !hasKnownPaymentStatus) {
     return {
       ...booking,
       paymentMethod: 'Pending',
@@ -293,7 +299,10 @@ export async function enrichStaffBooking(booking, context = {}) {
       (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
     )
     if (match) {
-      merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
+      // The operation-staff task is the authoritative source for live status/lane
+      // fields. Admin booking data is only enrichment and can lag immediately
+      // after check-in, so it must not overwrite a freshly assigned lane.
+      merged = normalizeStaffTask({ ...match, ...merged, bookingId: booking.bookingId })
     }
   } else if (signal !== undefined || context.allowStandaloneFetch) {
     // Fallback: when called outside the batched enrichStaffTasks context.
@@ -306,7 +315,7 @@ export async function enrichStaffBooking(booking, context = {}) {
         (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
       )
       if (match) {
-        merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
+        merged = normalizeStaffTask({ ...match, ...merged, bookingId: booking.bookingId })
       }
     } catch {
       // continue
@@ -473,6 +482,7 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   rankName: string
  *   rankId?: number
  *   customerTierPoints?: number
+ *   isVip?: boolean
  *   serviceName: string
  *   slotLabel: string
  *   scheduledTime: string | null
@@ -541,6 +551,7 @@ export function normalizeStaffTask(item) {
     rankId: flat.rankId != null ? Number(flat.rankId) : flat.tierId != null ? Number(flat.tierId) : undefined,
     customerTierPoints:
       flat.customerTierPoints != null ? Number(flat.customerTierPoints) : undefined,
+    isVip: flat.isVip === true || flat.IsVip === true,
     serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
@@ -759,14 +770,57 @@ export function updateStaffBookingStatus(bookingId, status) {
 }
 
 /**
+ * Normalize the structured gate-admission response returned after check-in.
+ * @param {Record<string, unknown>} item
+ */
+export function normalizeStaffCheckInResult(item) {
+  const source =
+    item?.data && typeof item.data === 'object'
+      ? item.data
+      : item && typeof item === 'object'
+        ? item
+        : {}
+  const status = String(source.status ?? '').trim()
+  const admissionStatus = String(source.admissionStatus ?? '').trim()
+  const normalizedStatus = status.toLowerCase()
+  const normalizedAdmissionStatus = admissionStatus.toLowerCase()
+  const laneId = source.laneId != null ? Number(source.laneId) : undefined
+  const laneName = String(source.laneName ?? '').trim() || undefined
+  const hasLane = Number.isFinite(laneId) || Boolean(laneName)
+  const isWaiting =
+    source.isWaiting === true ||
+    normalizedStatus === 'waiting' ||
+    normalizedAdmissionStatus === 'denied_queueing'
+  const isAssigned =
+    normalizedStatus === 'assigned' ||
+    normalizedAdmissionStatus === 'granted' ||
+    (!isWaiting && hasLane)
+
+  return {
+    bookingId: source.bookingId != null ? Number(source.bookingId) : undefined,
+    licensePlate: String(source.licensePlate ?? '').trim().toUpperCase(),
+    status,
+    admissionStatus,
+    isWaiting,
+    isAssigned,
+    hasAdmissionDecision: isWaiting || isAssigned,
+    bookingStatus: isWaiting ? 'Checked-in' : isAssigned ? 'Processing' : undefined,
+    laneId: Number.isFinite(laneId) ? laneId : undefined,
+    laneName,
+    barrierCommandId: String(source.barrierCommandId ?? '').trim() || undefined,
+    barrierCommandCreated: source.barrierCommandCreated === true,
+  }
+}
+
+/**
  * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
- * Checks in a Pending booking — assigns the staff's lane to the booking.
- * Staff can perform check-in without a Manager.
+ * Checks in a Pending booking and returns either Assigned or Waiting.
  * @param {number} bookingId
  */
-export function staffCheckinBooking(bookingId) {
-  return apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
+export async function staffCheckinBooking(bookingId) {
+  const result = await apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
     method: 'POST',
     body: JSON.stringify({ bookingId }),
   })
+  return normalizeStaffCheckInResult(result)
 }

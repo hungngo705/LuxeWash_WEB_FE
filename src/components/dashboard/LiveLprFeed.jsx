@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { checkCameraHasCar, detectCameraPlate } from '../../api'
+import {
+  checkCameraHasCar,
+  detectCameraPlate,
+  recognizeCameraVehicle,
+} from '../../api'
 
 const SCAN_INTERVAL_MS = 3000
 const PLATE_COOLDOWN_MS = 8000
@@ -7,6 +11,7 @@ const MAX_LOGS = 9
 const CAMERA_STORAGE_KEYS = {
   entry: 'luxewash:camera:entry-device-id',
   exit: 'luxewash:camera:exit-device-id',
+  entryLeftIsVip: 'luxewash:camera:entry-left-is-vip',
 }
 
 const STATUS_META = {
@@ -108,6 +113,22 @@ function saveCameraId(mode, deviceId) {
   }
 }
 
+function getStoredLeftLaneIsVip() {
+  try {
+    return window.localStorage.getItem(CAMERA_STORAGE_KEYS.entryLeftIsVip) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function saveLeftLaneIsVip(isVip) {
+  try {
+    window.localStorage.setItem(CAMERA_STORAGE_KEYS.entryLeftIsVip, String(isVip))
+  } catch {
+    // Lane layout still works for the current session.
+  }
+}
+
 function CameraStation({
   mode,
   devices,
@@ -134,6 +155,7 @@ function CameraStation({
   const [confidence, setConfidence] = useState(undefined)
   const [carCount, setCarCount] = useState(0)
   const [cameraRetryKey, setCameraRetryKey] = useState(0)
+  const [leftLaneIsVip, setLeftLaneIsVip] = useState(getStoredLeftLaneIsVip)
   const [logs, setLogs] = useState(() => [
     {
       id: 'init',
@@ -163,6 +185,10 @@ function CameraStation({
   useEffect(() => {
     disabledRef.current = disabled
   }, [disabled])
+
+  useEffect(() => {
+    if (mode === 'entry') saveLeftLaneIsVip(leftLaneIsVip)
+  }, [leftLaneIsVip, mode])
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
@@ -229,7 +255,7 @@ function CameraStation({
     }
   }, [addLog, cameraRetryKey, selectedDeviceId, stationMeta.title, stopCamera])
 
-  const captureFrame = useCallback(() => {
+  const captureFrame = useCallback((region = 'full') => {
     const video = videoRef.current
     const canvas = canvasRef.current
 
@@ -239,13 +265,25 @@ function CameraStation({
 
     const width = video.videoWidth || 640
     const height = video.videoHeight || 480
-    canvas.width = width
+    const sourceX = region === 'right' ? Math.floor(width / 2) : 0
+    const sourceWidth = region === 'full' ? width : Math.floor(width / 2)
+    canvas.width = sourceWidth
     canvas.height = height
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return Promise.reject(new Error('Không thể đọc khung hình camera.'))
 
-    ctx.drawImage(video, 0, 0, width, height)
+    ctx.drawImage(
+      video,
+      sourceX,
+      0,
+      sourceWidth,
+      height,
+      0,
+      0,
+      sourceWidth,
+      height,
+    )
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
         if (blob) resolve(blob)
@@ -273,42 +311,189 @@ function CameraStation({
     setStatus('processing')
 
     try {
-      const imageBlob = await captureFrame()
-      const carResult = await checkCameraHasCar(imageBlob, {
-        signal: controller.signal,
-      })
+      const scanTargets =
+        mode === 'entry'
+          ? [
+              {
+                region: 'left',
+                queueLaneSide: 'left',
+                queueLaneType: leftLaneIsVip ? 'vip' : 'regular',
+              },
+              {
+                region: 'right',
+                queueLaneSide: 'right',
+                queueLaneType: leftLaneIsVip ? 'regular' : 'vip',
+              },
+            ]
+          : [
+              {
+                region: 'full',
+                queueLaneSide: null,
+                queueLaneType: null,
+              },
+            ]
 
-      if (!carResult.hasCar) {
-        setCarCount(0)
+      let detectedCarCount = 0
+      let unreadableLaneCount = 0
+      const detections = []
+      const seenPlates = new Set()
+
+      for (const target of scanTargets) {
+        const imageBlob = await captureFrame(target.region)
+        const carResult = await checkCameraHasCar(imageBlob, {
+          signal: controller.signal,
+        })
+
+        if (!carResult.hasCar) continue
+
+        detectedCarCount += carResult.carCount || 1
+        const queueLaneLabel =
+          target.queueLaneType === 'vip'
+            ? 'làn VIP'
+            : target.queueLaneType === 'regular'
+              ? 'làn thường'
+              : 'cổng ra'
+        addLog(
+          `Đã phát hiện xe tại ${queueLaneLabel} (${carResult.carCount || 1}). Đang đọc biển số.`,
+        )
+
+        let plateResult
+        try {
+          plateResult = await detectCameraPlate(imageBlob, {
+            signal: controller.signal,
+          })
+        } catch (plateDetectionError) {
+          if (isAbortError(plateDetectionError)) throw plateDetectionError
+          unreadableLaneCount += 1
+          addLog(
+            `Có xe tại ${queueLaneLabel} nhưng chưa đọc được biển số.`,
+            'error',
+          )
+          continue
+        }
+
+        const plates = (
+          plateResult.plateTexts?.length
+            ? plateResult.plateTexts
+            : [plateResult.plateText]
+        )
+          .map((plate) => String(plate ?? '').trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 3)
+
+        addLog(
+          plates.length > 1
+            ? `${queueLaneLabel}: đã đọc ${plates.length} biển số ${plates.join(', ')}.`
+            : `${queueLaneLabel}: đã đọc biển số ${plates[0]}.`,
+          'success',
+        )
+
+        for (const [plateIndex, plate] of plates.entries()) {
+          if (seenPlates.has(plate)) {
+            addLog(`${plate}: bỏ qua kết quả trùng giữa hai vùng camera.`)
+            continue
+          }
+          seenPlates.add(plate)
+          detections.push({
+            plate,
+            plateIndex,
+            plateCount: plates.length,
+            confidence: plateResult.confidence,
+            imageBlob,
+            queueLaneSide: target.queueLaneSide,
+            queueLaneType: target.queueLaneType,
+          })
+        }
+      }
+
+      setCarCount(detectedCarCount)
+      if (detectedCarCount === 0) {
         setStatus('scanning')
         return
       }
 
-      setCarCount(carResult.carCount)
-      addLog(`Đã phát hiện xe (${carResult.carCount || 1}). Đang đọc biển số.`)
+      if (detections.length === 0) {
+        setStatus('error')
+        cooldownUntilRef.current = Date.now() + 4000
+        restoreScanningStatus(4000)
+        return
+      }
 
-      const plateResult = await detectCameraPlate(imageBlob, {
-        signal: controller.signal,
-      })
-      const plate = plateResult.plateText.trim().toUpperCase()
-
-      setLastPlate(plate)
-      setConfidence(plateResult.confidence)
+      setLastPlate(
+        detections
+          .map(({ plate, queueLaneType }) =>
+            queueLaneType ? `${plate} (${queueLaneType === 'vip' ? 'VIP' : 'Thường'})` : plate,
+          )
+          .join(' · '),
+      )
+      setConfidence(detections[0]?.confidence)
       setStatus('found')
-      addLog(`Đã đọc biển số: ${plate}`, 'success')
 
-      const result = await onPlateDetected?.(plate, {
-        operationMode: mode,
-        confidence: plateResult.confidence,
-        source: 'camera-ai',
-      })
+      let successfulCount = 0
+      let needsAction = unreadableLaneCount > 0
 
-      if (result?.message) {
-        addLog(result.message, result.type === 'error' ? 'error' : 'success')
+      for (const detection of detections) {
+        const {
+          plate,
+          plateIndex,
+          plateCount,
+          confidence: plateConfidence,
+          imageBlob,
+          queueLaneSide,
+          queueLaneType,
+        } = detection
+        let vehicleRecognition = null
+        if (mode === 'entry') {
+          try {
+            vehicleRecognition = await recognizeCameraVehicle(imageBlob, plate, {
+              signal: controller.signal,
+            })
+            const recognizedType = vehicleRecognition.primaryResult?.vehicleType
+            if (recognizedType) {
+              addLog(
+                vehicleRecognition.isOverriddenByHistory
+                  ? `${plate}: loại xe ${recognizedType} lấy từ hồ sơ đã lưu.`
+                  : `${plate}: AI dự đoán loại xe ${recognizedType}.`,
+                vehicleRecognition.isOverriddenByHistory ? 'success' : 'normal',
+              )
+            }
+          } catch (recognitionError) {
+            if (isAbortError(recognitionError)) throw recognitionError
+            addLog(
+              `${plate}: chưa nhận diện được loại xe, vẫn tiếp tục tra cứu booking.`,
+              'error',
+            )
+          }
+        }
+
+        try {
+          const result = await onPlateDetected?.(plate, {
+            operationMode: mode,
+            confidence: plateConfidence,
+            source: 'camera-ai',
+            imageBlob,
+            vehicleRecognition,
+            plateIndex,
+            plateCount,
+            queueLaneSide,
+            queueLaneType,
+          })
+
+          successfulCount += 1
+          needsAction ||= result?.status === 'needs-action'
+          if (result?.message) {
+            addLog(result.message, result.type === 'error' ? 'error' : 'success')
+          }
+        } catch (plateError) {
+          if (isAbortError(plateError)) throw plateError
+          addLog(`${plate}: ${getErrorMessage(plateError)}`, 'error')
+        }
       }
 
       setStatus(
-        result?.status === 'needs-action'
+        successfulCount === 0
+          ? 'error'
+          : needsAction
           ? 'found'
           : mode === 'exit'
             ? 'checkedOut'
@@ -332,6 +517,7 @@ function CameraStation({
     cameraReady,
     captureFrame,
     disabled,
+    leftLaneIsVip,
     mode,
     onPlateDetected,
     restoreScanningStatus,
@@ -402,6 +588,45 @@ function CameraStation({
           </select>
         </label>
 
+        {mode === 'entry' && (
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+              <span>
+                <span className="block text-xs font-semibold text-on-surface">Khung trái</span>
+                <span className="block text-[10px] text-on-surface-variant">
+                  {leftLaneIsVip ? 'Làn VIP' : 'Làn thường'}
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase text-on-surface-variant">
+                VIP
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-amber-500"
+                  checked={leftLaneIsVip}
+                  onChange={(event) => setLeftLaneIsVip(event.target.checked)}
+                />
+              </span>
+            </label>
+            <label className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
+              <span>
+                <span className="block text-xs font-semibold text-on-surface">Khung phải</span>
+                <span className="block text-[10px] text-on-surface-variant">
+                  {leftLaneIsVip ? 'Làn thường' : 'Làn VIP'}
+                </span>
+              </span>
+              <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase text-on-surface-variant">
+                VIP
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-amber-500"
+                  checked={!leftLaneIsVip}
+                  onChange={(event) => setLeftLaneIsVip(!event.target.checked)}
+                />
+              </span>
+            </label>
+          </div>
+        )}
+
         <div className="relative aspect-video min-h-[220px] overflow-hidden rounded-lg bg-black">
           <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
           {!cameraReady && (
@@ -413,12 +638,38 @@ function CameraStation({
                   : 'Đang mở camera...'}
             </div>
           )}
-          <div className="pointer-events-none absolute inset-4 rounded-lg border border-primary-container/60">
-            <span className="absolute left-0 top-0 h-4 w-4 border-l-4 border-t-4 border-primary-container" />
-            <span className="absolute right-0 top-0 h-4 w-4 border-r-4 border-t-4 border-primary-container" />
-            <span className="absolute bottom-0 left-0 h-4 w-4 border-b-4 border-l-4 border-primary-container" />
-            <span className="absolute bottom-0 right-0 h-4 w-4 border-b-4 border-r-4 border-primary-container" />
-          </div>
+          {mode === 'entry' ? (
+            <div className="pointer-events-none absolute inset-0 grid grid-cols-2">
+              {[
+                { side: 'Trái', isVip: leftLaneIsVip },
+                { side: 'Phải', isVip: !leftLaneIsVip },
+              ].map((zone) => (
+                <div
+                  key={zone.side}
+                  className={`relative border-2 ${
+                    zone.isVip
+                      ? 'border-amber-400/80 bg-amber-500/5'
+                      : 'border-primary-container/75 bg-primary/5'
+                  }`}
+                >
+                  <span
+                    className={`absolute left-2 top-2 rounded px-2 py-1 text-[10px] font-bold uppercase text-white ${
+                      zone.isVip ? 'bg-amber-600/90' : 'bg-primary/90'
+                    }`}
+                  >
+                    {zone.side} · {zone.isVip ? 'Làn VIP' : 'Làn thường'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="pointer-events-none absolute inset-4 rounded-lg border border-primary-container/60">
+              <span className="absolute left-0 top-0 h-4 w-4 border-l-4 border-t-4 border-primary-container" />
+              <span className="absolute right-0 top-0 h-4 w-4 border-r-4 border-t-4 border-primary-container" />
+              <span className="absolute bottom-0 left-0 h-4 w-4 border-b-4 border-l-4 border-primary-container" />
+              <span className="absolute bottom-0 right-0 h-4 w-4 border-b-4 border-r-4 border-primary-container" />
+            </div>
+          )}
           <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
             <div className="rounded-lg border border-white/15 bg-black/70 px-3 py-2 text-white backdrop-blur">
               <p className="text-[9px] font-semibold tracking-wider text-white/60 uppercase">Biển số gần nhất</p>

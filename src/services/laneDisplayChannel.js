@@ -28,21 +28,36 @@ function sendMessage(message) {
 
 export function publishLaneDisplayEvent(event) {
   if (typeof window === 'undefined') return null
-  const timestamp = Date.now()
+  const occurredAt = event?.occurredAt ?? null
+  const parsedOccurredAt = Date.parse(String(occurredAt ?? ''))
+  const timestamp =
+    Number(event?.timestamp) ||
+    (Number.isFinite(parsedOccurredAt) ? parsedOccurredAt : Date.now())
+  const receivedAt = Number(event?.receivedAt) || Date.now()
   const payload = {
     kind: 'event',
     eventId: event?.eventId || createId(),
+    receivedAt,
     timestamp,
-    type: event?.type || 'idle',
-    plate: String(event?.plate ?? '').trim().toUpperCase(),
-    laneId: Number(event?.laneId) || null,
+    occurredAt,
+    displayUntil: event?.displayUntil ?? null,
+    source: event?.source ?? 'local',
+    type: String(event?.type || 'idle').toLowerCase(),
+    branchId: Number(event?.branchId) || null,
+    plate: String(event?.plate ?? event?.licensePlate ?? '').trim().toUpperCase(),
+    laneId: event?.laneId == null ? null : Number(event.laneId),
     laneName: String(event?.laneName ?? '').trim() || null,
+    barrierCommandId:
+      String(event?.barrierCommandId ?? '').trim() || null,
+    barrierStatus:
+      String(event?.barrierStatus ?? '').trim() || null,
     title: String(event?.title ?? '').trim() || null,
     message: String(event?.message ?? '').trim() || null,
     bookingId: Number(event?.bookingId) || null,
+    reasonCode: String(event?.reasonCode ?? '').trim() || null,
   }
   window.localStorage.setItem(EVENT_STORAGE_KEY, JSON.stringify(payload))
-  window.localStorage.setItem(HEARTBEAT_STORAGE_KEY, String(timestamp))
+  window.localStorage.setItem(HEARTBEAT_STORAGE_KEY, String(receivedAt))
   sendMessage(payload)
   return payload
 }
@@ -57,7 +72,19 @@ export function publishLaneDisplayHeartbeat() {
 export function getLatestLaneDisplayEvent() {
   if (typeof window === 'undefined') return null
   const event = safeParse(window.localStorage.getItem(EVENT_STORAGE_KEY))
-  if (!event || Date.now() - Number(event.timestamp || 0) > MAX_RESTORED_EVENT_AGE_MS) {
+  const freshnessTimestamp =
+    event?.source === 'signalr'
+      ? Number(event?.receivedAt || event?.timestamp || 0)
+      : Number(event?.timestamp || 0)
+  const displayUntil = Date.parse(String(event?.displayUntil ?? ''))
+  const isExpiredByBackend =
+    Number.isFinite(displayUntil) && displayUntil <= Date.now()
+  if (
+    !event ||
+    event.type === 'cleared' ||
+    isExpiredByBackend ||
+    Date.now() - freshnessTimestamp > MAX_RESTORED_EVENT_AGE_MS
+  ) {
     return null
   }
   return event

@@ -18,7 +18,18 @@ export {
   cameraCheckOutByPlate,
   checkCameraHasCar,
   detectCameraPlate,
+  recognizeCameraVehicle,
+  submitVehicleVisionFeedback,
 } from './cameraAi.api'
+
+export {
+  decodeJwtPayload,
+  fetchLatestLaneDisplayState,
+  getLaneDisplayBranchId,
+  isLaneDisplayEventExpired,
+  normalizeLaneDisplayEvent,
+  normalizeLaneDisplayState,
+} from './laneDisplay.api'
 
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
@@ -245,6 +256,7 @@ export {
   recognizeVehicleByPlate,
   consumeStaffVoucher,
   normalizeStaffTask,
+  normalizeStaffCheckInResult,
   normalizeStaffLaneAssignment,
   normalizeVehicleRecognition,
   formatStaffStationLabel,

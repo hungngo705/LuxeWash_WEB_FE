@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  fetchLatestLaneDisplayState,
+  getLaneDisplayBranchId,
+  isLaneDisplayEventExpired,
+} from '../../api/laneDisplay.api'
 import {
   getLastLaneDisplayHeartbeat,
   getLatestLaneDisplayEvent,
+  publishLaneDisplayEvent,
   subscribeLaneDisplay,
 } from '../../services/laneDisplayChannel'
+import { subscribeLaneDisplayRealtime } from '../../services/laneDisplayRealtime'
 
 const EVENT_TIMEOUTS = {
   reading: 12_000,
   assigned: 15_000,
+  processing: 15_000,
   waiting: 20_000,
   payment: 20_000,
   assistance: 20_000,
@@ -38,6 +46,14 @@ const VIEW_CONFIG = {
     message: 'Đi chậm và làm theo hướng dẫn tại khu vực rửa',
     accent: 'text-emerald-300',
     glow: 'from-emerald-500/30 to-cyan-500/10',
+  },
+  processing: {
+    eyebrow: 'XE ĐÃ VÀO LÀN',
+    icon: 'local_car_wash',
+    title: 'ĐANG BẮT ĐẦU RỬA XE',
+    message: 'Xe đã vào đúng làn. Vui lòng làm theo hướng dẫn của nhân viên',
+    accent: 'text-cyan-300',
+    glow: 'from-cyan-500/25 to-blue-600/10',
   },
   waiting: {
     eyebrow: 'CHƯA CÓ LÀN TRỐNG',
@@ -76,16 +92,83 @@ const VIEW_CONFIG = {
 export default function LaneAssignmentDisplayPage() {
   const [event, setEvent] = useState(() => getLatestLaneDisplayEvent())
   const [lastHeartbeat, setLastHeartbeat] = useState(() => getLastLaneDisplayHeartbeat())
-  const [now, setNow] = useState(0)
+  const [connectionStatus, setConnectionStatus] = useState('connecting')
+  const [now, setNow] = useState(() => Date.now())
+  const seenEventIds = useRef(new Set())
 
-  useEffect(() => subscribeLaneDisplay((message) => {
-    if (!message) return
-    if (message.kind === 'heartbeat') setLastHeartbeat(Number(message.timestamp) || Date.now())
-    if (message.kind === 'event') {
-      setLastHeartbeat(Number(message.timestamp) || Date.now())
-      setEvent(message)
+  const acceptEvent = useCallback((nextEvent, { authoritative = false, broadcast = false } = {}) => {
+    if (!nextEvent) {
+      if (authoritative) setEvent(null)
+      return
     }
-  }), [])
+
+    const eventId = String(nextEvent.eventId ?? '')
+    if (eventId && seenEventIds.current.has(eventId)) return
+    if (eventId) {
+      seenEventIds.current.add(eventId)
+      if (seenEventIds.current.size > 100) {
+        seenEventIds.current = new Set(Array.from(seenEventIds.current).slice(-50))
+      }
+    }
+
+    setLastHeartbeat(Date.now())
+    setEvent(
+      nextEvent.type === 'cleared' || isLaneDisplayEventExpired(nextEvent)
+        ? null
+        : nextEvent,
+    )
+
+    if (broadcast) publishLaneDisplayEvent(nextEvent)
+  }, [])
+
+  useEffect(
+    () =>
+      subscribeLaneDisplay((message) => {
+        if (!message) return
+        if (message.kind === 'heartbeat') {
+          setLastHeartbeat(Number(message.timestamp) || Date.now())
+        }
+        if (message.kind === 'event') acceptEvent(message)
+      }),
+    [acceptEvent],
+  )
+
+  useEffect(() => {
+    const handleState = (state) => {
+      setLastHeartbeat(Date.now())
+      acceptEvent(state?.latestEvent, {
+        authoritative: true,
+        broadcast: Boolean(state?.latestEvent),
+      })
+    }
+
+    const branchId = getLaneDisplayBranchId()
+    const restoreLatestState = () => {
+      if (!branchId) return Promise.resolve()
+      return fetchLatestLaneDisplayState(branchId)
+        .then(handleState)
+        .catch(() => {
+          // The hub also sends ReceiveInitialState; keep the local channel as fallback.
+        })
+    }
+
+    const unsubscribe = subscribeLaneDisplayRealtime({
+      onEvent: (nextEvent) =>
+        acceptEvent(nextEvent, { authoritative: true, broadcast: true }),
+      onInitialState: handleState,
+      onStatusChange: ({ status }) => {
+        setConnectionStatus(status)
+        if (status === 'reconnecting') {
+          // A protected REST call refreshes an expired JWT before the next hub retry.
+          void restoreLatestState()
+        }
+      },
+    })
+
+    void restoreLatestState()
+
+    return unsubscribe
+  }, [acceptEvent])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -111,15 +194,54 @@ export default function LaneAssignmentDisplayPage() {
 
   const visibleEvent = useMemo(() => {
     if (!event) return null
+    if (event.type === 'cleared' || isLaneDisplayEventExpired(event, now)) return null
     const timeout = EVENT_TIMEOUTS[event.type]
-    return timeout && now - Number(event.timestamp || 0) > timeout ? null : event
+    const freshnessTimestamp =
+      event.source === 'signalr'
+        ? Number(event.receivedAt || event.timestamp || 0)
+        : Number(event.timestamp || 0)
+    return timeout && now - freshnessTimestamp > timeout ? null : event
   }, [event, now])
 
-  const isDisconnected = !lastHeartbeat || now - lastHeartbeat > 35_000
+  const hasLocalFallback = Boolean(lastHeartbeat && now - lastHeartbeat <= 35_000)
+  const isRealtimeConnected = connectionStatus === 'connected'
+  const isDisconnected = !isRealtimeConnected && !hasLocalFallback
+  const connectionLabel = isRealtimeConnected
+    ? 'KẾT NỐI REALTIME'
+    : hasLocalFallback
+      ? 'KẾT NỐI DỰ PHÒNG'
+      : connectionStatus === 'connecting' || connectionStatus === 'reconnecting'
+        ? 'ĐANG KẾT NỐI LẠI'
+        : 'MẤT KẾT NỐI ĐIỀU HÀNH'
   const type = visibleEvent?.type || 'idle'
   const config = VIEW_CONFIG[type] ?? VIEW_CONFIG.idle
   const plate = visibleEvent?.plate
   const laneName = visibleEvent?.laneName || (visibleEvent?.laneId ? `LÀN ${visibleEvent.laneId}` : '')
+  const isAdmissionGranted = type === 'assigned'
+  const barrierStatus = String(visibleEvent?.barrierStatus || '').trim().toLowerCase()
+  const isBarrierPublished = isAdmissionGranted && barrierStatus === 'published'
+  const isBarrierUnavailable =
+    isAdmissionGranted && (barrierStatus === 'expired' || barrierStatus === 'failed')
+  const barrierLabel = isBarrierPublished
+    ? 'BARIE ĐANG MỞ'
+    : isBarrierUnavailable
+      ? 'BARIE CHƯA MỞ · CHỜ NHÂN VIÊN'
+      : 'ĐANG CHỜ XÁC NHẬN BARIE'
+  const barrierBadgeClass = isBarrierPublished
+    ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-200'
+    : isBarrierUnavailable
+      ? 'border-rose-300/40 bg-rose-300/10 text-rose-200'
+      : 'border-amber-300/40 bg-amber-300/10 text-amber-200'
+  const shouldShowLane = type === 'assigned' || type === 'processing'
+  const displayMessage =
+    visibleEvent?.message ||
+    (isAdmissionGranted
+      ? isBarrierPublished
+        ? 'Barie đang mở. Vui lòng di chuyển chậm vào đúng làn được chỉ định'
+        : isBarrierUnavailable
+          ? 'Barie chưa mở. Vui lòng giữ nguyên vị trí và chờ nhân viên hỗ trợ'
+          : 'Vui lòng giữ nguyên vị trí trong khi hệ thống xác nhận mở barie'
+      : config.message)
 
   const enterFullscreen = () => document.documentElement.requestFullscreen?.()
 
@@ -142,7 +264,7 @@ export default function LaneAssignmentDisplayPage() {
           <div className="flex items-center gap-3">
             <span className={`h-3 w-3 rounded-full ${isDisconnected ? 'bg-rose-400' : 'animate-pulse bg-emerald-400'}`} />
             <span className="hidden text-sm font-semibold tracking-wider text-slate-300 sm:block">
-              {isDisconnected ? 'MẤT KẾT NỐI ĐIỀU HÀNH' : 'HỆ THỐNG SẴN SÀNG'}
+              {connectionLabel}
             </span>
             <button
               type="button"
@@ -171,13 +293,21 @@ export default function LaneAssignmentDisplayPage() {
           <h1 className="max-w-6xl text-[clamp(2.25rem,5.7vw,6.5rem)] font-black leading-[1.05] tracking-tight">
             {visibleEvent?.title || config.title}
           </h1>
-          {type === 'assigned' && laneName && (
-            <div className="my-[clamp(1.5rem,4vh,3rem)] rounded-3xl border-2 border-emerald-300/40 bg-emerald-300/10 px-[clamp(2rem,7vw,8rem)] py-[clamp(1rem,2.5vh,2rem)] text-[clamp(3.5rem,10vw,10rem)] font-black leading-none text-emerald-300 shadow-[0_0_80px_rgba(110,231,183,.18)]">
-              {laneName.toUpperCase()}
+          {shouldShowLane && laneName && (
+            <div className="my-[clamp(1.5rem,4vh,3rem)]">
+              <div className="rounded-3xl border-2 border-emerald-300/40 bg-emerald-300/10 px-[clamp(2rem,7vw,8rem)] py-[clamp(1rem,2.5vh,2rem)] text-[clamp(3.5rem,10vw,10rem)] font-black leading-none text-emerald-300 shadow-[0_0_80px_rgba(110,231,183,.18)]">
+                {laneName.toUpperCase()}
+              </div>
+              {isAdmissionGranted && (
+                <div className={`mx-auto mt-5 inline-flex items-center gap-3 rounded-full border px-6 py-3 text-[clamp(1rem,1.8vw,1.5rem)] font-bold tracking-wider ${barrierBadgeClass}`}>
+                  <span className="material-symbols-outlined text-3xl">garage_door</span>
+                  {barrierLabel}
+                </div>
+              )}
             </div>
           )}
           <p className="mt-6 max-w-5xl text-[clamp(1.25rem,2.5vw,2.25rem)] font-medium leading-relaxed text-slate-300">
-            {visibleEvent?.message || config.message}
+            {displayMessage}
           </p>
         </section>
 

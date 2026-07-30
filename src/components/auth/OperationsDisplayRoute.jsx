@@ -1,7 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
-const ALLOWED_ROLES = new Set(['Staff', 'Manager', 'Admin'])
+const ALLOWED_ROLES = new Set(['Staff', 'Manager'])
 
 export default function OperationsDisplayRoute({ children }) {
   const { isAuthenticated, user } = useAuth()

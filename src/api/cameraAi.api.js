@@ -1,4 +1,5 @@
 import { API_DEFAULT_TIMEOUT_MS, CAMERA_AI_BASE_URL } from './config'
+import { apiRequest } from './client'
 import { ApiError } from './errors'
 import { normalizeStaffTask } from './operationStaff.api'
 
@@ -117,7 +118,14 @@ export async function detectCameraPlate(imageBlob, options = {}) {
     root.data && typeof root.data === 'object'
       ? root.data
       : root
-  const plateText = String(payload.plateText ?? '').trim()
+  const plateTexts = [
+    ...new Set(
+      (Array.isArray(payload.plateTexts) ? payload.plateTexts : [payload.plateText])
+        .map((plate) => String(plate ?? '').trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ].slice(0, 3)
+  const plateText = plateTexts[0] ?? ''
 
   if (!plateText) {
     throw new ApiError('Không phát hiện được biển số.', 404, data)
@@ -125,13 +133,92 @@ export async function detectCameraPlate(imageBlob, options = {}) {
 
   return {
     plateText,
+    plateTexts,
     confidence: payload.confidence != null ? Number(payload.confidence) : undefined,
+  }
+}
+
+/**
+ * Nhận diện loại xe sau khi đã có biển số để backend có thể ưu tiên hồ sơ xe cũ.
+ */
+export async function recognizeCameraVehicle(imageBlob, licensePlate, options = {}) {
+  const formData = new FormData()
+  formData.append('image', imageBlob, 'vehicle.jpg')
+  const normalizedPlate = String(licensePlate ?? '').trim().toUpperCase()
+  if (normalizedPlate) formData.append('licensePlate', normalizedPlate)
+
+  const data = await cameraRequest('/api/lpr/car-recognize', {
+    method: 'POST',
+    body: formData,
+    timeoutMs: 45_000,
+    ...options,
+  })
+
+  const root = data && typeof data === 'object' ? data : {}
+  const rawResults = Array.isArray(root.data) ? root.data : []
+  const results = rawResults.map((item) => ({
+    vehicleType: String(item?.vehicleType ?? '').trim(),
+    predictedBrand: String(item?.predictedBrand ?? '').trim() || null,
+    predictedModel: String(item?.predictedModel ?? '').trim() || null,
+    confidence: item?.confidence != null ? Number(item.confidence) : undefined,
+    box: item?.box && typeof item.box === 'object' ? item.box : null,
+  }))
+
+  return {
+    isOverriddenByHistory: Boolean(
+      root.isOverriddenByHistory ?? root.IsOverriddenByHistory,
+    ),
+    results,
+    primaryResult: results[0] ?? null,
+  }
+}
+
+/**
+ * Gửi loại xe do Staff sửa để backend lưu dữ liệu huấn luyện AI.
+ */
+export async function submitVehicleVisionFeedback(
+  {
+    imageBlob,
+    licensePlate,
+    predictedVehicleTypeId,
+    actualVehicleTypeId,
+    actualBrand,
+    actualModel,
+  },
+  options = {},
+) {
+  const formData = new FormData()
+  formData.append('image', imageBlob, 'vehicle-feedback.jpg')
+  formData.append('licensePlate', String(licensePlate ?? '').trim().toUpperCase())
+  if (Number(predictedVehicleTypeId) > 0) {
+    formData.append('predictedVehicleTypeId', String(Number(predictedVehicleTypeId)))
+  }
+  formData.append('actualVehicleTypeId', String(Number(actualVehicleTypeId)))
+  if (String(actualBrand ?? '').trim()) {
+    formData.append('actualBrand', String(actualBrand).trim())
+  }
+  if (String(actualModel ?? '').trim()) {
+    formData.append('actualModel', String(actualModel).trim())
+  }
+
+  const data = await cameraRequest('/api/lpr/feedback', {
+    method: 'POST',
+    body: formData,
+    timeoutMs: 60_000,
+    ...options,
+  })
+  const root = data && typeof data === 'object' ? data : {}
+  const payload = root.data && typeof root.data === 'object' ? root.data : root
+
+  return {
+    feedbackId: payload.feedbackId != null ? Number(payload.feedbackId) : null,
+    imageUrl: String(payload.imageUrl ?? '').trim() || null,
   }
 }
 
 export async function cameraCheckInByPlate(licensePlate, options = {}) {
   const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
-  const data = await cameraRequest(`/api/v1/camera/check-in?${params}`, {
+  const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-in?${params}`), {
     method: 'POST',
     timeoutMs: 30_000,
     ...options,
@@ -147,7 +234,7 @@ export async function cameraCheckInByPlate(licensePlate, options = {}) {
  */
 export async function cameraCheckOutByPlate(licensePlate, options = {}) {
   const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
-  const data = await cameraRequest(`/api/v1/camera/check-out?${params}`, {
+  const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-out?${params}`), {
     method: 'POST',
     timeoutMs: 30_000,
     ...options,
@@ -166,7 +253,7 @@ export async function automatedWashCheckIn(
     branchId: String(branchId ?? 1),
     autoStart: String(autoStart !== false),
   })
-  const data = await cameraRequest(`/api/v1/automated-wash/check-in?${params}`, {
+  const data = await apiRequest(buildCameraUrl(`/api/v1/automated-wash/check-in?${params}`), {
     method: 'POST',
     timeoutMs: 30_000,
     ...options,

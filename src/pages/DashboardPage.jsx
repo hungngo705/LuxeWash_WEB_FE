@@ -30,6 +30,7 @@ import {
   reportStaffExtraMaterialUsage,
   smartLookupLicensePlate,
   staffCheckinBooking,
+  submitVehicleVisionFeedback,
   updateStaffBookingStatus,
 } from "../api";
 import { formatDateTime, formatVnd } from "../utils/format";
@@ -38,6 +39,7 @@ import {
   canStartWash,
   getLaneAssignmentState,
   getLaneDisplayName,
+  hasAssignedLane,
 } from "../utils/laneAssignment";
 
 function normalizePlate(plate) {
@@ -159,16 +161,53 @@ function isPaidPaymentStatus(status) {
   return ["completed", "paid", "success", "succeeded"].includes(normalized);
 }
 
+function mergeStaffCheckInResult(booking, result) {
+  if (!booking || !result?.hasAdmissionDecision) return null;
+  if (
+    result.bookingId != null &&
+    Number(result.bookingId) !== Number(booking.bookingId)
+  ) {
+    return null;
+  }
+
+  return {
+    ...booking,
+    licensePlate: result.licensePlate || booking.licensePlate,
+    status: result.bookingStatus || booking.status,
+    processingLaneId: result.isWaiting ? undefined : result.laneId,
+    processingLaneName: result.isWaiting ? undefined : result.laneName,
+    isWaitingForLane: result.isWaiting,
+    barrierCommandId: result.barrierCommandId,
+    barrierCommandCreated: result.barrierCommandCreated,
+    admissionStatus: result.admissionStatus,
+  };
+}
+
+function getCheckInSuccessMessage(booking) {
+  const plate = booking?.licensePlate || "xe";
+  if (booking?.status === "Processing" && hasAssignedLane(booking)) {
+    const laneName = getLaneDisplayName(booking, "");
+    return laneName
+      ? `Xe ${plate} đã check-in và được phân vào ${laneName}.`
+      : `Xe ${plate} đã check-in và bắt đầu vào làn.`;
+  }
+  return `Xe ${plate} đã check-in và đang chờ làn trống.`;
+}
+
 function publishBookingLaneState(booking) {
   if (!booking?.licensePlate) return null;
   const state = getLaneAssignmentState(booking);
-  if (state === "assigned" || state === "processing") {
+  if (
+    state === "assigned" ||
+    (state === "processing" && hasAssignedLane(booking))
+  ) {
     return publishLaneDisplayEvent({
       type: "assigned",
       plate: booking.licensePlate,
       bookingId: booking.bookingId,
       laneId: booking.processingLaneId,
       laneName: getLaneDisplayName(booking, ""),
+      barrierCommandId: booking.barrierCommandId,
     });
   }
   if (state === "payment") {
@@ -267,6 +306,20 @@ function StatusBadge({ status }) {
 
 function RankBadge({ rankName, tierPoints }) {
   return <TierBadge tierName={rankName} tierPoints={tierPoints} />;
+}
+
+function isVipQueueCustomer(customer) {
+  if (customer?.isVip === true) return true;
+
+  const tierPoints = Number(customer?.customerTierPoints);
+  if (Number.isFinite(tierPoints) && tierPoints >= 5000) return true;
+
+  const tierName = String(customer?.rankName ?? customer?.customerTierName ?? "")
+    .trim()
+    .toLowerCase();
+  return ["gold", "platinum", "diamond"].some((tier) =>
+    tierName.includes(tier),
+  );
 }
 
 function PaymentStatusBadge({ status }) {
@@ -571,6 +624,9 @@ function PlateLookupPanel({
 }
 
 function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
+  const vipItems = items.filter(isVipQueueCustomer);
+  const regularItems = items.filter((item) => !isVipQueueCustomer(item));
+
   return (
     <section className="glass-panel soft-shadow mt-4 flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="flex shrink-0 items-center justify-between border-b border-outline-variant bg-surface-container-low p-4">
@@ -579,17 +635,58 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
             format_list_numbered
           </span>
           <h3 className="font-sora text-lg font-semibold text-on-surface">
-            Đã check-in — chờ rửa
+            Hai làn xếp hàng cổng vào
           </h3>
         </div>
         <span className="rounded border border-primary/25 bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
           {items.length} xe
         </span>
       </div>
-      <div className="max-h-72 space-y-2 overflow-y-auto p-3">
+      <div className="grid gap-3 p-3 sm:grid-cols-2">
+        <QueueLaneColumn
+          title="Làn thường"
+          icon="directions_car"
+          accentClass="text-primary"
+          items={regularItems}
+          selectedBookingId={selectedBookingId}
+          onSelect={onSelect}
+        />
+        <QueueLaneColumn
+          title="Làn VIP"
+          icon="workspace_premium"
+          accentClass="text-amber-600"
+          items={vipItems}
+          selectedBookingId={selectedBookingId}
+          onSelect={onSelect}
+        />
+      </div>
+    </section>
+  );
+}
+
+function QueueLaneColumn({
+  title,
+  icon,
+  accentClass,
+  items,
+  selectedBookingId,
+  onSelect,
+}) {
+  return (
+    <div className="min-w-0 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low">
+      <div className="flex items-center justify-between border-b border-outline-variant px-3 py-2">
+        <div className={`flex items-center gap-2 font-semibold ${accentClass}`}>
+          <span className="material-symbols-outlined text-[18px]">{icon}</span>
+          <span>{title}</span>
+        </div>
+        <span className="rounded-full bg-surface-container-lowest px-2 py-0.5 text-xs font-semibold text-on-surface-variant">
+          {items.length}
+        </span>
+      </div>
+      <div className="max-h-72 space-y-2 overflow-y-auto p-2">
         {items.length === 0 ? (
-          <p className="py-6 text-center text-sm text-on-surface-variant">
-            Chưa có xe check-in trong chi nhánh.
+          <p className="py-5 text-center text-xs text-on-surface-variant">
+            Chưa có xe trong làn.
           </p>
         ) : (
           items.map((item) => {
@@ -599,37 +696,35 @@ function CheckedInQueuePanel({ items, selectedBookingId, onSelect }) {
                 key={item.bookingId}
                 type="button"
                 onClick={() => onSelect(item)}
-                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                className={`w-full rounded-lg border p-2.5 text-left transition-colors ${
                   selected
                     ? "border-primary bg-primary/10 shadow-sm"
-                    : "border-outline-variant bg-surface-container-low hover:border-primary/35"
+                    : "border-outline-variant bg-surface-container-lowest hover:border-primary/35"
                 }`}
               >
-                <span className="material-symbols-outlined text-2xl text-primary">
-                  directions_car
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-sora text-lg font-bold tracking-wide text-on-surface">
-                      {item.licensePlate}
-                    </span>
-                    <RankBadge rankName={item.rankName} tierPoints={item.customerTierPoints} />
-                  </div>
-                  <p className="truncate text-sm text-on-surface">
-                    {item.customerName && item.customerName !== "—"
-                      ? item.customerName
-                      : "Khách vãng lai"}
-                  </p>
-                  <p className="text-xs text-on-surface-variant">
-                    {item.serviceName}
-                  </p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-sora text-base font-bold tracking-wide text-on-surface">
+                    {item.licensePlate}
+                  </span>
+                  <RankBadge
+                    rankName={item.rankName}
+                    tierPoints={item.customerTierPoints}
+                  />
                 </div>
+                <p className="mt-1 truncate text-xs text-on-surface">
+                  {item.customerName && item.customerName !== "—"
+                    ? item.customerName
+                    : "Khách vãng lai"}
+                </p>
+                <p className="truncate text-xs text-on-surface-variant">
+                  {item.serviceName}
+                </p>
               </button>
             );
           })
         )}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -642,6 +737,37 @@ function isPayOsConfigurationError(err) {
 
 function getVehicleTypeId(type) {
   return Number(type?.vehicleTypeId ?? type?.id ?? 0);
+}
+
+function normalizeVehicleTypeLabel(value) {
+  return String(value ?? "")
+    .trim()
+    .toLocaleLowerCase("vi-VN")
+    .replace(/\s+/g, " ");
+}
+
+function findVehicleTypeIdByName(vehicleTypes, vehicleTypeName) {
+  const normalizedName = normalizeVehicleTypeLabel(vehicleTypeName);
+  if (!normalizedName) return undefined;
+
+  const exact = vehicleTypes.find((type) => {
+    const typeName = normalizeVehicleTypeLabel(
+      type?.name ?? type?.vehicleTypeName,
+    );
+    return typeName === normalizedName;
+  });
+  if (exact) return getVehicleTypeId(exact) || undefined;
+
+  const partial = vehicleTypes.find((type) => {
+    const typeName = normalizeVehicleTypeLabel(
+      type?.name ?? type?.vehicleTypeName,
+    );
+    return (
+      typeName &&
+      (typeName.includes(normalizedName) || normalizedName.includes(typeName))
+    );
+  });
+  return partial ? getVehicleTypeId(partial) || undefined : undefined;
 }
 
 function isFallbackVehicleType(type) {
@@ -683,6 +809,11 @@ function PersonalWalkInPanel({
         { value: "PayOS", label: "PayOS" },
       ];
   const selectedVehicleTypeId = Number(draft.vehicleTypeId) || 0;
+  const vehicleVision = draft.vehicleVision;
+  const visionConfidence = Number(vehicleVision?.confidence);
+  const visionConfidenceLabel = Number.isFinite(visionConfidence)
+    ? `${Math.round(visionConfidence <= 1 ? visionConfidence * 100 : visionConfidence)}%`
+    : null;
 
   return (
     <section className="glass-panel soft-shadow mt-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -713,9 +844,17 @@ function PersonalWalkInPanel({
       <div className="space-y-4 p-4">
         {isRegisteredCustomer ? (
           <div className="rounded-xl border border-primary/25 bg-primary-container/10 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-              Khách đã đăng ký
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                Khách đã đăng ký
+              </p>
+              {(draft.customerTierName || draft.customerTierPoints != null) && (
+                <RankBadge
+                  rankName={draft.customerTierName}
+                  tierPoints={draft.customerTierPoints}
+                />
+              )}
+            </div>
             <p className="mt-1 font-semibold text-on-surface">
               {draft.customerName || `Customer #${draft.userId}`}
             </p>
@@ -731,6 +870,59 @@ function PersonalWalkInPanel({
             <p className="mt-1 text-sm text-on-surface-variant">
               Chưa có tài khoản trong hệ thống, booking sẽ gửi userId = 0.
             </p>
+          </div>
+        )}
+
+        {vehicleVision && (
+          <div
+            className={`rounded-xl border p-3 ${
+              vehicleVision.isOverriddenByHistory
+                ? "border-emerald-500/35 bg-emerald-500/10"
+                : "border-amber-500/40 bg-amber-500/10"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={`material-symbols-outlined text-xl ${
+                  vehicleVision.isOverriddenByHistory
+                    ? "text-emerald-700"
+                    : "text-amber-700"
+                }`}
+              >
+                {vehicleVision.isOverriddenByHistory ? "verified" : "neurology"}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-on-surface">
+                  {vehicleVision.isOverriddenByHistory
+                    ? "Loại xe từ hồ sơ đã lưu"
+                    : "AI dự đoán loại xe"}
+                </p>
+                <p className="mt-1 font-semibold text-on-surface">
+                  {vehicleVision.predictedVehicleTypeName || "Chưa xác định"}
+                  {visionConfidenceLabel ? ` · ${visionConfidenceLabel}` : ""}
+                </p>
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  {vehicleVision.isOverriddenByHistory
+                    ? "Kết quả đã được đối chiếu theo biển số khách quen."
+                    : "Vui lòng kiểm tra và chọn lại loại xe nếu AI nhận diện sai."}
+                </p>
+                {vehicleVision.feedbackStatus === "submitting" && (
+                  <p className="mt-2 text-xs font-semibold text-primary">
+                    Đang gửi phản hồi cho AI...
+                  </p>
+                )}
+                {vehicleVision.feedbackStatus === "submitted" && (
+                  <p className="mt-2 text-xs font-semibold text-emerald-700">
+                    Đã ghi nhận loại xe Staff sửa để huấn luyện AI.
+                  </p>
+                )}
+                {vehicleVision.feedbackStatus === "error" && (
+                  <p className="mt-2 text-xs font-semibold text-error">
+                    Chưa gửi được phản hồi AI. Việc tạo check-in vẫn có thể tiếp tục.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -1379,7 +1571,11 @@ export default function DashboardPage() {
         for (const task of enriched) {
           const previous = taskLaneSnapshotRef.current.get(Number(task.bookingId))
           const current = nextSnapshot.get(Number(task.bookingId))
-          if (previous !== current && (task.processingLaneId || task.processingLaneName)) {
+          if (
+            previous !== current &&
+            hasAssignedLane(task) &&
+            ["assigned", "processing"].includes(getLaneAssignmentState(task))
+          ) {
             publishBookingLaneState(task)
           }
         }
@@ -1549,7 +1745,68 @@ export default function DashboardPage() {
           }
         : draft,
     );
-  }, []);
+
+    const vision = walkInDraft?.vehicleVision;
+    const predictedVehicleTypeId = Number(vision?.predictedVehicleTypeId) || undefined;
+    const changedFromPrediction =
+      Boolean(nextVehicleTypeId) &&
+      Boolean(vision?.imageBlob) &&
+      !vision?.isOverriddenByHistory &&
+      vision?.feedbackStatus !== "submitting" &&
+      vision?.feedbackStatus !== "submitted" &&
+      (predictedVehicleTypeId
+        ? Number(nextVehicleTypeId) !== predictedVehicleTypeId
+        : Number(nextVehicleTypeId) !== Number(walkInDraft?.vehicleTypeId));
+
+    if (!changedFromPrediction) return;
+
+    const licensePlate = walkInDraft.licensePlate;
+    setWalkInDraft((draft) =>
+      draft && normalizePlate(draft.licensePlate) === normalizePlate(licensePlate)
+        ? {
+            ...draft,
+            vehicleVision: {
+              ...draft.vehicleVision,
+              feedbackStatus: "submitting",
+            },
+          }
+        : draft,
+    );
+
+    void submitVehicleVisionFeedback({
+      imageBlob: vision.imageBlob,
+      licensePlate,
+      predictedVehicleTypeId,
+      actualVehicleTypeId: nextVehicleTypeId,
+    })
+      .then((feedback) => {
+        setWalkInDraft((draft) =>
+          draft && normalizePlate(draft.licensePlate) === normalizePlate(licensePlate)
+            ? {
+                ...draft,
+                vehicleVision: {
+                  ...draft.vehicleVision,
+                  feedbackStatus: "submitted",
+                  feedbackId: feedback.feedbackId,
+                },
+              }
+            : draft,
+        );
+      })
+      .catch(() => {
+        setWalkInDraft((draft) =>
+          draft && normalizePlate(draft.licensePlate) === normalizePlate(licensePlate)
+            ? {
+                ...draft,
+                vehicleVision: {
+                  ...draft.vehicleVision,
+                  feedbackStatus: "error",
+                },
+              }
+            : draft,
+        );
+      });
+  }, [walkInDraft]);
 
   const handleCreatePersonalWalkIn = useCallback(async () => {
     if (!walkInDraft) return;
@@ -1583,8 +1840,16 @@ export default function DashboardPage() {
         cancelUrl: returnUrl,
       });
       const isPendingPayOs = Boolean(bookingResult?.paymentUrl);
+      const normalizedBooking = normalizeStaffTask(bookingResult);
       const booking = {
-        ...normalizeStaffTask(bookingResult),
+        ...normalizedBooking,
+        rankName:
+          normalizedBooking.rankName && normalizedBooking.rankName !== "—"
+            ? normalizedBooking.rankName
+            : walkInDraft.customerTierName || "—",
+        customerTierPoints:
+          normalizedBooking.customerTierPoints ?? walkInDraft.customerTierPoints,
+        isVip: normalizedBooking.isVip === true || walkInDraft.isVip === true,
         paymentMethod: walkInDraft.paymentMethod,
         paymentStatus: isPendingPayOs ? "Pending" : "Completed",
       };
@@ -1701,6 +1966,9 @@ export default function DashboardPage() {
           userId: lookup.walkInCustomer?.userId ?? 0,
           customerName: lookup.walkInCustomer?.customerName ?? "",
           phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+          customerTierName: lookup.walkInCustomer?.customerTierName,
+          customerTierPoints: lookup.walkInCustomer?.customerTierPoints,
+          isVip: lookup.walkInCustomer?.isVip === true,
           vehicleId: lookup.walkInCustomer?.vehicleId,
           vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
           paymentMethod: "Cash",
@@ -1749,6 +2017,40 @@ export default function DashboardPage() {
       publishLaneDisplayEvent({ type: "reading", plate });
     }
 
+    let queueLaneValidated =
+      meta?.operationMode === "exit" || !meta?.queueLaneType;
+
+    const validatePhysicalQueueLane = (customer) => {
+      if (queueLaneValidated) return null;
+
+      const customerIsVip = isVipQueueCustomer(customer);
+      const expectedLaneType = customerIsVip ? "vip" : "regular";
+      if (meta.queueLaneType === expectedLaneType) {
+        queueLaneValidated = true;
+        return null;
+      }
+
+      const currentLaneLabel =
+        meta.queueLaneType === "vip" ? "làn VIP" : "làn thường";
+      const expectedLaneLabel =
+        expectedLaneType === "vip" ? "làn VIP" : "làn thường";
+      const message = `Xe ${plate} đang đứng sai làn (${currentLaneLabel}). Yêu cầu xe chuyển sang ${expectedLaneLabel} rồi quét lại.`;
+
+      setLookupError(message);
+      showToast(message, "error");
+      publishLaneDisplayEvent({
+        type: "assistance",
+        plate,
+        message: `Vui lòng chuyển sang ${expectedLaneLabel}`,
+      });
+
+      return {
+        status: "needs-action",
+        type: "error",
+        message,
+      };
+    };
+
     const syncFreshBooking = async (booking) => {
       const freshTasks = await loadStaffTasks();
       const updated = Array.isArray(freshTasks)
@@ -1772,8 +2074,11 @@ export default function DashboardPage() {
           });
           return next;
         }
-        await staffCheckinBooking(next.bookingId);
-        next = await syncFreshBooking({ ...next, status: "Checked-in" });
+        const checkInResult = await staffCheckinBooking(next.bookingId);
+        const admittedBooking =
+          mergeStaffCheckInResult(next, checkInResult) ??
+          { ...next, status: "Checked-in" };
+        next = await syncFreshBooking(admittedBooking);
       } else {
         next = await syncFreshBooking(next);
       }
@@ -1786,12 +2091,20 @@ export default function DashboardPage() {
       const cameraBooking = await cameraCheckInByPlate(plate);
       const freshTasks = await loadStaffTasks();
       const freshBooking = Array.isArray(freshTasks)
-        ? freshTasks.find((task) => Number(task.bookingId) === Number(cameraBooking.bookingId))
+        ? freshTasks.find(
+            (task) =>
+              Number(task.bookingId) === Number(cameraBooking.bookingId),
+          ) ??
+          freshTasks.find(
+            (task) =>
+              normalizePlate(task?.licensePlate ?? task?.plateNumber) ===
+              normalizePlate(plate),
+          )
         : null;
       const authoritativeBooking = freshBooking ?? cameraBooking;
       await applySelectedBooking(authoritativeBooking);
       publishBookingLaneState(authoritativeBooking);
-      const message = `Camera đã check-in xe ${plate}.`;
+      const message = getCheckInSuccessMessage(authoritativeBooking);
       showToast(message);
       return { message };
     };
@@ -1848,6 +2161,13 @@ export default function DashboardPage() {
       );
 
       if (existing) {
+        const laneMismatch = validatePhysicalQueueLane(existing);
+        if (laneMismatch) {
+          await applySelectedBooking(existing, {
+            message: laneMismatch.message,
+          });
+          return laneMismatch;
+        }
         const updated = await checkInBooking(existing);
         return {
           status: updated.status === "Pending" ? "needs-action" : undefined,
@@ -1859,6 +2179,13 @@ export default function DashboardPage() {
 
       if (lookup.customerType === "PreBooked" && lookup.booking) {
         const booking = normalizeStaffTask(lookup.booking);
+        const laneMismatch = validatePhysicalQueueLane(booking);
+        if (laneMismatch) {
+          await applySelectedBooking(booking, {
+            message: laneMismatch.message,
+          });
+          return laneMismatch;
+        }
 
         if (booking.status === "Pending") {
           try {
@@ -1866,7 +2193,7 @@ export default function DashboardPage() {
             const message =
               updated.status === "Pending"
                 ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
-                : `Đã check-in xe ${plate} vào làn Staff.`;
+                : getCheckInSuccessMessage(updated);
             showToast(message);
             return { message };
           } catch {
@@ -1889,6 +2216,9 @@ export default function DashboardPage() {
       }
 
       if (lookup.customerType === "Fleet") {
+        const laneMismatch = validatePhysicalQueueLane(lookup);
+        if (laneMismatch) return laneMismatch;
+
         const branchId = Number(laneAssignment?.branchId);
         setWalkInDraft(null);
         setSelectedBooking(null);
@@ -1918,6 +2248,12 @@ export default function DashboardPage() {
       }
 
       if (lookup.customerType === "WalkIn") {
+        const laneMismatch = validatePhysicalQueueLane({
+          ...lookup,
+          ...lookup.walkInCustomer,
+        });
+        if (laneMismatch) return laneMismatch;
+
         const branchId = Number(laneAssignment?.branchId);
         setSelectedBooking(null);
 
@@ -1929,6 +2265,17 @@ export default function DashboardPage() {
           return { status: "needs-action", type: "error", message };
         }
 
+        const vehicleRecognition = meta?.vehicleRecognition;
+        const primaryVisionResult = vehicleRecognition?.primaryResult;
+        const predictedVehicleTypeId = findVehicleTypeIdByName(
+          vehicleTypes,
+          primaryVisionResult?.vehicleType,
+        );
+        const storedVehicleTypeId =
+          Number(lookup.walkInCustomer?.vehicleTypeId) || undefined;
+        const selectedVehicleTypeId =
+          storedVehicleTypeId ?? predictedVehicleTypeId;
+
         setWalkInDraft({
           licensePlate: plate,
           branchId,
@@ -1936,9 +2283,28 @@ export default function DashboardPage() {
           userId: lookup.walkInCustomer?.userId ?? 0,
           customerName: lookup.walkInCustomer?.customerName ?? "",
           phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+          customerTierName: lookup.walkInCustomer?.customerTierName,
+          customerTierPoints: lookup.walkInCustomer?.customerTierPoints,
+          isVip: lookup.walkInCustomer?.isVip === true,
           vehicleId: lookup.walkInCustomer?.vehicleId,
-          vehicleTypeId: lookup.walkInCustomer?.vehicleTypeId,
+          vehicleTypeId: selectedVehicleTypeId,
           paymentMethod: "Cash",
+          vehicleVision:
+            meta?.imageBlob && primaryVisionResult
+              ? {
+                  imageBlob: meta.imageBlob,
+                  predictedVehicleTypeId,
+                  predictedVehicleTypeName:
+                    primaryVisionResult.vehicleType || "",
+                  predictedBrand: primaryVisionResult.predictedBrand,
+                  predictedModel: primaryVisionResult.predictedModel,
+                  confidence: primaryVisionResult.confidence,
+                  isOverriddenByHistory: Boolean(
+                    vehicleRecognition?.isOverriddenByHistory,
+                  ),
+                  feedbackStatus: "idle",
+                }
+              : null,
         });
         setLookupError("Camera đã nhận diện khách vãng lai cá nhân. Chọn dịch vụ để tạo check-in.");
         publishLaneDisplayEvent({
@@ -1960,6 +2326,18 @@ export default function DashboardPage() {
       return { status: "needs-action", type: "error", message };
     } catch (err) {
       if (meta?.operationMode === 'exit') throw err;
+      if (meta?.queueLaneType && !queueLaneValidated) {
+        const message = `Chưa xác định được hạng của xe ${plate}; giữ nguyên check-in và yêu cầu Staff kiểm tra làn.`;
+        setWalkInDraft(null);
+        setSelectedBooking(null);
+        setLookupError(message);
+        publishLaneDisplayEvent({
+          type: "assistance",
+          plate,
+          message: "Vui lòng chờ Staff kiểm tra làn",
+        });
+        return { status: "needs-action", type: "error", message };
+      }
       try {
         return await fallbackCameraCheckIn();
       } catch (fallbackErr) {
@@ -1984,6 +2362,7 @@ export default function DashboardPage() {
     loadStaffTasks,
     loadWalkInServices,
     staffTasks,
+    vehicleTypes,
   ]);
 
   const handleStartProcessing = useCallback(async () => {
@@ -2042,26 +2421,34 @@ export default function DashboardPage() {
     }
     setCheckingIn(true);
     try {
-      await staffCheckinBooking(selectedBooking.bookingId);
-      showToast(`Xe ${selectedBooking.licensePlate} đã check-in thành công.`);
+      const checkInResult = await staffCheckinBooking(selectedBooking.bookingId);
+      const responseBooking = mergeStaffCheckInResult(
+        selectedBooking,
+        checkInResult,
+      );
       const freshTasks = await loadStaffTasks();
-      const updated = freshTasks?.find(
+      const freshBooking = freshTasks?.find(
         (t) => Number(t.bookingId) === Number(selectedBooking.bookingId),
       );
+      const updated = freshBooking
+        ? {
+            ...responseBooking,
+            ...freshBooking,
+            barrierCommandId: checkInResult.barrierCommandId,
+            barrierCommandCreated: checkInResult.barrierCommandCreated,
+            admissionStatus: checkInResult.admissionStatus,
+          }
+        : responseBooking;
       if (updated) {
         setSelectedBooking(updated);
         publishBookingLaneState(updated);
+        showToast(getCheckInSuccessMessage(updated));
       } else {
-        try {
-          const enriched = await enrichStaffBooking(selectedBooking, { allowStandaloneFetch: true });
-          setSelectedBooking(enriched);
-          setStaffTasks((prev) => upsertStaffTaskList(prev, enriched));
-          publishBookingLaneState(enriched);
-        } catch {
-          const fallback = { ...selectedBooking, status: "Checked-in" };
-          setSelectedBooking(fallback);
-          publishBookingLaneState(fallback);
-        }
+        const message =
+          "Backend trả về thành công nhưng booking chưa chuyển sang CheckedIn/Processing. " +
+          "Vui lòng kiểm tra lại trạng thái làn trước khi cho xe qua barie.";
+        setLookupError(message);
+        showToast(message, "error");
       }
     } catch (err) {
       const msg =
