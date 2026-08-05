@@ -8,10 +8,26 @@ import {
 const SCAN_INTERVAL_MS = 3000
 const PLATE_COOLDOWN_MS = 8000
 const MAX_LOGS = 9
+const MIN_REGION_ZOOM = 1
+const MAX_REGION_ZOOM = 4
+const REGION_ZOOM_STEP = 0.25
 const CAMERA_STORAGE_KEYS = {
   entry: 'luxewash:camera:entry-device-id',
   exit: 'luxewash:camera:exit-device-id',
   entryLeftIsVip: 'luxewash:camera:entry-left-is-vip',
+  activeMode: 'luxewash:camera:active-gate',
+}
+
+function createInitialRegionViews() {
+  return {
+    left: { zoom: MIN_REGION_ZOOM, panX: 0, panY: 0 },
+    right: { zoom: MIN_REGION_ZOOM, panX: 0, panY: 0 },
+    full: { zoom: MIN_REGION_ZOOM, panX: 0, panY: 0 },
+  }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
 }
 
 const STATUS_META = {
@@ -113,6 +129,16 @@ function saveCameraId(mode, deviceId) {
   }
 }
 
+function getStoredActiveMode() {
+  try {
+    return window.localStorage.getItem(CAMERA_STORAGE_KEYS.activeMode) === 'exit'
+      ? 'exit'
+      : 'entry'
+  } catch {
+    return 'entry'
+  }
+}
+
 function getStoredLeftLaneIsVip() {
   try {
     return window.localStorage.getItem(CAMERA_STORAGE_KEYS.entryLeftIsVip) === 'true'
@@ -139,8 +165,10 @@ function CameraStation({
 }) {
   const stationMeta = STATION_META[mode]
   const videoRef = useRef(null)
+  const previewVideoRefs = useRef({ left: null, right: null })
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
+  const dragRef = useRef(null)
   const busyRef = useRef(false)
   const scanAbortRef = useRef(null)
   const cooldownUntilRef = useRef(0)
@@ -156,6 +184,9 @@ function CameraStation({
   const [carCount, setCarCount] = useState(0)
   const [cameraRetryKey, setCameraRetryKey] = useState(0)
   const [leftLaneIsVip, setLeftLaneIsVip] = useState(getStoredLeftLaneIsVip)
+  const [regionViews, setRegionViews] = useState(createInitialRegionViews)
+  const regionViewsRef = useRef(regionViews)
+  const [draggingRegion, setDraggingRegion] = useState(null)
   const [logs, setLogs] = useState(() => [
     {
       id: 'init',
@@ -193,7 +224,10 @@ function CameraStation({
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
-    if (videoRef.current) videoRef.current.srcObject = null
+    const videoElements = [videoRef.current, ...Object.values(previewVideoRefs.current)]
+    videoElements.forEach((video) => {
+      if (video) video.srcObject = null
+    })
     setCameraReady(false)
   }, [])
 
@@ -232,10 +266,12 @@ function CameraStation({
         }
 
         streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          await videoRef.current.play().catch(() => undefined)
-        }
+        const videoElements = [videoRef.current, ...Object.values(previewVideoRefs.current)]
+          .filter(Boolean)
+        await Promise.all(videoElements.map(async (video) => {
+          video.srcObject = stream
+          await video.play().catch(() => undefined)
+        }))
 
         setCameraReady(true)
         setStatus(scanEnabledRef.current && !disabledRef.current ? 'scanning' : 'paused')
@@ -265,8 +301,13 @@ function CameraStation({
 
     const width = video.videoWidth || 640
     const height = video.videoHeight || 480
-    const sourceX = region === 'right' ? Math.floor(width / 2) : 0
     const sourceWidth = region === 'full' ? width : Math.floor(width / 2)
+    const baseSourceX = region === 'right' ? width - sourceWidth : 0
+    const view = regionViewsRef.current[region]
+    const cropWidth = sourceWidth / view.zoom
+    const cropHeight = height / view.zoom
+    const sourceX = baseSourceX + ((sourceWidth - cropWidth) * (view.panX + 1)) / 2
+    const sourceY = ((height - cropHeight) * (view.panY + 1)) / 2
     canvas.width = sourceWidth
     canvas.height = height
 
@@ -276,9 +317,9 @@ function CameraStation({
     ctx.drawImage(
       video,
       sourceX,
-      0,
-      sourceWidth,
-      height,
+      sourceY,
+      cropWidth,
+      cropHeight,
       0,
       0,
       sourceWidth,
@@ -290,6 +331,74 @@ function CameraStation({
         else reject(new Error('Không thể chụp khung hình camera.'))
       }, 'image/jpeg', 0.82)
     })
+  }, [])
+
+  const updateRegionView = useCallback((region, updater) => {
+    setRegionViews((currentViews) => {
+      const currentView = currentViews[region]
+      const nextView = typeof updater === 'function' ? updater(currentView) : updater
+      const nextViews = { ...currentViews, [region]: nextView }
+      regionViewsRef.current = nextViews
+      return nextViews
+    })
+  }, [])
+
+  const changeRegionZoom = useCallback((region, delta) => {
+    updateRegionView(region, (currentView) => {
+      const zoom = clamp(
+        Math.round((currentView.zoom + delta) * 100) / 100,
+        MIN_REGION_ZOOM,
+        MAX_REGION_ZOOM,
+      )
+      return {
+        zoom,
+        panX: zoom === MIN_REGION_ZOOM ? 0 : currentView.panX,
+        panY: zoom === MIN_REGION_ZOOM ? 0 : currentView.panY,
+      }
+    })
+  }, [updateRegionView])
+
+  const resetRegionView = useCallback((region) => {
+    updateRegionView(region, { zoom: MIN_REGION_ZOOM, panX: 0, panY: 0 })
+  }, [updateRegionView])
+
+  const handleRegionPointerDown = useCallback((event, region) => {
+    const view = regionViewsRef.current[region]
+    if (view.zoom <= MIN_REGION_ZOOM || event.button !== 0) return
+
+    const rect = event.currentTarget.getBoundingClientRect()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragRef.current = {
+      region,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: view.panX,
+      startPanY: view.panY,
+      width: rect.width,
+      height: rect.height,
+      zoom: view.zoom,
+    }
+    setDraggingRegion(region)
+    event.preventDefault()
+  }, [])
+
+  const handleRegionPointerMove = useCallback((event) => {
+    const drag = dragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+
+    const maxOffsetX = Math.max(1, (drag.width * (drag.zoom - 1)) / 2)
+    const maxOffsetY = Math.max(1, (drag.height * (drag.zoom - 1)) / 2)
+    const panX = clamp(drag.startPanX - (event.clientX - drag.startX) / maxOffsetX, -1, 1)
+    const panY = clamp(drag.startPanY - (event.clientY - drag.startY) / maxOffsetY, -1, 1)
+    updateRegionView(drag.region, (currentView) => ({ ...currentView, panX, panY }))
+    event.preventDefault()
+  }, [updateRegionView])
+
+  const handleRegionPointerEnd = useCallback((event) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    setDraggingRegion(null)
   }, [])
 
   const restoreScanningStatus = useCallback((delayMs = 2500) => {
@@ -628,9 +737,210 @@ function CameraStation({
         )}
 
         <div className="relative aspect-video min-h-[220px] overflow-hidden rounded-lg bg-black">
-          <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
+          {mode === 'entry' && (
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="pointer-events-none absolute h-px w-px opacity-0"
+            />
+          )}
+          {mode === 'entry' && (
+            <div className="absolute inset-0 grid grid-cols-2">
+              {[
+                { region: 'left', side: 'Trái', isVip: leftLaneIsVip },
+                { region: 'right', side: 'Phải', isVip: !leftLaneIsVip },
+              ].map((zone) => {
+                const view = regionViews[zone.region]
+                const maxTranslate = (view.zoom - 1) * 50
+                const isDragging = draggingRegion === zone.region
+
+                return (
+                  <div
+                    key={zone.region}
+                    role="region"
+                    aria-label={`Khung camera ${zone.side.toLowerCase()}`}
+                    className={`relative touch-none overflow-hidden border-2 ${
+                      zone.isVip
+                        ? 'border-amber-400/80 bg-amber-500/5'
+                        : 'border-primary-container/75 bg-primary/5'
+                    } ${view.zoom > MIN_REGION_ZOOM
+                      ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
+                      : 'cursor-default'}`}
+                    onPointerDown={(event) => handleRegionPointerDown(event, zone.region)}
+                    onPointerMove={handleRegionPointerMove}
+                    onPointerUp={handleRegionPointerEnd}
+                    onPointerCancel={handleRegionPointerEnd}
+                  >
+                    <div
+                      className="pointer-events-none absolute inset-0 overflow-hidden"
+                      style={{
+                        transform: `translate(${-view.panX * maxTranslate}%, ${-view.panY * maxTranslate}%) scale(${view.zoom})`,
+                        transformOrigin: 'center',
+                      }}
+                    >
+                      <video
+                        ref={(element) => {
+                          previewVideoRefs.current[zone.region] = element
+                        }}
+                        autoPlay
+                        muted
+                        playsInline
+                        className={`absolute top-0 h-full w-[200%] max-w-none object-cover ${
+                          zone.region === 'right' ? '-left-full' : 'left-0'
+                        }`}
+                      />
+                    </div>
+
+                    <span
+                      className={`pointer-events-none absolute left-2 top-2 z-10 rounded px-2 py-1 text-[10px] font-bold uppercase text-white ${
+                        zone.isVip ? 'bg-amber-600/90' : 'bg-primary/90'
+                      }`}
+                    >
+                      {zone.side} · {zone.isVip ? 'Làn VIP' : 'Làn thường'}
+                    </span>
+
+                    <div
+                      className="absolute right-2 top-2 z-20 flex items-center overflow-hidden rounded-lg border border-white/20 bg-black/75 text-white shadow-lg backdrop-blur"
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="flex h-8 w-8 items-center justify-center transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label={`Thu nhỏ khung ${zone.side.toLowerCase()}`}
+                        title="Thu nhỏ"
+                        disabled={view.zoom <= MIN_REGION_ZOOM}
+                        onClick={() => changeRegionZoom(zone.region, -REGION_ZOOM_STEP)}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">remove</span>
+                      </button>
+                      <span className="min-w-12 border-x border-white/15 px-1 text-center text-[10px] font-bold tabular-nums">
+                        {view.zoom.toFixed(2)}×
+                      </span>
+                      <button
+                        type="button"
+                        className="flex h-8 w-8 items-center justify-center transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label={`Phóng to khung ${zone.side.toLowerCase()}`}
+                        title="Phóng to"
+                        disabled={view.zoom >= MAX_REGION_ZOOM}
+                        onClick={() => changeRegionZoom(zone.region, REGION_ZOOM_STEP)}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">add</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex h-8 w-8 items-center justify-center border-l border-white/15 transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label={`Đặt lại khung ${zone.side.toLowerCase()}`}
+                        title="Đặt lại góc nhìn"
+                        disabled={view.zoom === MIN_REGION_ZOOM && view.panX === 0 && view.panY === 0}
+                        onClick={() => resetRegionView(zone.region)}
+                      >
+                        <span className="material-symbols-outlined text-[17px]">restart_alt</span>
+                      </button>
+                    </div>
+
+                    {view.zoom > MIN_REGION_ZOOM && (
+                      <span className="pointer-events-none absolute left-1/2 top-12 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-black/55 px-2 py-1 text-[9px] font-medium text-white/80">
+                        Kéo để di chuyển
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {mode === 'exit' && (() => {
+            const view = regionViews.full
+            const maxTranslate = (view.zoom - 1) * 50
+            const isDragging = draggingRegion === 'full'
+
+            return (
+              <div
+                role="region"
+                aria-label="Khung camera cổng ra"
+                className={`absolute inset-0 touch-none overflow-hidden ${
+                  view.zoom > MIN_REGION_ZOOM
+                    ? isDragging ? 'cursor-grabbing' : 'cursor-grab'
+                    : 'cursor-default'
+                }`}
+                onPointerDown={(event) => handleRegionPointerDown(event, 'full')}
+                onPointerMove={handleRegionPointerMove}
+                onPointerUp={handleRegionPointerEnd}
+                onPointerCancel={handleRegionPointerEnd}
+              >
+                <div
+                  className="pointer-events-none absolute inset-0 overflow-hidden"
+                  style={{
+                    transform: `translate(${-view.panX * maxTranslate}%, ${-view.panY * maxTranslate}%) scale(${view.zoom})`,
+                    transformOrigin: 'center',
+                  }}
+                >
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+
+                <div className="pointer-events-none absolute inset-4 rounded-lg border border-primary-container/60">
+                  <span className="absolute left-0 top-0 h-4 w-4 border-l-4 border-t-4 border-primary-container" />
+                  <span className="absolute right-0 top-0 h-4 w-4 border-r-4 border-t-4 border-primary-container" />
+                  <span className="absolute bottom-0 left-0 h-4 w-4 border-b-4 border-l-4 border-primary-container" />
+                  <span className="absolute bottom-0 right-0 h-4 w-4 border-b-4 border-r-4 border-primary-container" />
+                </div>
+
+                <div
+                  className="absolute right-3 top-3 z-20 flex items-center overflow-hidden rounded-lg border border-white/20 bg-black/75 text-white shadow-lg backdrop-blur"
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Thu nhỏ camera cổng ra"
+                    title="Thu nhỏ"
+                    disabled={view.zoom <= MIN_REGION_ZOOM}
+                    onClick={() => changeRegionZoom('full', -REGION_ZOOM_STEP)}
+                  >
+                    <span className="material-symbols-outlined text-[19px]">remove</span>
+                  </button>
+                  <span className="min-w-14 border-x border-white/15 px-1 text-center text-[11px] font-bold tabular-nums">
+                    {view.zoom.toFixed(2)}×
+                  </span>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 items-center justify-center transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Phóng to camera cổng ra"
+                    title="Phóng to"
+                    disabled={view.zoom >= MAX_REGION_ZOOM}
+                    onClick={() => changeRegionZoom('full', REGION_ZOOM_STEP)}
+                  >
+                    <span className="material-symbols-outlined text-[19px]">add</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 items-center justify-center border-l border-white/15 transition-colors hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Đặt lại camera cổng ra"
+                    title="Đặt lại góc nhìn"
+                    disabled={view.zoom === MIN_REGION_ZOOM && view.panX === 0 && view.panY === 0}
+                    onClick={() => resetRegionView('full')}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">restart_alt</span>
+                  </button>
+                </div>
+
+                {view.zoom > MIN_REGION_ZOOM && (
+                  <span className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-black/55 px-2 py-1 text-[10px] font-medium text-white/80">
+                    Kéo để di chuyển
+                  </span>
+                )}
+              </div>
+            )
+          })()}
           {!cameraReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/80 px-4 text-center text-sm font-semibold text-white">
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 px-4 text-center text-sm font-semibold text-white">
               {!selectedDeviceId
                 ? 'Chọn thiết bị camera cho cổng này'
                 : status === 'error'
@@ -638,39 +948,7 @@ function CameraStation({
                   : 'Đang mở camera...'}
             </div>
           )}
-          {mode === 'entry' ? (
-            <div className="pointer-events-none absolute inset-0 grid grid-cols-2">
-              {[
-                { side: 'Trái', isVip: leftLaneIsVip },
-                { side: 'Phải', isVip: !leftLaneIsVip },
-              ].map((zone) => (
-                <div
-                  key={zone.side}
-                  className={`relative border-2 ${
-                    zone.isVip
-                      ? 'border-amber-400/80 bg-amber-500/5'
-                      : 'border-primary-container/75 bg-primary/5'
-                  }`}
-                >
-                  <span
-                    className={`absolute left-2 top-2 rounded px-2 py-1 text-[10px] font-bold uppercase text-white ${
-                      zone.isVip ? 'bg-amber-600/90' : 'bg-primary/90'
-                    }`}
-                  >
-                    {zone.side} · {zone.isVip ? 'Làn VIP' : 'Làn thường'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="pointer-events-none absolute inset-4 rounded-lg border border-primary-container/60">
-              <span className="absolute left-0 top-0 h-4 w-4 border-l-4 border-t-4 border-primary-container" />
-              <span className="absolute right-0 top-0 h-4 w-4 border-r-4 border-t-4 border-primary-container" />
-              <span className="absolute bottom-0 left-0 h-4 w-4 border-b-4 border-l-4 border-primary-container" />
-              <span className="absolute bottom-0 right-0 h-4 w-4 border-b-4 border-r-4 border-primary-container" />
-            </div>
-          )}
-          <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-2">
+          <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-20 flex items-end justify-between gap-2">
             <div className="rounded-lg border border-white/15 bg-black/70 px-3 py-2 text-white backdrop-blur">
               <p className="text-[9px] font-semibold tracking-wider text-white/60 uppercase">Biển số gần nhất</p>
               <p className="font-sora text-2xl font-bold tracking-widest">{lastPlate || '---'}</p>
@@ -763,6 +1041,7 @@ export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetect
   const [devices, setDevices] = useState([])
   const [entryDeviceId, setEntryDeviceId] = useState('')
   const [exitDeviceId, setExitDeviceId] = useState('')
+  const [activeMode, setActiveMode] = useState(getStoredActiveMode)
   const [deviceError, setDeviceError] = useState('')
 
   const refreshDevices = useCallback(async ({ requestPermission = false } = {}) => {
@@ -827,6 +1106,14 @@ export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetect
     saveCameraId('exit', exitDeviceId)
   }, [exitDeviceId])
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CAMERA_STORAGE_KEYS.activeMode, activeMode)
+    } catch {
+      // The toggle still works for the current session.
+    }
+  }, [activeMode])
+
   const assignDevice = (mode, deviceId) => {
     if (mode === 'entry') {
       setEntryDeviceId(deviceId)
@@ -849,18 +1136,48 @@ export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetect
           <div className="min-w-0">
             <h2 className="font-sora text-lg font-semibold text-on-surface">Hệ thống camera cổng</h2>
             <p className="truncate text-xs font-medium text-on-surface-variant">
-              {laneLabel || 'Chưa xác định chi nhánh/làn Staff'} · hai camera hoạt động độc lập
+              {laneLabel || 'Chưa xác định chi nhánh/làn Staff'} · chọn một cổng để giám sát
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-variant"
-          onClick={() => refreshDevices({ requestPermission: true })}
-        >
-          <span className="material-symbols-outlined text-[17px]">cameraswitch</span>
-          Làm mới thiết bị
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="inline-flex rounded-lg border border-outline-variant bg-surface-container-lowest p-1"
+            role="group"
+            aria-label="Chọn camera cổng"
+          >
+            {[
+              { mode: 'entry', label: 'Cổng vào', icon: 'login' },
+              { mode: 'exit', label: 'Cổng ra', icon: 'logout' },
+            ].map((option) => {
+              const selected = activeMode === option.mode
+              return (
+                <button
+                  key={option.mode}
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    selected
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'text-on-surface-variant hover:bg-surface-variant'
+                  }`}
+                  aria-pressed={selected}
+                  onClick={() => setActiveMode(option.mode)}
+                >
+                  <span className="material-symbols-outlined text-[16px]">{option.icon}</span>
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface transition-colors hover:bg-surface-variant"
+            onClick={() => refreshDevices({ requestPermission: true })}
+          >
+            <span className="material-symbols-outlined text-[17px]">cameraswitch</span>
+            Làm mới thiết bị
+          </button>
+        </div>
       </div>
 
       {(deviceError || hasDuplicateAssignment) && (
@@ -871,21 +1188,14 @@ export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetect
         </div>
       )}
 
-      <div className="grid items-stretch gap-4 p-4 xl:grid-cols-2">
+      <div className="p-4">
         <CameraStation
-          mode="entry"
+          key={activeMode}
+          mode={activeMode}
           devices={devices}
-          selectedDeviceId={entryDeviceId}
+          selectedDeviceId={activeMode === 'entry' ? entryDeviceId : exitDeviceId}
           disabled={disabled || hasDuplicateAssignment}
-          onDeviceChange={(deviceId) => assignDevice('entry', deviceId)}
-          onPlateDetected={onPlateDetected}
-        />
-        <CameraStation
-          mode="exit"
-          devices={devices}
-          selectedDeviceId={exitDeviceId}
-          disabled={disabled || hasDuplicateAssignment}
-          onDeviceChange={(deviceId) => assignDevice('exit', deviceId)}
+          onDeviceChange={(deviceId) => assignDevice(activeMode, deviceId)}
           onPlateDetected={onPlateDetected}
         />
       </div>

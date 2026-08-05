@@ -33,6 +33,8 @@ export {
 
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
+export { ackBarrierCommand } from './barrier.api'
+
 export {
   fetchVehicleTypes,
   createVehicleType,
@@ -247,6 +249,7 @@ export { fetchMyWallet, createWalletTopUp, normalizeWallet } from './wallet.api'
 export {
   fetchStaffTasks,
   fetchStaffLaneAssignment,
+  fetchStaffLaneOccupancies,
   fetchStaffServiceHistory,
   enrichStaffBooking,
   enrichStaffTasks,

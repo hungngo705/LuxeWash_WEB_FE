@@ -29,3 +29,6 @@ docs/API Admin.md
 docs/Admin Page.md
 
 /SmartWASH-BE
+
+# ESP32 local credentials
+firmware/luxewash_barrier_esp32/secrets.h

@@ -16,6 +16,7 @@ export function subscribeLaneDisplayRealtime({
   onEvent,
   onInitialState,
   onStatusChange,
+  onBarrierCommand,
 } = {}) {
   let stopped = false
   let retryTimer = null
@@ -45,6 +46,20 @@ export function subscribeLaneDisplayRealtime({
 
   connection.on('ReceiveInitialState', (rawState) => {
     onInitialState?.(normalizeLaneDisplayState(rawState))
+  })
+
+  // Forward-compatible channel for deployments that publish the raw hardware
+  // command over SignalR instead of Firebase.
+  connection.on('ReceiveBarrierCommand', (rawCommand) => {
+    if (rawCommand && typeof rawCommand === 'object') {
+      onBarrierCommand?.({
+        commandId: String(rawCommand.commandId ?? rawCommand.CommandId ?? '').trim(),
+        barrierId: String(rawCommand.barrierId ?? rawCommand.BarrierId ?? '').trim(),
+        action: String(rawCommand.action ?? rawCommand.Action ?? 'OPEN').trim(),
+        licensePlate: String(rawCommand.licensePlate ?? rawCommand.LicensePlate ?? '').trim(),
+        expiresAt: rawCommand.expiresAt ?? rawCommand.ExpiresAt ?? null,
+      })
+    }
   })
 
   connection.onreconnecting((error) => emitStatus('reconnecting', error))
@@ -86,6 +101,7 @@ export function subscribeLaneDisplayRealtime({
     if (retryTimer) window.clearTimeout(retryTimer)
     connection.off('ReceiveLaneUpdate')
     connection.off('ReceiveInitialState')
+    connection.off('ReceiveBarrierCommand')
     void connection.stop()
   }
 }

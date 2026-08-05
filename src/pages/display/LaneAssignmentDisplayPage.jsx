@@ -74,7 +74,7 @@ const VIEW_CONFIG = {
   assistance: {
     eyebrow: 'ĐÃ NHẬN DIỆN BIỂN SỐ',
     icon: 'support_agent',
-    title: 'VUI LÒNG ĐẾN KHU VỰC TIẾP NHẬN',
+    title: 'NHÂN VIÊN ĐANG ĐẾN HỖ TRỢ',
     message: 'Nhân viên sẽ hỗ trợ tạo lượt rửa cho quý khách',
     accent: 'text-sky-300',
     glow: 'from-sky-500/25 to-indigo-600/10',
@@ -233,8 +233,20 @@ export default function LaneAssignmentDisplayPage() {
       ? 'border-rose-300/40 bg-rose-300/10 text-rose-200'
       : 'border-amber-300/40 bg-amber-300/10 text-amber-200'
   const shouldShowLane = type === 'assigned' || type === 'processing'
-  const displayMessage =
-    visibleEvent?.message ||
+  const eventMessage = String(visibleEvent?.message || '').trim()
+  const normalizedEventMessage = eventMessage.toLocaleLowerCase('vi-VN')
+  const isQueueLaneCorrection =
+    visibleEvent?.reasonCode === 'wrong_queue_lane' ||
+    normalizedEventMessage.startsWith('vui lòng chuyển sang làn')
+  const isCustomerWithoutBooking =
+    visibleEvent?.reasonCode === 'customer_without_booking' ||
+    normalizedEventMessage.startsWith('quý khách chưa có lịch rửa hôm nay')
+  const displayTitle = isQueueLaneCorrection
+    ? visibleEvent?.title || eventMessage
+    : visibleEvent?.title || config.title
+  const displayMessage = isCustomerWithoutBooking
+    ? 'Quý khách chưa có lịch rửa hôm nay.'
+    : eventMessage ||
     (isAdmissionGranted
       ? isBarrierPublished
         ? 'Barie đang mở. Vui lòng di chuyển chậm vào đúng làn được chỉ định'
@@ -291,7 +303,7 @@ export default function LaneAssignmentDisplayPage() {
             {config.icon}
           </span>
           <h1 className="max-w-6xl text-[clamp(2.25rem,5.7vw,6.5rem)] font-black leading-[1.05] tracking-tight">
-            {visibleEvent?.title || config.title}
+            {displayTitle}
           </h1>
           {shouldShowLane && laneName && (
             <div className="my-[clamp(1.5rem,4vh,3rem)]">
@@ -306,9 +318,11 @@ export default function LaneAssignmentDisplayPage() {
               )}
             </div>
           )}
-          <p className="mt-6 max-w-5xl text-[clamp(1.25rem,2.5vw,2.25rem)] font-medium leading-relaxed text-slate-300">
-            {displayMessage}
-          </p>
+          {!isQueueLaneCorrection && displayMessage && (
+            <p className="mt-6 max-w-5xl text-[clamp(1.25rem,2.5vw,2.25rem)] font-medium leading-relaxed text-slate-300">
+              {displayMessage}
+            </p>
+          )}
         </section>
 
         <footer className="flex items-end justify-between gap-4 text-sm text-slate-500">

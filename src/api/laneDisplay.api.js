@@ -93,6 +93,9 @@ export function normalizeLaneDisplayEvent(rawEvent, source = 'backend') {
     barrierCommandId: nullableString(
       firstDefined(rawEvent, 'barrierCommandId', 'BarrierCommandId'),
     ),
+    barrierId: nullableString(
+      firstDefined(rawEvent, 'barrierId', 'BarrierId'),
+    ),
     barrierStatus: nullableString(
       firstDefined(rawEvent, 'barrierStatus', 'BarrierStatus'),
     ),

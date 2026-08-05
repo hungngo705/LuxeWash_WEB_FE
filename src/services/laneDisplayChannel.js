@@ -49,6 +49,8 @@ export function publishLaneDisplayEvent(event) {
     laneName: String(event?.laneName ?? '').trim() || null,
     barrierCommandId:
       String(event?.barrierCommandId ?? '').trim() || null,
+    barrierId:
+      String(event?.barrierId ?? '').trim() || null,
     barrierStatus:
       String(event?.barrierStatus ?? '').trim() || null,
     title: String(event?.title ?? '').trim() || null,

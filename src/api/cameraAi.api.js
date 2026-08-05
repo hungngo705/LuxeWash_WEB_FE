@@ -2,6 +2,7 @@ import { API_DEFAULT_TIMEOUT_MS, CAMERA_AI_BASE_URL } from './config'
 import { apiRequest } from './client'
 import { ApiError } from './errors'
 import { normalizeStaffTask } from './operationStaff.api'
+import { normalizeVietnameseLicensePlate } from '../utils/licensePlate'
 
 function buildCameraUrl(path) {
   if (path.startsWith('http://') || path.startsWith('https://')) return path
@@ -121,14 +122,14 @@ export async function detectCameraPlate(imageBlob, options = {}) {
   const plateTexts = [
     ...new Set(
       (Array.isArray(payload.plateTexts) ? payload.plateTexts : [payload.plateText])
-        .map((plate) => String(plate ?? '').trim().toUpperCase())
+        .map(normalizeVietnameseLicensePlate)
         .filter(Boolean),
     ),
   ].slice(0, 3)
   const plateText = plateTexts[0] ?? ''
 
   if (!plateText) {
-    throw new ApiError('Không phát hiện được biển số.', 404, data)
+    throw new ApiError('Không phát hiện được biển số Việt Nam hợp lệ.', 404, data)
   }
 
   return {

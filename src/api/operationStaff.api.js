@@ -6,7 +6,12 @@ import {
   toApiTargetDate,
 } from './admin.bookings.api'
 import { fetchTransactions, normalizeTransaction } from './admin.transactions.api'
+import { fetchUserById } from './admin.users.api'
 import { findUserByLicensePlate, maskPhoneNumber } from './staff.customers.api'
+
+// Customer identity data changes rarely; keep it across dashboard polls/routes so
+// the same Staff session does not reload every user detail every 30 seconds.
+const staffUserDetailCache = new Map()
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') return null
@@ -220,7 +225,16 @@ function needsCustomerLookup(task) {
   return !task.customerName || task.customerName === '—' || !task.userId
 }
 
-async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
+function isMissingCustomerName(task) {
+  return !task.customerName || task.customerName === '—'
+}
+
+async function attachPaymentFromTransactions(
+  booking,
+  txIndex,
+  fetchOpts = {},
+  { allowFallbackFetch = true } = {},
+) {
   if (booking.paymentMethod && booking.paymentMethod !== '—') return booking
 
   const hasKnownPaymentStatus =
@@ -228,7 +242,7 @@ async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
     booking.paymentStatus !== '—'
 
   let tx = txIndex.get(Number(booking.bookingId))
-  if (!tx && txIndex.size === 0) {
+  if (!tx && txIndex.size === 0 && allowFallbackFetch) {
     try {
       const txs = await fetchTransactions(fetchOpts)
       const list = (Array.isArray(txs) ? txs : []).map(normalizeTransaction)
@@ -291,7 +305,7 @@ export async function enrichStaffBooking(booking, context = {}) {
 
   let merged = normalizeStaffTask(booking)
 
-  const { bookingsByDate, txIndex, userByPlate, signal } = context
+  const { bookingsByDate, txIndex, userById, userByPlate, signal } = context
   const fetchOpts = signal ? { signal } : {}
 
   if (bookingsByDate) {
@@ -322,8 +336,19 @@ export async function enrichStaffBooking(booking, context = {}) {
     }
   }
 
+  const userDetail = userById?.get(Number(merged.userId))
+  if (userDetail && isMissingCustomerName(merged)) {
+    merged = normalizeStaffTask({
+      ...merged,
+      customerName: userDetail.fullName,
+      phoneNumber: userDetail.phoneNumber,
+      tierName: userDetail.tierName ?? userDetail.rankName,
+    })
+  }
+
   if (
-    needsCustomerLookup(merged) &&
+    !merged.userId &&
+    isMissingCustomerName(merged) &&
     merged.licensePlate &&
     merged.licensePlate !== '—'
   ) {
@@ -351,7 +376,12 @@ export async function enrichStaffBooking(booking, context = {}) {
     }
   }
 
-  merged = await attachPaymentFromTransactions(merged, txIndex ?? new Map(), fetchOpts)
+  merged = await attachPaymentFromTransactions(
+    merged,
+    txIndex ?? new Map(),
+    fetchOpts,
+    { allowFallbackFetch: !(txIndex instanceof Map) },
+  )
   merged = attachDetailsFromSummary(merged)
 
   return merged
@@ -372,6 +402,7 @@ export async function enrichStaffTasks(tasks, options = {}) {
   const fetchOpts = signal ? { signal } : {}
 
   const dates = new Set()
+  const userIdsToLookup = new Set()
   const platesToLookup = new Set()
 
   for (const t of list) {
@@ -380,7 +411,9 @@ export async function enrichStaffTasks(tasks, options = {}) {
     dates.add(dateKey)
 
     const normalized = normalizeStaffTask(t)
-    if (
+    if (isMissingCustomerName(normalized) && Number(normalized.userId) > 0) {
+      userIdsToLookup.add(Number(normalized.userId))
+    } else if (
       needsCustomerLookup(normalized) &&
       normalized.licensePlate &&
       normalized.licensePlate !== '—'
@@ -389,9 +422,9 @@ export async function enrichStaffTasks(tasks, options = {}) {
     }
   }
 
-  const bookingsByDate = preloadedBookings
+  const bookingsByDatePromise = preloadedBookings
     ? asBookingList(preloadedBookings)
-    : await (async () => {
+    : (async () => {
         if (dates.size !== 1) return null
         const [dateKey] = dates
         try {
@@ -402,7 +435,7 @@ export async function enrichStaffTasks(tasks, options = {}) {
         }
       })()
 
-  const txIndex = await (async () => {
+  const txIndexPromise = (async () => {
     try {
       const txs = await fetchTransactions(fetchOpts)
       const list = Array.isArray(txs) ? txs : []
@@ -417,7 +450,34 @@ export async function enrichStaffTasks(tasks, options = {}) {
     }
   })()
 
-  const userByPlate = await (async () => {
+  const userByIdPromise = (async () => {
+    if (!userIdsToLookup.size) return new Map()
+    const cached = new Map(
+      [...userIdsToLookup]
+        .filter((userId) => staffUserDetailCache.has(userId))
+        .map((userId) => [userId, staffUserDetailCache.get(userId)]),
+    )
+    const missingUserIds = [...userIdsToLookup].filter(
+      (userId) => !staffUserDetailCache.has(userId),
+    )
+    const results = await Promise.all(
+      missingUserIds.map(async (userId) => {
+        try {
+          const detail = await fetchUserById(userId, fetchOpts)
+          staffUserDetailCache.set(userId, detail)
+          return [userId, detail]
+        } catch {
+          return [userId, null]
+        }
+      }),
+    )
+    return new Map([
+      ...cached,
+      ...results.filter(([, value]) => value != null),
+    ])
+  })()
+
+  const userByPlatePromise = (async () => {
     if (!platesToLookup.size) return new Map()
     const results = await Promise.all(
       [...platesToLookup].map(async (plate) => {
@@ -432,7 +492,16 @@ export async function enrichStaffTasks(tasks, options = {}) {
     return new Map(results.filter(([, v]) => v != null))
   })()
 
-  const context = { bookingsByDate, txIndex, userByPlate }
+  // These lookups are independent. Running them together prevents their network
+  // latency from accumulating on every dashboard refresh.
+  const [bookingsByDate, txIndex, userById, userByPlate] = await Promise.all([
+    bookingsByDatePromise,
+    txIndexPromise,
+    userByIdPromise,
+    userByPlatePromise,
+  ])
+
+  const context = { bookingsByDate, txIndex, userById, userByPlate }
 
   return Promise.all(
     list.map(async (task) => {
@@ -552,6 +621,20 @@ export function normalizeStaffTask(item) {
     customerTierPoints:
       flat.customerTierPoints != null ? Number(flat.customerTierPoints) : undefined,
     isVip: flat.isVip === true || flat.IsVip === true,
+    barrierCommandId:
+      String(flat.barrierCommandId ?? flat.BarrierCommandId ?? '').trim() || undefined,
+    exitBarrierCommandId:
+      String(flat.exitBarrierCommandId ?? flat.ExitBarrierCommandId ?? '').trim() || undefined,
+    barrierCommandCreated:
+      flat.barrierCommandCreated === true || flat.BarrierCommandCreated === true,
+    barrierId:
+      String(flat.barrierId ?? flat.BarrierId ?? '').trim() || undefined,
+    barrierCommandExpiresAt:
+      flat.barrierCommandExpiresAt ??
+      flat.BarrierCommandExpiresAt ??
+      flat.expiresAt ??
+      flat.ExpiresAt ??
+      null,
     serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
@@ -704,6 +787,24 @@ export function fetchStaffLaneAssignment(options = {}) {
 }
 
 /**
+ * Physical/reserved lane occupancy is the authoritative source for vehicles in wash bays.
+ * It includes both regular bookings and fleet wash logs.
+ */
+export function fetchStaffLaneOccupancies(options = {}) {
+  return apiRequest('/operation-staff/lane-occupancies', options).then((data) =>
+    (Array.isArray(data) ? data : []).map((item) => ({
+      laneId: Number(item.laneId),
+      laneName: String(item.laneName ?? ''),
+      licensePlate: String(item.licensePlate ?? ''),
+      bookingId: item.bookingId == null ? null : Number(item.bookingId),
+      fleetWashLogId:
+        item.fleetWashLogId == null ? null : Number(item.fleetWashLogId),
+      occupiedAt: item.occupiedAt ?? null,
+    })),
+  )
+}
+
+/**
  * GET /api/v1/vehicles/recognize/{licensePlate}
  * @param {string} licensePlate
  * @returns {Promise<StaffTask | null>}
@@ -807,8 +908,14 @@ export function normalizeStaffCheckInResult(item) {
     bookingStatus: isWaiting ? 'Checked-in' : isAssigned ? 'Processing' : undefined,
     laneId: Number.isFinite(laneId) ? laneId : undefined,
     laneName,
-    barrierCommandId: String(source.barrierCommandId ?? '').trim() || undefined,
-    barrierCommandCreated: source.barrierCommandCreated === true,
+    barrierCommandId:
+      String(source.barrierCommandId ?? source.BarrierCommandId ?? '').trim() || undefined,
+    barrierCommandCreated:
+      source.barrierCommandCreated === true || source.BarrierCommandCreated === true,
+    barrierId:
+      String(source.barrierId ?? source.BarrierId ?? '').trim() || undefined,
+    barrierCommandExpiresAt:
+      source.barrierCommandExpiresAt ?? source.BarrierCommandExpiresAt ?? null,
   }
 }
 

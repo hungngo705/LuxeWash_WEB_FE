@@ -16,6 +16,12 @@ export const AI_API_BASE_URL =
   import.meta.env.VITE_AI_API_BASE_URL ??
   `${CAMERA_AI_BASE_URL.replace(/\/$/, '')}/api/v1`
 
+export const ESP32_BARRIER_BASE_URL =
+  import.meta.env.VITE_ESP32_BARRIER_BASE_URL ?? 'http://luxewash-barrier.local'
+
+export const ESP32_BARRIER_DEVICE_KEY =
+  import.meta.env.VITE_ESP32_BARRIER_DEVICE_KEY ?? ''
+
 export const SESSION_STORAGE_KEY = 'luxewash_session'
 export const LEGACY_SESSION_STORAGE_KEY = 'luxewash_staff_session'
 
