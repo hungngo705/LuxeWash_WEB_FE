@@ -162,6 +162,7 @@ function CameraStation({
   disabled,
   onDeviceChange,
   onPlateDetected,
+  onVehicleFrameCaptured,
 }) {
   const stationMeta = STATION_META[mode]
   const videoRef = useRef(null)
@@ -455,6 +456,14 @@ function CameraStation({
 
         if (!carResult.hasCar) continue
 
+        onVehicleFrameCaptured?.({
+          mode,
+          imageBlob,
+          capturedAt: Date.now(),
+          queueLaneSide: target.queueLaneSide,
+          queueLaneType: target.queueLaneType,
+        })
+
         detectedCarCount += carResult.carCount || 1
         const queueLaneLabel =
           target.queueLaneType === 'vip'
@@ -629,6 +638,7 @@ function CameraStation({
     leftLaneIsVip,
     mode,
     onPlateDetected,
+    onVehicleFrameCaptured,
     restoreScanningStatus,
     scanEnabled,
   ])
@@ -1037,7 +1047,12 @@ function CameraStation({
   )
 }
 
-export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetected }) {
+export default function LiveLprFeed({
+  laneLabel,
+  disabled = false,
+  onPlateDetected,
+  onVehicleFrameCaptured,
+}) {
   const [devices, setDevices] = useState([])
   const [entryDeviceId, setEntryDeviceId] = useState('')
   const [exitDeviceId, setExitDeviceId] = useState('')
@@ -1197,6 +1212,7 @@ export default function LiveLprFeed({ laneLabel, disabled = false, onPlateDetect
           disabled={disabled || hasDuplicateAssignment}
           onDeviceChange={(deviceId) => assignDevice(activeMode, deviceId)}
           onPlateDetected={onPlateDetected}
+          onVehicleFrameCaptured={onVehicleFrameCaptured}
         />
       </div>
     </section>

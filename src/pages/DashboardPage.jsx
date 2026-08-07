@@ -65,6 +65,7 @@ const MANUAL_COMPLETION_STORAGE_KEY = "luxewash:manual-completions";
 const MANUAL_COMPLETION_TTL_MS = 10 * 60 * 1000;
 const NO_FEEDBACK_REVIEW_TTL_MS = 5_000;
 const DISMISSED_REVIEW_SUPPRESSION_MS = 60_000;
+const LATEST_CAMERA_IMAGE_MAX_AGE_MS = 15_000;
 
 function getRecentManualCompletions() {
   if (typeof window === "undefined") return [];
@@ -1563,11 +1564,16 @@ export default function DashboardPage() {
   const [barrierAlert, setBarrierAlert] = useState(null);
   const taskLaneSnapshotRef = useRef(null);
   const staffTasksRequestRef = useRef(null);
+  const latestCameraFramesRef = useRef({ entry: null, exit: null });
 
   const showToast = useCallback(
     (message, type = "success") => setToast({ message, type }),
     [],
   );
+  const handleVehicleFrameCaptured = useCallback((frame) => {
+    if (!frame?.mode || !(frame.imageBlob instanceof Blob)) return;
+    latestCameraFramesRef.current[frame.mode] = frame;
+  }, []);
   const barrierController = useBarrierController({ onNotice: showToast });
   const { executeCommand: executeBarrierCommand } = barrierController;
 
@@ -2374,6 +2380,9 @@ export default function DashboardPage() {
       let next = booking;
 
       if (next.status === "Pending") {
+        if (!(meta.imageBlob instanceof Blob)) {
+          throw new ApiError("Chưa có ảnh camera cổng vào, không thể check-in.", 400);
+        }
         if (!canCheckIn(next)) {
           await applySelectedBooking(next);
           publishLaneDisplayEvent({
@@ -2383,7 +2392,9 @@ export default function DashboardPage() {
           });
           return next;
         }
-        const checkInResult = await staffCheckinBooking(next.bookingId);
+        const checkInResult = await staffCheckinBooking(next.bookingId, {
+          checkInImage: meta.imageBlob,
+        });
         if (checkInResult.isAssigned && checkInResult.barrierCommandId) {
           const entryGate = resolveEntryBarrierGate({
             barrierId: checkInResult.barrierId,
@@ -2417,7 +2428,9 @@ export default function DashboardPage() {
     };
 
     const fallbackCameraCheckIn = async () => {
-      const cameraBooking = await cameraCheckInByPlate(plate);
+      const cameraBooking = await cameraCheckInByPlate(plate, {
+        checkInImage: meta.imageBlob,
+      });
       if (cameraBooking.barrierCommandId) {
         const entryGate = resolveEntryBarrierGate({
           barrierId: cameraBooking.barrierId,
@@ -2469,7 +2482,15 @@ export default function DashboardPage() {
         }
 
         try {
-          const completed = await cameraCheckOutByPlate(plate);
+          if (!(meta.imageBlob instanceof Blob)) {
+            throw new ApiError(
+              "Chưa có ảnh camera cổng ra, không thể hoàn tất lượt rửa.",
+              400,
+            );
+          }
+          const completed = await cameraCheckOutByPlate(plate, {
+            checkOutImage: meta.imageBlob,
+          });
           const exitCommandId =
             completed.exitBarrierCommandId ?? completed.barrierCommandId;
           let barrierOpened = null;
@@ -2482,6 +2503,9 @@ export default function DashboardPage() {
               expiresAt: completed.barrierCommandExpiresAt,
               source: "camera-check-out",
             }).then(wasBarrierCommandAccepted).catch(() => false);
+          }
+          if (latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob) {
+            latestCameraFramesRef.current.exit = null;
           }
           const duration = Number(completed.actualDurationMinutes);
           const durationLabel = Number.isFinite(duration) && duration > 0
@@ -2509,7 +2533,7 @@ export default function DashboardPage() {
           setSelectedBooking((booking) =>
             Number(booking?.bookingId) === Number(completed.bookingId) ? null : booking,
           );
-          showToast(message);
+          showToast(message, "success");
           await loadStaffTasks();
           return { message };
         } catch (checkoutError) {
@@ -2795,7 +2819,22 @@ export default function DashboardPage() {
     }
     setCheckingIn(true);
     try {
-      const checkInResult = await staffCheckinBooking(selectedBooking.bookingId);
+      const latestEntryFrame = latestCameraFramesRef.current.entry;
+      const checkInImage =
+        latestEntryFrame?.imageBlob instanceof Blob &&
+        Date.now() - Number(latestEntryFrame.capturedAt) <= LATEST_CAMERA_IMAGE_MAX_AGE_MS
+          ? latestEntryFrame.imageBlob
+          : undefined;
+      if (!checkInImage) {
+        showToast("Chưa có ảnh camera cổng vào mới, không thể check-in.", "error");
+        return;
+      }
+      const checkInResult = await staffCheckinBooking(selectedBooking.bookingId, {
+        checkInImage,
+      });
+      if (latestCameraFramesRef.current.entry?.imageBlob === checkInImage) {
+        latestCameraFramesRef.current.entry = null;
+      }
       if (checkInResult.isAssigned && checkInResult.barrierCommandId) {
         const entryGate = resolveEntryBarrierGate({
           barrierId: checkInResult.barrierId,
@@ -2862,15 +2901,30 @@ export default function DashboardPage() {
       if (!bookingId) return;
       const task = vehicle;
       const processingKey = getProcessingVehicleKey(vehicle);
+      const latestExitFrame = latestCameraFramesRef.current.exit;
+      const checkOutImage =
+        latestExitFrame?.imageBlob instanceof Blob &&
+        Date.now() - Number(latestExitFrame.capturedAt) <= LATEST_CAMERA_IMAGE_MAX_AGE_MS
+          ? latestExitFrame.imageBlob
+          : undefined;
+      if (!checkOutImage) {
+        showToast("Chưa có ảnh camera cổng ra mới, không thể hoàn tất lượt rửa.", "error");
+        return;
+      }
       const confirmed = window.confirm(
         `Chỉ dùng khi camera cổng ra không nhận diện được biển số ${task?.licensePlate ?? ""}.\n\n` +
-          "Booking sẽ được hoàn thành và làn được giải phóng. Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?",
+          `Booking sẽ được hoàn thành và làn được giải phóng.${checkOutImage ? " Ảnh camera cổng ra hiện tại sẽ được lưu." : " Không có ảnh camera cổng ra mới trong 15 giây gần đây."} Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?`,
       );
       if (!confirmed) return;
 
       setCompletingId(processingKey);
       try {
-        await updateStaffBookingStatus(bookingId, "Completed");
+        await updateStaffBookingStatus(bookingId, "Completed", {
+          checkOutImage,
+        });
+        if (latestCameraFramesRef.current.exit?.imageBlob === checkOutImage) {
+          latestCameraFramesRef.current.exit = null;
+        }
         rememberManualCompletion(task);
         const message = `Xe ${task?.licensePlate ?? bookingId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
         setBarrierAlert({ type: "manual", message });
@@ -3032,6 +3086,7 @@ export default function DashboardPage() {
           <LiveLprFeed
             laneLabel={laneLabel}
             onPlateDetected={handleCameraPlateDetected}
+            onVehicleFrameCaptured={handleVehicleFrameCaptured}
           />
         </div>
         <div className="min-w-0 space-y-4 xl:col-span-5 2xl:col-span-4">

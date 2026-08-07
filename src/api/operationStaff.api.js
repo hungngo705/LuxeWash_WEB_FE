@@ -570,6 +570,8 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   processingStartTime?: string | null
  *   completedTime?: string | null
  *   actualDurationMinutes?: number | null
+ *   checkInImageUrl?: string | null
+ *   checkOutImageUrl?: string | null
  *   vehicleType: string
  *   vehicleDisplayName: string
  *   lastVisitDate?: string | null
@@ -683,6 +685,10 @@ export function normalizeStaffTask(item) {
         : flat.ActualDurationMinutes != null
           ? Number(flat.ActualDurationMinutes)
           : null,
+    checkInImageUrl:
+      String(flat.checkInImageUrl ?? flat.CheckInImageUrl ?? '').trim() || null,
+    checkOutImageUrl:
+      String(flat.checkOutImageUrl ?? flat.CheckOutImageUrl ?? '').trim() || null,
     vehicleType: String(
       flat.vehicleType ??
         flat.vehicleTypeName ??
@@ -862,11 +868,24 @@ export function swapStaffLaneByPhone(payload) {
  * Updates a booking status. Used by Staff to start (Processing) or complete (Completed) a wash.
  * @param {number} bookingId
  * @param {'Processing' | 'Completed'} status
+ * @param {{ checkOutImage?: Blob | File }} [options]
  */
-export function updateStaffBookingStatus(bookingId, status) {
+export function updateStaffBookingStatus(bookingId, status, options = {}) {
+  const formData = new FormData()
+  formData.append('Status', status)
+
+  const checkOutImage = options?.checkOutImage
+  if (checkOutImage instanceof Blob) {
+    formData.append(
+      'CheckOutImage',
+      checkOutImage,
+      checkOutImage.name || `checkout-${bookingId}-${Date.now()}.jpg`,
+    )
+  }
+
   return apiRequest(`/operation-staff/bookings/${bookingId}/status`, {
     method: 'PUT',
-    body: JSON.stringify({ status }),
+    body: formData,
   })
 }
 
@@ -923,11 +942,21 @@ export function normalizeStaffCheckInResult(item) {
  * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
  * Checks in a Pending booking and returns either Assigned or Waiting.
  * @param {number} bookingId
+ * @param {{ checkInImage?: Blob | File }} [options]
  */
-export async function staffCheckinBooking(bookingId) {
+export async function staffCheckinBooking(bookingId, { checkInImage } = {}) {
+  const formData = new FormData()
+  if (checkInImage instanceof Blob) {
+    formData.append(
+      'CheckInImage',
+      checkInImage,
+      checkInImage.name || `checkin-${bookingId}-${Date.now()}.jpg`,
+    )
+  }
+
   const result = await apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
     method: 'POST',
-    body: JSON.stringify({ bookingId }),
+    body: formData,
   })
   return normalizeStaffCheckInResult(result)
 }

@@ -218,11 +218,23 @@ export async function submitVehicleVisionFeedback(
 }
 
 export async function cameraCheckInByPlate(licensePlate, options = {}) {
+  const { checkInImage, ...requestOptions } = options
+  if (!(checkInImage instanceof Blob)) {
+    throw new ApiError('Cần ảnh camera cổng vào để check-in.', 400)
+  }
+
   const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
+  const formData = new FormData()
+  formData.append(
+    'checkInImage',
+    checkInImage,
+    checkInImage.name || `checkin-${Date.now()}.jpg`,
+  )
   const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-in?${params}`), {
     method: 'POST',
+    body: formData,
     timeoutMs: 30_000,
-    ...options,
+    ...requestOptions,
   })
   const root = data && typeof data === 'object' ? data : {}
   const payload = root.data && typeof root.data === 'object' ? root.data : root
@@ -234,11 +246,23 @@ export async function cameraCheckInByPlate(licensePlate, options = {}) {
  * Hoàn tất lượt rửa và chỉ cho phép mở barie khi booking đã thanh toán.
  */
 export async function cameraCheckOutByPlate(licensePlate, options = {}) {
+  const { checkOutImage, ...requestOptions } = options
+  if (!(checkOutImage instanceof Blob)) {
+    throw new ApiError('Cần ảnh camera cổng ra để hoàn tất lượt rửa.', 400)
+  }
+
   const params = new URLSearchParams({ plate: String(licensePlate ?? '').trim() })
+  const formData = new FormData()
+  formData.append(
+    'checkOutImage',
+    checkOutImage,
+    checkOutImage.name || `checkout-${Date.now()}.jpg`,
+  )
   const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-out?${params}`), {
     method: 'POST',
+    body: formData,
     timeoutMs: 30_000,
-    ...options,
+    ...requestOptions,
   })
   const root = data && typeof data === 'object' ? data : {}
   const payload = root.data && typeof root.data === 'object' ? root.data : root

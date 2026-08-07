@@ -46,8 +46,8 @@ function mapHistoryRecord(task) {
     phoneMasked: task.phoneMasked,
     rankName: task.rankName,
     serviceName: task.serviceName,
-    completedAt: task.scheduledTime,
-    completedDisplay: formatCompletedDisplay(task.scheduledTime),
+    completedAt: task.completedTime ?? task.scheduledTime,
+    completedDisplay: formatCompletedDisplay(task.completedTime ?? task.scheduledTime),
     bookingStatus: task.status,
     totalAmount: task.finalAmount,
     pointsUsed: task.discountAmount ?? 0,
@@ -55,7 +55,92 @@ function mapHistoryRecord(task) {
     transactionStatus: txOk ? 'Success' : task.paymentStatus !== '—' ? task.paymentStatus : '—',
     paymentMethod: formatPaymentMethodLabel(task.paymentMethod),
     lane: task.processingLaneName ?? '—',
+    checkInImageUrl: task.checkInImageUrl ?? null,
+    checkOutImageUrl: task.checkOutImageUrl ?? null,
   }
+}
+
+function HistoryImagesModal({ record, onClose }) {
+  if (!record) return null
+
+  const images = [
+    { label: 'Ảnh check-in', icon: 'login', url: record.checkInImageUrl },
+    { label: 'Ảnh check-out', icon: 'logout', url: record.checkOutImageUrl },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        aria-label="Đóng thư viện ảnh"
+        onClick={onClose}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="history-images-title"
+        className="relative flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-outline-variant bg-surface-container-lowest shadow-2xl"
+      >
+        <header className="flex items-center justify-between gap-4 border-b border-outline-variant px-5 py-4">
+          <div>
+            <h2 id="history-images-title" className="font-sora text-lg font-semibold text-on-surface">
+              Ảnh check-in/check-out · #{record.bookingId}
+            </h2>
+            <p className="mt-0.5 text-sm text-on-surface-variant">
+              {record.licensePlate} · {record.customerName}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+            aria-label="Đóng"
+            onClick={onClose}
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </header>
+
+        <div className="grid min-h-0 gap-4 overflow-y-auto p-5 md:grid-cols-2">
+          {images.map((image) => (
+            <article key={image.label} className="overflow-hidden rounded-xl border border-outline-variant bg-surface-container-low">
+              <div className="flex items-center justify-between gap-3 border-b border-outline-variant px-4 py-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+                  <span className="material-symbols-outlined text-[19px] text-primary">{image.icon}</span>
+                  {image.label}
+                </h3>
+                {image.url && (
+                  <a
+                    href={image.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                  >
+                    Mở ảnh gốc
+                    <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+                  </a>
+                )}
+              </div>
+              {image.url ? (
+                <a href={image.url} target="_blank" rel="noreferrer" className="block bg-black">
+                  <img
+                    src={image.url}
+                    alt={`${image.label} của xe ${record.licensePlate}`}
+                    className="aspect-video h-auto w-full object-contain"
+                  />
+                </a>
+              ) : (
+                <div className="flex aspect-video flex-col items-center justify-center gap-2 p-6 text-center text-on-surface-variant">
+                  <span className="material-symbols-outlined text-4xl text-outline">no_photography</span>
+                  <p className="text-sm font-medium">Không có ảnh được lưu</p>
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
 }
 
 export default function HistoryPage() {
@@ -63,34 +148,11 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [dateFilter, setDateFilter] = useState(todayDateValue)
-  const [laneId, setLaneId] = useState(null)
   const [laneLabel, setLaneLabel] = useState('')
   const [bookingFilter, setBookingFilter] = useState('all')
   const [txFilter, setTxFilter] = useState('all')
   const [search, setSearch] = useState('')
-
-  const loadRecords = useCallback(
-    async (lid) => {
-      setLoading(true)
-      setFetchError('')
-      try {
-        const targetDate = toApiTargetDate(dateFilter)
-        const tasks = await fetchStaffServiceHistory(targetDate, { laneId: lid })
-        setAllRecords(tasks.map(mapHistoryRecord))
-      } catch (err) {
-        const msg =
-          err instanceof ApiError
-            ? err.isForbidden
-              ? 'Không có quyền xem lịch sử booking. Liên hệ quản trị viên.'
-              : err.message
-            : 'Không thể tải dữ liệu. Vui lòng thử lại.'
-        setFetchError(msg)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [dateFilter],
-  )
+  const [selectedImageRecord, setSelectedImageRecord] = useState(null)
 
   // Separate refetch that also loads lane assignment (used by the error "Thử lại" button)
   const refetch = useCallback(async () => {
@@ -101,7 +163,6 @@ export default function HistoryPage() {
         fetchStaffLaneAssignment(),
         fetchStaffServiceHistory(toApiTargetDate(dateFilter), {}),
       ])
-      setLaneId(assignment.laneId ?? null)
       setLaneLabel(formatStaffStationLabel(assignment))
       setAllRecords(tasks.map(mapHistoryRecord))
     } catch (err) {
@@ -116,8 +177,11 @@ export default function HistoryPage() {
   }, [dateFilter])
 
   useEffect(() => {
-    refetch()
-  }, [dateFilter])
+    const loadTimer = window.setTimeout(() => {
+      void refetch()
+    }, 0)
+    return () => window.clearTimeout(loadTimer)
+  }, [refetch])
 
   const filtered = useMemo(() => {
     return allRecords.filter((r) => {
@@ -196,10 +260,18 @@ export default function HistoryPage() {
               </div>
             </div>
           ) : (
-            <HistoryTable records={filtered} />
+            <HistoryTable
+              records={filtered}
+              onViewImages={setSelectedImageRecord}
+            />
           )}
         </>
       )}
+
+      <HistoryImagesModal
+        record={selectedImageRecord}
+        onClose={() => setSelectedImageRecord(null)}
+      />
     </div>
   )
 }
