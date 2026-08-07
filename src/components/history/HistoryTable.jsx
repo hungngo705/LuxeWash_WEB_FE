@@ -38,7 +38,7 @@ function TxStatusBadge({ status }) {
   )
 }
 
-export default function HistoryTable({ records }) {
+export default function HistoryTable({ records, onViewImages }) {
   if (records.length === 0) {
     return (
       <div className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
@@ -51,7 +51,7 @@ export default function HistoryTable({ records }) {
   return (
     <div className="glass-panel soft-shadow overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1100px] border-collapse text-left">
+        <table className="w-full min-w-[1180px] border-collapse text-left">
           <thead>
             <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               <th className="px-4 py-3">Mã GD</th>
@@ -63,6 +63,7 @@ export default function HistoryTable({ records }) {
               <th className="px-4 py-3">Điểm</th>
               <th className="px-4 py-3">Booking</th>
               <th className="px-4 py-3">Giao dịch</th>
+              <th className="px-4 py-3 text-center">Ảnh</th>
             </tr>
           </thead>
           <tbody>
@@ -93,6 +94,20 @@ export default function HistoryTable({ records }) {
                 </td>
                 <td className="px-4 py-4">
                   <TxStatusBadge status={row.transactionStatus} />
+                </td>
+                <td className="px-4 py-4 text-center">
+                  {row.checkInImageUrl || row.checkOutImageUrl ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/20"
+                      onClick={() => onViewImages?.(row)}
+                    >
+                      <span className="material-symbols-outlined text-[17px]">photo_library</span>
+                      Xem ảnh
+                    </button>
+                  ) : (
+                    <span className="text-xs text-on-surface-variant">Chưa có ảnh</span>
+                  )}
                 </td>
               </tr>
             ))}

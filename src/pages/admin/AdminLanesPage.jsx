@@ -12,7 +12,12 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const emptyForm = { name: '', branchId: '', isActive: true, isBusinessLane: false }
+const emptyForm = {
+  name: '',
+  branchId: '',
+  isActive: true,
+  isBusinessLane: false,
+}
 
 export default function AdminLanesPage() {
   const [lanes, setLanes] = useState([])
@@ -79,9 +84,13 @@ export default function AdminLanesPage() {
       const payload = {
         name: form.name.trim(),
         branchId: Number(form.branchId),
+        isBusinessLane: form.isBusinessLane,
       }
       if (editingId) {
-        await updateLane(editingId, { ...payload, isActive: form.isActive })
+        await updateLane(editingId, {
+          ...payload,
+          isActive: form.isActive,
+        })
         showToast('Đã cập nhật làn rửa')
       } else if (form.isBusinessLane) {
         await createBusinessLane(payload)

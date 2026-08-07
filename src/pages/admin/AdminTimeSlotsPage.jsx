@@ -18,7 +18,6 @@ const emptyForm = {
   startTime: '00:00',
   endTime: '00:00',
   maxCapacity: '3',
-  isVipOnly: false,
 }
 
 function toApiPayload(form, branchId) {
@@ -27,7 +26,6 @@ function toApiPayload(form, branchId) {
     startTime: toApiTimeValue(form.startTime),
     endTime: toApiTimeValue(form.endTime),
     maxCapacity: Number(form.maxCapacity || 0),
-    isVipOnly: Boolean(form.isVipOnly),
   }
 }
 
@@ -98,7 +96,6 @@ export default function AdminTimeSlotsPage() {
       startTime: toTimeInputValue(slot.startTime),
       endTime: toTimeInputValue(slot.endTime),
       maxCapacity: String(slot.maxCapacity ?? ''),
-      isVipOnly: slot.isVipOnly,
     })
     setFormError('')
     setModalOpen(true)
@@ -225,7 +222,6 @@ export default function AdminTimeSlotsPage() {
                 <th className="px-4 py-3">Thời gian bắt đầu</th>
                 <th className="px-4 py-3">Thời gian kết thúc</th>
                 <th className="px-4 py-3">Sức chứa</th>
-                <th className="px-4 py-3">Phân loại</th>
                 <th className="px-4 py-3">Thao tác</th>
               </tr>
             </thead>
@@ -237,15 +233,6 @@ export default function AdminTimeSlotsPage() {
                   <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.startTime)}</td>
                   <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.endTime)}</td>
                   <td className="px-4 py-3 text-on-surface">{slot.maxCapacity}</td>
-                  <td className="px-4 py-3">
-                    {slot.isVipOnly ? (
-                      <span className="rounded-full bg-tertiary-container px-2 py-0.5 text-xs font-semibold text-on-tertiary-container">
-                        VIP
-                      </span>
-                    ) : (
-                      <span className="text-on-surface-variant">Thường</span>
-                    )}
-                  </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <button
@@ -349,15 +336,6 @@ export default function AdminTimeSlotsPage() {
                 disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, maxCapacity: e.target.value }))}
               />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-on-surface">
-            <input
-              type="checkbox"
-              checked={form.isVipOnly}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, isVipOnly: e.target.checked }))}
-            />
-            Chỉ dành cho khách VIP
           </label>
         </div>
       </FormModal>

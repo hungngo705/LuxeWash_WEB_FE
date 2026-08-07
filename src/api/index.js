@@ -18,9 +18,22 @@ export {
   cameraCheckOutByPlate,
   checkCameraHasCar,
   detectCameraPlate,
+  recognizeCameraVehicle,
+  submitVehicleVisionFeedback,
 } from './cameraAi.api'
 
+export {
+  decodeJwtPayload,
+  fetchLatestLaneDisplayState,
+  getLaneDisplayBranchId,
+  isLaneDisplayEventExpired,
+  normalizeLaneDisplayEvent,
+  normalizeLaneDisplayState,
+} from './laneDisplay.api'
+
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
+
+export { ackBarrierCommand } from './barrier.api'
 
 export {
   fetchVehicleTypes,
@@ -236,6 +249,7 @@ export { fetchMyWallet, createWalletTopUp, normalizeWallet } from './wallet.api'
 export {
   fetchStaffTasks,
   fetchStaffLaneAssignment,
+  fetchStaffLaneOccupancies,
   fetchStaffServiceHistory,
   enrichStaffBooking,
   enrichStaffTasks,
@@ -245,6 +259,7 @@ export {
   recognizeVehicleByPlate,
   consumeStaffVoucher,
   normalizeStaffTask,
+  normalizeStaffCheckInResult,
   normalizeStaffLaneAssignment,
   normalizeVehicleRecognition,
   formatStaffStationLabel,

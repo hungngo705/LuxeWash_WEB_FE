@@ -10,8 +10,8 @@ import { apiRequest } from './client'
  *   isBusinessLane?: boolean
  * }} Lane
  *
- * @typedef {{ name: string; branchId: number }} CreateLanePayload
- * @typedef {{ name: string; branchId: number; isActive?: boolean }} UpdateLanePayload
+ * @typedef {{ name: string; branchId: number; isBusinessLane?: boolean }} CreateLanePayload
+ * @typedef {{ name: string; branchId: number; isActive?: boolean; isBusinessLane?: boolean }} UpdateLanePayload
  */
 
 /** @param {Record<string, unknown>} item @returns {Lane} */
@@ -44,7 +44,11 @@ export async function fetchLaneById(id) {
 export function createLane(payload) {
   return apiRequest('/admin/lanes', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      name: payload.name,
+      branchId: Number(payload.branchId),
+      isBusinessLane: payload.isBusinessLane === true,
+    }),
   })
 }
 
@@ -67,6 +71,11 @@ export function createBusinessLane(payload) {
 export function updateLane(id, payload) {
   return apiRequest(`/admin/lanes/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      name: payload.name,
+      branchId: Number(payload.branchId),
+      isActive: payload.isActive !== false,
+      isBusinessLane: payload.isBusinessLane === true,
+    }),
   })
 }

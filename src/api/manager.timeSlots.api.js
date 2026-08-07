@@ -8,7 +8,6 @@ import { toApiTimeValue } from './admin.timeSlots.api'
  *   startTime: string
  *   endTime: string
  *   maxCapacity: number
- *   isVipOnly: boolean
  * }} ManagerTimeSlot
  */
 
@@ -20,7 +19,6 @@ function normalize(item) {
     startTime: String(item.startTime ?? ''),
     endTime: String(item.endTime ?? ''),
     maxCapacity: Number(item.maxCapacity ?? 1),
-    isVipOnly: item.isVipOnly === true,
   }
 }
 
@@ -39,7 +37,7 @@ export function fetchManagerTimeSlots() {
 /**
  * POST /api/v1/manager/timeslots
  * Creates a new time slot in the Manager's branch.
- * @param {{ startTime: string; endTime: string; maxCapacity: number; isVipOnly: boolean }} payload
+ * @param {{ startTime: string; endTime: string; maxCapacity: number }} payload
  */
 export function createManagerTimeSlot(payload) {
   return apiRequest('/manager/timeslots', {
@@ -48,7 +46,6 @@ export function createManagerTimeSlot(payload) {
       startTime: toApiTimeValue(payload.startTime),
       endTime: toApiTimeValue(payload.endTime),
       maxCapacity: Number(payload.maxCapacity),
-      isVipOnly: Boolean(payload.isVipOnly),
     }),
   })
 }
@@ -57,7 +54,7 @@ export function createManagerTimeSlot(payload) {
  * PUT /api/v1/manager/timeslots/{slotId}
  * Updates a time slot in the Manager's branch.
  * @param {number} slotId
- * @param {{ startTime: string; endTime: string; maxCapacity: number; isVipOnly: boolean }} payload
+ * @param {{ startTime: string; endTime: string; maxCapacity: number }} payload
  */
 export function updateManagerTimeSlot(slotId, payload) {
   return apiRequest(`/manager/timeslots/${slotId}`, {
@@ -66,7 +63,6 @@ export function updateManagerTimeSlot(slotId, payload) {
       startTime: toApiTimeValue(payload.startTime),
       endTime: toApiTimeValue(payload.endTime),
       maxCapacity: Number(payload.maxCapacity),
-      isVipOnly: Boolean(payload.isVipOnly),
     }),
   })
 }

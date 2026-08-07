@@ -6,7 +6,12 @@ import {
   toApiTargetDate,
 } from './admin.bookings.api'
 import { fetchTransactions, normalizeTransaction } from './admin.transactions.api'
+import { fetchUserById } from './admin.users.api'
 import { findUserByLicensePlate, maskPhoneNumber } from './staff.customers.api'
+
+// Customer identity data changes rarely; keep it across dashboard polls/routes so
+// the same Staff session does not reload every user detail every 30 seconds.
+const staffUserDetailCache = new Map()
 
 function decodeJwtPayload(token) {
   if (!token || typeof token !== 'string') return null
@@ -220,11 +225,24 @@ function needsCustomerLookup(task) {
   return !task.customerName || task.customerName === '—' || !task.userId
 }
 
-async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
+function isMissingCustomerName(task) {
+  return !task.customerName || task.customerName === '—'
+}
+
+async function attachPaymentFromTransactions(
+  booking,
+  txIndex,
+  fetchOpts = {},
+  { allowFallbackFetch = true } = {},
+) {
   if (booking.paymentMethod && booking.paymentMethod !== '—') return booking
 
+  const hasKnownPaymentStatus =
+    booking.paymentStatus &&
+    booking.paymentStatus !== '—'
+
   let tx = txIndex.get(Number(booking.bookingId))
-  if (!tx && txIndex.size === 0) {
+  if (!tx && txIndex.size === 0 && allowFallbackFetch) {
     try {
       const txs = await fetchTransactions(fetchOpts)
       const list = (Array.isArray(txs) ? txs : []).map(normalizeTransaction)
@@ -242,7 +260,9 @@ async function attachPaymentFromTransactions(booking, txIndex, fetchOpts = {}) {
     }
   }
 
-  if (booking.status === 'Pending') {
+  // Do not replace an explicit status from the booking/lookup API merely because
+  // the optional transactions lookup is unavailable or does not return a row.
+  if (booking.status === 'Pending' && !hasKnownPaymentStatus) {
     return {
       ...booking,
       paymentMethod: 'Pending',
@@ -285,7 +305,7 @@ export async function enrichStaffBooking(booking, context = {}) {
 
   let merged = normalizeStaffTask(booking)
 
-  const { bookingsByDate, txIndex, userByPlate, signal } = context
+  const { bookingsByDate, txIndex, userById, userByPlate, signal } = context
   const fetchOpts = signal ? { signal } : {}
 
   if (bookingsByDate) {
@@ -293,7 +313,10 @@ export async function enrichStaffBooking(booking, context = {}) {
       (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
     )
     if (match) {
-      merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
+      // The operation-staff task is the authoritative source for live status/lane
+      // fields. Admin booking data is only enrichment and can lag immediately
+      // after check-in, so it must not overwrite a freshly assigned lane.
+      merged = normalizeStaffTask({ ...match, ...merged, bookingId: booking.bookingId })
     }
   } else if (signal !== undefined || context.allowStandaloneFetch) {
     // Fallback: when called outside the batched enrichStaffTasks context.
@@ -306,15 +329,26 @@ export async function enrichStaffBooking(booking, context = {}) {
         (b) => Number(b.bookingId ?? b.id) === Number(booking.bookingId),
       )
       if (match) {
-        merged = normalizeStaffTask({ ...merged, ...match, bookingId: booking.bookingId })
+        merged = normalizeStaffTask({ ...match, ...merged, bookingId: booking.bookingId })
       }
     } catch {
       // continue
     }
   }
 
+  const userDetail = userById?.get(Number(merged.userId))
+  if (userDetail && isMissingCustomerName(merged)) {
+    merged = normalizeStaffTask({
+      ...merged,
+      customerName: userDetail.fullName,
+      phoneNumber: userDetail.phoneNumber,
+      tierName: userDetail.tierName ?? userDetail.rankName,
+    })
+  }
+
   if (
-    needsCustomerLookup(merged) &&
+    !merged.userId &&
+    isMissingCustomerName(merged) &&
     merged.licensePlate &&
     merged.licensePlate !== '—'
   ) {
@@ -342,7 +376,12 @@ export async function enrichStaffBooking(booking, context = {}) {
     }
   }
 
-  merged = await attachPaymentFromTransactions(merged, txIndex ?? new Map(), fetchOpts)
+  merged = await attachPaymentFromTransactions(
+    merged,
+    txIndex ?? new Map(),
+    fetchOpts,
+    { allowFallbackFetch: !(txIndex instanceof Map) },
+  )
   merged = attachDetailsFromSummary(merged)
 
   return merged
@@ -363,6 +402,7 @@ export async function enrichStaffTasks(tasks, options = {}) {
   const fetchOpts = signal ? { signal } : {}
 
   const dates = new Set()
+  const userIdsToLookup = new Set()
   const platesToLookup = new Set()
 
   for (const t of list) {
@@ -371,7 +411,9 @@ export async function enrichStaffTasks(tasks, options = {}) {
     dates.add(dateKey)
 
     const normalized = normalizeStaffTask(t)
-    if (
+    if (isMissingCustomerName(normalized) && Number(normalized.userId) > 0) {
+      userIdsToLookup.add(Number(normalized.userId))
+    } else if (
       needsCustomerLookup(normalized) &&
       normalized.licensePlate &&
       normalized.licensePlate !== '—'
@@ -380,9 +422,9 @@ export async function enrichStaffTasks(tasks, options = {}) {
     }
   }
 
-  const bookingsByDate = preloadedBookings
+  const bookingsByDatePromise = preloadedBookings
     ? asBookingList(preloadedBookings)
-    : await (async () => {
+    : (async () => {
         if (dates.size !== 1) return null
         const [dateKey] = dates
         try {
@@ -393,7 +435,7 @@ export async function enrichStaffTasks(tasks, options = {}) {
         }
       })()
 
-  const txIndex = await (async () => {
+  const txIndexPromise = (async () => {
     try {
       const txs = await fetchTransactions(fetchOpts)
       const list = Array.isArray(txs) ? txs : []
@@ -408,7 +450,34 @@ export async function enrichStaffTasks(tasks, options = {}) {
     }
   })()
 
-  const userByPlate = await (async () => {
+  const userByIdPromise = (async () => {
+    if (!userIdsToLookup.size) return new Map()
+    const cached = new Map(
+      [...userIdsToLookup]
+        .filter((userId) => staffUserDetailCache.has(userId))
+        .map((userId) => [userId, staffUserDetailCache.get(userId)]),
+    )
+    const missingUserIds = [...userIdsToLookup].filter(
+      (userId) => !staffUserDetailCache.has(userId),
+    )
+    const results = await Promise.all(
+      missingUserIds.map(async (userId) => {
+        try {
+          const detail = await fetchUserById(userId, fetchOpts)
+          staffUserDetailCache.set(userId, detail)
+          return [userId, detail]
+        } catch {
+          return [userId, null]
+        }
+      }),
+    )
+    return new Map([
+      ...cached,
+      ...results.filter(([, value]) => value != null),
+    ])
+  })()
+
+  const userByPlatePromise = (async () => {
     if (!platesToLookup.size) return new Map()
     const results = await Promise.all(
       [...platesToLookup].map(async (plate) => {
@@ -423,7 +492,16 @@ export async function enrichStaffTasks(tasks, options = {}) {
     return new Map(results.filter(([, v]) => v != null))
   })()
 
-  const context = { bookingsByDate, txIndex, userByPlate }
+  // These lookups are independent. Running them together prevents their network
+  // latency from accumulating on every dashboard refresh.
+  const [bookingsByDate, txIndex, userById, userByPlate] = await Promise.all([
+    bookingsByDatePromise,
+    txIndexPromise,
+    userByIdPromise,
+    userByPlatePromise,
+  ])
+
+  const context = { bookingsByDate, txIndex, userById, userByPlate }
 
   return Promise.all(
     list.map(async (task) => {
@@ -473,6 +551,7 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   rankName: string
  *   rankId?: number
  *   customerTierPoints?: number
+ *   isVip?: boolean
  *   serviceName: string
  *   slotLabel: string
  *   scheduledTime: string | null
@@ -491,6 +570,8 @@ export async function fetchStaffServiceHistory(targetDate, options = {}) {
  *   processingStartTime?: string | null
  *   completedTime?: string | null
  *   actualDurationMinutes?: number | null
+ *   checkInImageUrl?: string | null
+ *   checkOutImageUrl?: string | null
  *   vehicleType: string
  *   vehicleDisplayName: string
  *   lastVisitDate?: string | null
@@ -541,6 +622,21 @@ export function normalizeStaffTask(item) {
     rankId: flat.rankId != null ? Number(flat.rankId) : flat.tierId != null ? Number(flat.tierId) : undefined,
     customerTierPoints:
       flat.customerTierPoints != null ? Number(flat.customerTierPoints) : undefined,
+    isVip: flat.isVip === true || flat.IsVip === true,
+    barrierCommandId:
+      String(flat.barrierCommandId ?? flat.BarrierCommandId ?? '').trim() || undefined,
+    exitBarrierCommandId:
+      String(flat.exitBarrierCommandId ?? flat.ExitBarrierCommandId ?? '').trim() || undefined,
+    barrierCommandCreated:
+      flat.barrierCommandCreated === true || flat.BarrierCommandCreated === true,
+    barrierId:
+      String(flat.barrierId ?? flat.BarrierId ?? '').trim() || undefined,
+    barrierCommandExpiresAt:
+      flat.barrierCommandExpiresAt ??
+      flat.BarrierCommandExpiresAt ??
+      flat.expiresAt ??
+      flat.ExpiresAt ??
+      null,
     serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
@@ -589,6 +685,10 @@ export function normalizeStaffTask(item) {
         : flat.ActualDurationMinutes != null
           ? Number(flat.ActualDurationMinutes)
           : null,
+    checkInImageUrl:
+      String(flat.checkInImageUrl ?? flat.CheckInImageUrl ?? '').trim() || null,
+    checkOutImageUrl:
+      String(flat.checkOutImageUrl ?? flat.CheckOutImageUrl ?? '').trim() || null,
     vehicleType: String(
       flat.vehicleType ??
         flat.vehicleTypeName ??
@@ -693,6 +793,24 @@ export function fetchStaffLaneAssignment(options = {}) {
 }
 
 /**
+ * Physical/reserved lane occupancy is the authoritative source for vehicles in wash bays.
+ * It includes both regular bookings and fleet wash logs.
+ */
+export function fetchStaffLaneOccupancies(options = {}) {
+  return apiRequest('/operation-staff/lane-occupancies', options).then((data) =>
+    (Array.isArray(data) ? data : []).map((item) => ({
+      laneId: Number(item.laneId),
+      laneName: String(item.laneName ?? ''),
+      licensePlate: String(item.licensePlate ?? ''),
+      bookingId: item.bookingId == null ? null : Number(item.bookingId),
+      fleetWashLogId:
+        item.fleetWashLogId == null ? null : Number(item.fleetWashLogId),
+      occupiedAt: item.occupiedAt ?? null,
+    })),
+  )
+}
+
+/**
  * GET /api/v1/vehicles/recognize/{licensePlate}
  * @param {string} licensePlate
  * @returns {Promise<StaffTask | null>}
@@ -750,23 +868,95 @@ export function swapStaffLaneByPhone(payload) {
  * Updates a booking status. Used by Staff to start (Processing) or complete (Completed) a wash.
  * @param {number} bookingId
  * @param {'Processing' | 'Completed'} status
+ * @param {{ checkOutImage?: Blob | File }} [options]
  */
-export function updateStaffBookingStatus(bookingId, status) {
+export function updateStaffBookingStatus(bookingId, status, options = {}) {
+  const formData = new FormData()
+  formData.append('Status', status)
+
+  const checkOutImage = options?.checkOutImage
+  if (checkOutImage instanceof Blob) {
+    formData.append(
+      'CheckOutImage',
+      checkOutImage,
+      checkOutImage.name || `checkout-${bookingId}-${Date.now()}.jpg`,
+    )
+  }
+
   return apiRequest(`/operation-staff/bookings/${bookingId}/status`, {
     method: 'PUT',
-    body: JSON.stringify({ status }),
+    body: formData,
   })
 }
 
 /**
- * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
- * Checks in a Pending booking — assigns the staff's lane to the booking.
- * Staff can perform check-in without a Manager.
- * @param {number} bookingId
+ * Normalize the structured gate-admission response returned after check-in.
+ * @param {Record<string, unknown>} item
  */
-export function staffCheckinBooking(bookingId) {
-  return apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
+export function normalizeStaffCheckInResult(item) {
+  const source =
+    item?.data && typeof item.data === 'object'
+      ? item.data
+      : item && typeof item === 'object'
+        ? item
+        : {}
+  const status = String(source.status ?? '').trim()
+  const admissionStatus = String(source.admissionStatus ?? '').trim()
+  const normalizedStatus = status.toLowerCase()
+  const normalizedAdmissionStatus = admissionStatus.toLowerCase()
+  const laneId = source.laneId != null ? Number(source.laneId) : undefined
+  const laneName = String(source.laneName ?? '').trim() || undefined
+  const hasLane = Number.isFinite(laneId) || Boolean(laneName)
+  const isWaiting =
+    source.isWaiting === true ||
+    normalizedStatus === 'waiting' ||
+    normalizedAdmissionStatus === 'denied_queueing'
+  const isAssigned =
+    normalizedStatus === 'assigned' ||
+    normalizedAdmissionStatus === 'granted' ||
+    (!isWaiting && hasLane)
+
+  return {
+    bookingId: source.bookingId != null ? Number(source.bookingId) : undefined,
+    licensePlate: String(source.licensePlate ?? '').trim().toUpperCase(),
+    status,
+    admissionStatus,
+    isWaiting,
+    isAssigned,
+    hasAdmissionDecision: isWaiting || isAssigned,
+    bookingStatus: isWaiting ? 'Checked-in' : isAssigned ? 'Processing' : undefined,
+    laneId: Number.isFinite(laneId) ? laneId : undefined,
+    laneName,
+    barrierCommandId:
+      String(source.barrierCommandId ?? source.BarrierCommandId ?? '').trim() || undefined,
+    barrierCommandCreated:
+      source.barrierCommandCreated === true || source.BarrierCommandCreated === true,
+    barrierId:
+      String(source.barrierId ?? source.BarrierId ?? '').trim() || undefined,
+    barrierCommandExpiresAt:
+      source.barrierCommandExpiresAt ?? source.BarrierCommandExpiresAt ?? null,
+  }
+}
+
+/**
+ * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
+ * Checks in a Pending booking and returns either Assigned or Waiting.
+ * @param {number} bookingId
+ * @param {{ checkInImage?: Blob | File }} [options]
+ */
+export async function staffCheckinBooking(bookingId, { checkInImage } = {}) {
+  const formData = new FormData()
+  if (checkInImage instanceof Blob) {
+    formData.append(
+      'CheckInImage',
+      checkInImage,
+      checkInImage.name || `checkin-${bookingId}-${Date.now()}.jpg`,
+    )
+  }
+
+  const result = await apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
     method: 'POST',
-    body: JSON.stringify({ bookingId }),
+    body: formData,
   })
+  return normalizeStaffCheckInResult(result)
 }

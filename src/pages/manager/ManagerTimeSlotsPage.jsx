@@ -16,7 +16,6 @@ const emptyForm = {
   startTime: '07:00',
   endTime: '07:20',
   maxCapacity: 3,
-  isVipOnly: false,
 }
 
 function validateForm(form) {
@@ -72,7 +71,6 @@ export default function ManagerTimeSlotsPage() {
       startTime: toTimeInputValue(slot.startTime),
       endTime: toTimeInputValue(slot.endTime),
       maxCapacity: slot.maxCapacity,
-      isVipOnly: slot.isVipOnly,
     })
     setModalOpen(true)
   }
@@ -90,7 +88,6 @@ export default function ManagerTimeSlotsPage() {
       startTime: form.startTime,
       endTime: form.endTime,
       maxCapacity: Number(form.maxCapacity),
-      isVipOnly: Boolean(form.isVipOnly),
     }
 
     setSaving(true)
@@ -169,7 +166,6 @@ export default function ManagerTimeSlotsPage() {
                 <th className="px-4 py-3">Thời gian bắt đầu</th>
                 <th className="px-4 py-3">Thời gian kết thúc</th>
                 <th className="px-4 py-3">Sức chứa</th>
-                <th className="px-4 py-3">Phân loại</th>
                 <th className="px-4 py-3 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -180,15 +176,6 @@ export default function ManagerTimeSlotsPage() {
                   <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.startTime)}</td>
                   <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.endTime)}</td>
                   <td className="px-4 py-3 text-on-surface">{slot.maxCapacity}</td>
-                  <td className="px-4 py-3">
-                    {slot.isVipOnly ? (
-                      <span className="rounded-full bg-tertiary-container px-2 py-0.5 text-xs font-semibold text-on-tertiary-container">
-                        VIP
-                      </span>
-                    ) : (
-                      <span className="text-on-surface-variant">Thường</span>
-                    )}
-                  </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <button
@@ -259,15 +246,6 @@ export default function ManagerTimeSlotsPage() {
               disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
             />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-on-surface">
-            <input
-              type="checkbox"
-              checked={form.isVipOnly}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, isVipOnly: e.target.checked }))}
-            />
-            Chỉ dành cho khách VIP
           </label>
         </div>
       </FormModal>

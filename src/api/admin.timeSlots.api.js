@@ -7,7 +7,6 @@ import { apiRequest } from './client'
  *   startTime: string
  *   endTime: string
  *   maxCapacity: number
- *   isVipOnly: boolean
  * }} TimeSlot
  *
  * @typedef {{
@@ -15,7 +14,6 @@ import { apiRequest } from './client'
  *   startTime: string
  *   endTime: string
  *   maxCapacity: number
- *   isVipOnly: boolean
  * }} TimeSlotPayload
  */
 

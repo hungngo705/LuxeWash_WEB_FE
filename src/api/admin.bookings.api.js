@@ -160,7 +160,20 @@ export function normalizeAdminBooking(item) {
     slotLabel: String(slotLabel),
     scheduledDate,
     scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
-    rankName: String(item.rankName ?? item.tierName ?? '—'),
+    rankName: String(
+      item.customerTierName ??
+        item.CustomerTierName ??
+        item.rankName ??
+        item.tierName ??
+        '—',
+    ),
+    customerTierPoints:
+      item.customerTierPoints != null
+        ? Number(item.customerTierPoints)
+        : item.CustomerTierPoints != null
+          ? Number(item.CustomerTierPoints)
+          : undefined,
+    isVip: item.isVip === true || item.IsVip === true,
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
     paymentStatus: String(item.paymentStatus ?? item.PaymentStatus ?? 'Unpaid'),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
@@ -281,6 +294,13 @@ export function normalizeSmartLicensePlateLookup(raw) {
   const item = raw && typeof raw === 'object' ? /** @type {Record<string, unknown>} */ (raw) : {}
   const customerType = String(item.customerType ?? item.CustomerType ?? 'WalkIn')
   const data = item.data ?? item.Data ?? null
+  const customerTierName =
+    item.customerTierName ?? item.CustomerTierName ?? null
+  const customerTierPointsRaw =
+    item.customerTierPoints ?? item.CustomerTierPoints
+  const customerTierPoints =
+    customerTierPointsRaw != null ? Number(customerTierPointsRaw) : undefined
+  const isVip = item.isVip === true || item.IsVip === true
   const walkInData =
     customerType === 'WalkIn' && data && typeof data === 'object'
       ? /** @type {Record<string, unknown>} */ (data)
@@ -288,8 +308,17 @@ export function normalizeSmartLicensePlateLookup(raw) {
   return {
     customerType,
     data,
+    customerTierName:
+      customerTierName != null ? String(customerTierName) : null,
+    customerTierPoints,
+    isVip,
     booking: customerType === 'PreBooked' && data && typeof data === 'object'
-      ? normalizeAdminBooking(/** @type {Record<string, unknown>} */ (data))
+      ? normalizeAdminBooking({
+          .../** @type {Record<string, unknown>} */ (data),
+          customerTierName,
+          customerTierPoints,
+          isVip,
+        })
       : null,
     fleetVehicle: customerType === 'Fleet' && data && typeof data === 'object'
       ? /** @type {Record<string, unknown>} */ (data)
@@ -301,6 +330,10 @@ export function normalizeSmartLicensePlateLookup(raw) {
           phoneNumber: walkInData.phoneNumber != null ? String(walkInData.phoneNumber) : '',
           vehicleId: walkInData.vehicleId != null ? Number(walkInData.vehicleId) : undefined,
           vehicleTypeId: walkInData.vehicleTypeId != null ? Number(walkInData.vehicleTypeId) : undefined,
+          customerTierName:
+            customerTierName != null ? String(customerTierName) : null,
+          customerTierPoints,
+          isVip,
         }
       : null,
   }
