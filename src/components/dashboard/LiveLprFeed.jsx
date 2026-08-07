@@ -30,6 +30,12 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
+function getBoxCenterX(box) {
+  const x1 = Number(box?.x1 ?? box?.X1)
+  const x2 = Number(box?.x2 ?? box?.X2)
+  return Number.isFinite(x1) && Number.isFinite(x2) ? (x1 + x2) / 2 : null
+}
+
 const STATUS_META = {
   booting: {
     icon: 'videocam',
@@ -443,18 +449,49 @@ function CameraStation({
               },
             ]
 
-      let detectedCarCount = 0
+      const fullFrameBlob = await captureFrame('full')
+      const frameCarResult = await checkCameraHasCar(fullFrameBlob, {
+        signal: controller.signal,
+      })
+      const apiCarCount = Number.isFinite(frameCarResult.carCount)
+        ? Math.max(0, Math.trunc(frameCarResult.carCount))
+        : 0
+      const detectedCarCount = frameCarResult.hasCar
+        ? Math.max(1, apiCarCount, frameCarResult.boxes.length)
+        : 0
+
+      setCarCount(detectedCarCount)
+      if (detectedCarCount === 0) {
+        setStatus('scanning')
+        return
+      }
+
+      const frameWidth = canvasRef.current?.width || videoRef.current?.videoWidth || 640
+      const regionCarCounts = { left: 0, right: 0 }
+      let hasPositionedBoxes = false
+      if (mode === 'entry') {
+        for (const box of frameCarResult.boxes) {
+          const centerX = getBoxCenterX(box)
+          if (centerX === null) continue
+          hasPositionedBoxes = true
+          regionCarCounts[centerX < frameWidth / 2 ? 'left' : 'right'] += 1
+        }
+      }
+
       let unreadableLaneCount = 0
       const detections = []
       const seenPlates = new Set()
 
       for (const target of scanTargets) {
-        const imageBlob = await captureFrame(target.region)
-        const carResult = await checkCameraHasCar(imageBlob, {
-          signal: controller.signal,
-        })
+        const targetCarCount =
+          mode === 'exit'
+            ? detectedCarCount
+            : hasPositionedBoxes
+              ? regionCarCounts[target.region]
+              : 1
+        if (targetCarCount === 0) continue
 
-        if (!carResult.hasCar) continue
+        const imageBlob = target.region === 'full' ? fullFrameBlob : await captureFrame(target.region)
 
         onVehicleFrameCaptured?.({
           mode,
@@ -464,7 +501,6 @@ function CameraStation({
           queueLaneType: target.queueLaneType,
         })
 
-        detectedCarCount += carResult.carCount || 1
         const queueLaneLabel =
           target.queueLaneType === 'vip'
             ? 'làn VIP'
@@ -472,7 +508,7 @@ function CameraStation({
               ? 'làn thường'
               : 'cổng ra'
         addLog(
-          `Đã phát hiện xe tại ${queueLaneLabel} (${carResult.carCount || 1}). Đang đọc biển số.`,
+          `Đã phát hiện xe tại ${queueLaneLabel} (${targetCarCount}). Đang đọc biển số.`,
         )
 
         let plateResult
@@ -522,12 +558,6 @@ function CameraStation({
             queueLaneType: target.queueLaneType,
           })
         }
-      }
-
-      setCarCount(detectedCarCount)
-      if (detectedCarCount === 0) {
-        setStatus('scanning')
-        return
       }
 
       if (detections.length === 0) {
