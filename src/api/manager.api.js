@@ -113,6 +113,7 @@ export function normalizeManagerBooking(item) {
     scheduledDate,
     scheduledTime: scheduledDateRaw ? String(scheduledDateRaw) : null,
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
+    bookingType: String(item.bookingType ?? ''),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     processingLaneId: item.processingLaneId ?? item.laneId ?? undefined,
     processingLaneName: item.processingLaneName ?? item.laneName ?? undefined,

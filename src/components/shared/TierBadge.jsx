@@ -3,6 +3,14 @@ function getTierMeta(tierName, tierPoints) {
   const key = name.toLowerCase()
   const points = Number(tierPoints)
 
+  if (key.includes('business') || key.includes('doanh nghiệp')) {
+    return {
+      icon: '🏢',
+      label: name || 'Business account',
+      className: 'border-primary/40 bg-primary/10 text-primary',
+    }
+  }
+
   if (key.includes('diamond') || key.includes('kim cương') || points >= 15000) {
     return {
       icon: '💎',

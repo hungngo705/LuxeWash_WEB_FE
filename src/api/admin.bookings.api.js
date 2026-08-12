@@ -156,6 +156,13 @@ export function normalizeAdminBooking(item) {
     customerName: String(
       item.customerName ?? item.fullName ?? item.ownerName ?? item.customerPhone ?? '—',
     ),
+    userId: item.userId != null ? Number(item.userId) : undefined,
+    phoneNumber: String(item.customerPhone ?? item.phoneNumber ?? ''),
+    bookingType: String(item.bookingType ?? item.BookingType ?? ''),
+    businessProfileId:
+      item.businessProfileId != null ? Number(item.businessProfileId) : undefined,
+    fleetVehicleId:
+      item.fleetVehicleId != null ? Number(item.fleetVehicleId) : undefined,
     serviceName: String(serviceName),
     slotLabel: String(slotLabel),
     scheduledDate,
@@ -176,6 +183,7 @@ export function normalizeAdminBooking(item) {
     isVip: item.isVip === true || item.IsVip === true,
     status: normalizeBookingStatus(item.status ?? item.bookingStatus),
     paymentStatus: String(item.paymentStatus ?? item.PaymentStatus ?? 'Unpaid'),
+    paymentMethod: String(item.paymentMethod ?? item.PaymentMethod ?? ''),
     finalAmount: Number(item.finalAmount ?? item.totalAmount ?? item.amount ?? 0),
     originalAmount: Number(item.originalPrice ?? item.originalAmount ?? item.finalAmount ?? 0),
     fallbackQrCode: String(item.fallbackQrCode ?? item.qrCode ?? '—'),

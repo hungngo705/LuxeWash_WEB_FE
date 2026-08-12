@@ -1,6 +1,7 @@
 import { apiRequest, API_BASE_URL } from './client'
 import { fetchBranches } from './admin.branches.api'
 import { ApiError } from './errors'
+import { getAccessToken } from './session'
 
 /** @param {unknown} data */
 export function asBusinessCollection(data) {
@@ -391,6 +392,7 @@ export function normalizeBusinessSlot(item) {
   const match = timeRange.match(/^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})/)
   const startTime = match ? match[1] : ''
   const endTime = match ? match[2] : ''
+  const rawProjections = Array.isArray(item.vehicleProjections) ? item.vehicleProjections : []
 
   return {
     slotId: Number(item.slotId),
@@ -409,6 +411,13 @@ export function normalizeBusinessSlot(item) {
     estimatedLastEndMinutesIntoSlot: item.estimatedLastEndMinutesIntoSlot != null
       ? Number(item.estimatedLastEndMinutesIntoSlot)
       : null,
+    overflowSlotCount: item.overflowSlotCount != null ? Number(item.overflowSlotCount) : 0,
+    vehicleProjections: rawProjections.map((projection) => ({
+      fleetVehicleId: Number(projection.fleetVehicleId),
+      slotId: Number(projection.slotId),
+      estimatedStart: String(projection.estimatedStart ?? ''),
+      estimatedEnd: String(projection.estimatedEnd ?? ''),
+    })),
   }
 }
 
@@ -463,7 +472,10 @@ export const rejectVehicle = rejectFleetVehicle
 
 /** @returns {Promise<{ fileName?: string; downloadUrl?: string }>} */
 export async function fetchFleetTemplate() {
-  return apiRequest('/fleet/template')
+  return {
+    fileName: 'FleetTemplate.xlsx',
+    downloadUrl: `${API_BASE_URL.replace(/\/$/, '')}/fleet/template/download?v=${Date.now()}`,
+  }
 }
 
 export async function importFleet(formData) {
@@ -593,28 +605,26 @@ export const rescheduleBusinessBooking = (id, { newScheduledDate, newSlotId }) =
   })
 
 /**
- * GET /business/available-slots — simulation endpoint for checking slot availability
- * @param {{ branchId: number; fleetVehicleId: number; targetDate: string; serviceIds: number[]; vehicleCount?: number }} params
- *   vehicleCount = number of vehicles to simulate (for bulk booking capacity planning)
+ * POST /business/available-slots — checks capacity and lane scheduling for the exact vehicle selection.
+ * @param {{ branchId: number; targetDate: string; vehicles: Array<{fleetVehicleId: number; serviceIds: number[]}> }} params
  */
 export async function getBusinessAvailableSlots({
   branchId,
-  fleetVehicleId,
   targetDate,
-  serviceIds,
-  vehicleCount = 1,
+  vehicles,
 }) {
-  const params = new URLSearchParams()
-  params.set('BranchId', String(branchId))
-  params.set('FleetVehicleId', String(fleetVehicleId))
   const dateIso = targetDate.includes('T') ? targetDate : `${targetDate}T00:00:00.000Z`
-  params.set('TargetDate', dateIso)
-  for (const id of serviceIds) {
-    params.append('ServiceIds', String(id))
-  }
-  params.set('VehicleCount', String(vehicleCount))
-
-  const data = await apiRequest(`/business/available-slots?${params}`)
+  const data = await apiRequest('/business/available-slots', {
+    method: 'POST',
+    body: JSON.stringify({
+      branchId: Number(branchId),
+      targetDate: dateIso,
+      vehicles: vehicles.map((vehicle) => ({
+        fleetVehicleId: Number(vehicle.fleetVehicleId),
+        serviceIds: vehicle.serviceIds.map(Number),
+      })),
+    }),
+  })
   return asBusinessCollection(data).map(normalizeBusinessSlot)
 }
 
@@ -630,42 +640,28 @@ export const createWalkIn = (dto) =>
   })
 
 export async function fetchFleetQueue(branchId) {
-  try {
-    const data = await apiRequest(
-      `/fleet/queue${branchId ? `?branchId=${branchId}` : ''}`,
-    )
-    return asBusinessCollection(data)
-  } catch (err) {
-    if (err instanceof ApiError && err.isForbidden) {
-      return fetchBusinessBookings().then((bookings) =>
-        bookings.filter((b) => ['Pending', 'CheckedIn'].includes(String(b.status))),
-      )
-    }
-    throw err
-  }
+  const data = await apiRequest('/business/vehicles/status/all')
+  return asBusinessCollection(data).filter((item) => {
+    const status = String(item.status ?? '')
+    const matchesStatus = status === 'CheckedIn' || status === 'Assigned'
+    const matchesBranch = !branchId || Number(item.branchId) === Number(branchId)
+    return matchesStatus && matchesBranch
+  })
 }
 
 export async function fetchCurrentVehicles(branchId) {
-  try {
-    const data = await apiRequest(
-      `/fleet/current${branchId ? `?branchId=${branchId}` : ''}`,
-    )
-    return asBusinessCollection(data)
-  } catch (err) {
-    if (err instanceof ApiError && err.isForbidden) {
-      return fetchBusinessBookings().then((bookings) =>
-        bookings.filter((b) => ['Processing', 'CheckedIn'].includes(String(b.status))),
-      )
-    }
-    throw err
-  }
+  const data = await apiRequest('/business/vehicles/status/all')
+  return asBusinessCollection(data).filter((item) => {
+    const matchesBranch = !branchId || Number(item.branchId) === Number(branchId)
+    return String(item.status ?? '') === 'Processing' && matchesBranch
+  })
 }
 
 // === History ===
 
 /** @param {Record<string, unknown>} item */
 function normalizeBusinessHistoryItem(item) {
-  const amount = item.totalAmount ?? item.cost ?? item.finalAmount
+  const amount = item.washCost ?? item.totalAmount ?? item.cost ?? item.finalAmount
 
   return {
     fleetWashLogId: item.fleetWashLogId ?? item.id ?? item.bookingId,
@@ -893,10 +889,52 @@ export async function fetchBusinessInvoices(filter = {}) {
 
 export const fetchInvoiceDetail = (id) => apiRequest(`/invoice/invoices/${id}`)
 
+export const payBusinessInvoice = (id, payload) =>
+  apiRequest(`/invoice/invoices/${id}/pay`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const fetchInvoicePaymentStatus = (id) =>
+  apiRequest(`/invoice/invoices/${id}/payment-status`)
+
+export const fetchBillingBusinesses = () =>
+  apiRequest('/invoice/billing/businesses')
+
+export const generateAndSendMonthlyInvoice = (payload) =>
+  apiRequest('/invoice/billing/monthly', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+
+export const resendBusinessInvoice = (id) =>
+  apiRequest(`/invoice/invoices/${id}/send`, { method: 'POST' })
+
 export const exportInvoice = (id) => apiRequest(`/business/invoices/${id}/export`)
 
-export const downloadInvoicePdf = (id) => {
-  window.open(`${API_BASE_URL}/invoice/invoices/${id}/pdf`, '_blank')
+export const downloadInvoicePdf = async (id) => {
+  const token = getAccessToken()
+  const response = await fetch(`${API_BASE_URL}/invoice/invoices/${id}/pdf`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!response.ok) {
+    throw new ApiError('Không thể tải PDF hóa đơn.', response.status)
+  }
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') ?? ''
+  const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const plainName = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+  const fileName = encodedName
+    ? decodeURIComponent(encodedName)
+    : plainName || `invoice-${id}.pdf`
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
 }
 
 export const fetchBookingInvoice = (bookingId) =>
@@ -922,8 +960,15 @@ export async function fetchPendingApplications() {
   return asBusinessCollection(data)
 }
 
-export const fetchApplicationDetail = (id) =>
-  apiRequest(`/business/admin/application/${id}`)
+export async function fetchApplicationDetail(id) {
+  const data = await apiRequest(`/business/admin/application/${id}`)
+  return {
+    ...data,
+    businessLicenseUrl: data.businessLicenseUrl ?? data.businessLicenseFileUrl,
+    authorizationLetterUrl:
+      data.authorizationLetterUrl ?? data.authorizationLetterFileUrl,
+  }
+}
 
 export const reviewApplication = (dto) =>
   apiRequest('/business/admin/review-application', {
