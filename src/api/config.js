@@ -16,15 +16,17 @@ export const API_BASE_URL = requireUrl(
   import.meta.env.VITE_API_BASE_URL,
 )
 
-export const BACKEND_BASE_URL = requireUrl(
-  'VITE_BACKEND_BASE_URL',
-  import.meta.env.VITE_BACKEND_BASE_URL,
-)
+function deriveBackendBaseUrl(apiBaseUrl) {
+  const suffixPattern = /\/api\/v1$/i
+  if (!suffixPattern.test(apiBaseUrl)) {
+    throw new Error('VITE_API_BASE_URL must end with /api/v1')
+  }
+  return apiBaseUrl.replace(suffixPattern, '')
+}
 
-export const LANE_DISPLAY_HUB_URL = requireUrl(
-  'VITE_LANE_DISPLAY_HUB_URL',
-  import.meta.env.VITE_LANE_DISPLAY_HUB_URL,
-)
+export const BACKEND_BASE_URL = deriveBackendBaseUrl(API_BASE_URL)
+
+export const LANE_DISPLAY_HUB_URL = `${BACKEND_BASE_URL}/hubs/lane-display`
 
 export const CAMERA_AI_BASE_URL = requireUrl(
   'VITE_CAMERA_AI_BASE_URL',
