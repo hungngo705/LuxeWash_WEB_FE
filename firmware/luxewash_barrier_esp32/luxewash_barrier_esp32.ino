@@ -9,7 +9,7 @@
 #include "secrets.h"
 
 namespace Config {
-constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 18;
+constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 19;
 constexpr uint8_t ENTRY_VIP_SERVO_PIN = 25;
 constexpr uint8_t EXIT_SERVO_PIN = 23;
 constexpr uint8_t ENTRY_REGULAR_SENSOR_PIN = 26;
@@ -70,6 +70,8 @@ class BarrierGate {
     state_ = GateState::Closed;
     moveServo(Config::CLOSED_ANGLE);
     lastCommandId_ = preferences.getString(preferenceKey_, "");
+    servo_.setPeriodHertz(50);
+    servo_.attach(servoPin_, Config::SERVO_MIN_US, Config::SERVO_MAX_US);
   }
 
   void update() {
@@ -176,12 +178,12 @@ class BarrierGate {
   }
 
   void releaseServoSignalWhenSettled() {
-    if (state_ == GateState::Closed && servo_.attached() &&
-        millis() - lastServoCommandAt_ >= Config::SERVO_SIGNAL_HOLD_MS) {
-      servo_.detach();
-      pinMode(servoPin_, OUTPUT);
-      digitalWrite(servoPin_, LOW);
-    }
+    // if (state_ == GateState::Closed && servo_.attached() &&
+    //     millis() - lastServoCommandAt_ >= Config::SERVO_SIGNAL_HOLD_MS) {
+    //   servo_.detach();
+    //   pinMode(servoPin_, OUTPUT);
+    //   digitalWrite(servoPin_, LOW);
+    // }
   }
 
   const char* id_;
@@ -394,6 +396,10 @@ void maintainWifi() {
 
 void setup() {
   Serial.begin(115200);
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
   preferences.begin("luxewash", false);
   entryRegularGate.begin();
   entryVipGate.begin();
