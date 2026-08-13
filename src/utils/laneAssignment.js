@@ -11,13 +11,22 @@ export function hasAssignedLane(booking) {
   )
 }
 
+export function isBusinessBooking(booking) {
+  const type = String(booking?.bookingType ?? '').trim().toLowerCase()
+  return type === 'business' || type === 'fleet' || Number(booking?.fleetWashLogId) > 0
+}
+
 export function canStartWash(booking) {
   if (booking?.status !== 'Checked-in' || !hasAssignedLane(booking)) return false
-  return Number(booking?.finalAmount ?? 0) <= 0 || isPaymentCompleted(booking?.paymentStatus)
+  return isBusinessBooking(booking) ||
+    Number(booking?.finalAmount ?? 0) <= 0 ||
+    isPaymentCompleted(booking?.paymentStatus)
 }
 
 export function canCheckIn(booking) {
-  return Number(booking?.finalAmount ?? 0) <= 0 || isPaymentCompleted(booking?.paymentStatus)
+  return isBusinessBooking(booking) ||
+    Number(booking?.finalAmount ?? 0) <= 0 ||
+    isPaymentCompleted(booking?.paymentStatus)
 }
 
 export function getLaneAssignmentState(booking) {
@@ -26,6 +35,7 @@ export function getLaneAssignmentState(booking) {
   if (booking.status === 'Checked-in') {
     const paymentStatus = String(booking.paymentStatus ?? '').trim()
     if (
+      !isBusinessBooking(booking) &&
       Number(booking.finalAmount ?? 0) > 0 &&
       paymentStatus &&
       paymentStatus !== '—' &&
@@ -38,6 +48,7 @@ export function getLaneAssignmentState(booking) {
   if (booking.status === 'Pending') {
     const paymentStatus = String(booking.paymentStatus ?? '').trim()
     if (
+      !isBusinessBooking(booking) &&
       Number(booking.finalAmount ?? 0) > 0 &&
       paymentStatus &&
       paymentStatus !== '—' &&

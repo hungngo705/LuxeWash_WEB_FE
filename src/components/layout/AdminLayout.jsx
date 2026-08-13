@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   '/admin/users': 'Người dùng hệ thống',
   '/admin/bookings': 'Lịch đặt toàn hệ thống',
   '/admin/transactions': 'Giao dịch & điểm',
+  '/admin/business-invoices': 'Phát hành hóa đơn doanh nghiệp',
   '/admin/settings': 'Cài đặt Admin',
 }
 
