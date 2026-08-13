@@ -17,7 +17,8 @@ export default function BusinessInvoicesPage() {
   }, [])
 
   const filtered = invoices.filter((inv) => {
-    if (filter.status && inv.status !== filter.status) return false
+    if (filter.status === 'Paid' && inv.status !== 'Paid') return false
+    if (filter.status === 'Unpaid' && inv.status === 'Paid') return false
     if (filter.dateFrom && new Date(inv.issuedAt) < new Date(filter.dateFrom)) return false
     if (filter.dateTo && new Date(inv.issuedAt) > new Date(filter.dateTo)) return false
     return true
@@ -43,7 +44,7 @@ export default function BusinessInvoicesPage() {
       )}
 
       <div className="flex gap-3 flex-wrap">
-        {['', 'Paid', 'Pending'].map((s) => (
+        {['', 'Paid', 'Unpaid'].map((s) => (
           <button
             key={s}
             onClick={() => setFilter((prev) => ({ ...prev, status: s }))}
@@ -86,6 +87,8 @@ export default function BusinessInvoicesPage() {
                     <td className="px-4 py-3 text-sm text-on-surface">
                       {invoice.invoiceType === 'RedInvoice' ? (
                         <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">Hóa đơn đỏ</span>
+                      ) : invoice.invoiceType === 'MonthlyStatement' ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">Hóa đơn tháng</span>
                       ) : (
                         <span className="text-on-surface-variant">Hóa đơn thường</span>
                       )}

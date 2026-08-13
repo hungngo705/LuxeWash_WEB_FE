@@ -70,7 +70,7 @@ import BusinessStatementsPage from './pages/business/BusinessStatementsPage'
 import BusinessSettingsPage from './pages/business/BusinessSettingsPage'
 import AdminBusinessApplicationsPage from './pages/admin/AdminBusinessApplicationsPage'
 import AdminBusinessApplicationDetailPage from './pages/admin/AdminBusinessApplicationDetailPage'
-import ManagerBusinessApplicationsPage from './pages/manager/ManagerBusinessApplicationsPage'
+import AdminBusinessInvoicesPage from './pages/admin/AdminBusinessInvoicesPage'
 import ManagerShiftsPage from './pages/manager/ManagerShiftsPage'
 import LaneAssignmentDisplayPage from './pages/display/LaneAssignmentDisplayPage'
 
@@ -132,6 +132,7 @@ export default function App() {
             <Route path="/admin/bookings" element={<AdminBookingsPage />} />
             <Route path="/admin/inventory" element={<AdminInventoryPage />} />
             <Route path="/admin/transactions" element={<AdminTransactionsPage />} />
+            <Route path="/admin/business-invoices" element={<AdminBusinessInvoicesPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
             <Route
               path="/admin/business-applications"
@@ -161,10 +162,6 @@ export default function App() {
             <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
             <Route path="/manager/inventory" element={<ManagerInventoryPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
-            <Route
-              path="/manager/business-applications"
-              element={<ManagerBusinessApplicationsPage />}
-            />
             <Route path="/manager/shifts" element={<ManagerShiftsPage />} />
           </Route>
 

@@ -24,6 +24,8 @@ import {
   fetchUserById,
   fetchVehicleTypes,
   maskPhoneNumber,
+  fleetCheckout,
+  fleetStartProcessing,
   fleetWalkIn,
   formatStaffStationLabel,
   formatPaymentMethodLabel,
@@ -59,6 +61,70 @@ function normalizePlate(plate) {
   return String(plate ?? "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "");
+}
+
+const CHECKIN_WRONG_DATE_ERROR = "BOOKING_CHECKIN_WRONG_DATE";
+const CHECKIN_OUTSIDE_TIME_ERROR = "BOOKING_CHECKIN_OUTSIDE_TIME";
+const CHECKIN_TIME_CONFIRMATION_DECLINED =
+  "BOOKING_CHECKIN_TIME_CONFIRMATION_DECLINED";
+
+function getApiErrorCode(error) {
+  return String(
+    error?.payload?.errorCode ?? error?.payload?.code ?? "",
+  ).trim();
+}
+
+function isCheckInScheduleError(error) {
+  const code = getApiErrorCode(error);
+  return (
+    code === CHECKIN_WRONG_DATE_ERROR ||
+    code === CHECKIN_OUTSIDE_TIME_ERROR ||
+    code === CHECKIN_TIME_CONFIRMATION_DECLINED
+  );
+}
+
+function confirmOutsideScheduledCheckIn(error) {
+  if (getApiErrorCode(error) !== CHECKIN_OUTSIDE_TIME_ERROR) return false;
+  return window.confirm(
+    `${error.message}\n\nChọn “OK” để xác nhận cho xe check-in ngoài giờ và tiếp tục.`,
+  );
+}
+
+function createFleetLookupBooking(licensePlate, fleetVehicle = {}) {
+  const vehicleType =
+    fleetVehicle.vehicleTypeName ??
+    fleetVehicle.vehicleType ??
+    fleetVehicle.VehicleTypeName ??
+    fleetVehicle.VehicleType
+  const brand = fleetVehicle.brand ?? fleetVehicle.Brand
+  const model = fleetVehicle.model ?? fleetVehicle.Model
+  const vehicleDisplayName = [brand, model].filter(Boolean).join(' ')
+
+  return {
+    bookingId: null,
+    fleetVehicleId: Number(
+      fleetVehicle.fleetVehicleId ?? fleetVehicle.FleetVehicleId ?? 0,
+    ) || null,
+    isFleetLookup: true,
+    status: 'Pending',
+    licensePlate,
+    customerName:
+      fleetVehicle.companyName ??
+      fleetVehicle.CompanyName ??
+      'Khách hàng doanh nghiệp',
+    phoneMasked:
+      fleetVehicle.businessPhoneNumber ?? fleetVehicle.BusinessPhoneNumber ?? '',
+    driverName: fleetVehicle.driverName ?? fleetVehicle.DriverName ?? '',
+    vehicleType,
+    vehicleDisplayName,
+    serviceName: 'Dịch vụ Fleet (walk-in)',
+    serviceNames: ['Dịch vụ Fleet (walk-in)'],
+    bookingType: 'Fleet',
+    rankName: 'Business account',
+    paymentMethod: 'Business account',
+    paymentStatus: 'Completed',
+    finalAmount: 0,
+  }
 }
 
 const MANUAL_COMPLETION_STORAGE_KEY = "luxewash:manual-completions";
@@ -168,8 +234,14 @@ function getCheckInSuccessMessage(booking) {
   if (booking?.status === "Processing" && hasAssignedLane(booking)) {
     const laneName = getLaneDisplayName(booking, "");
     return laneName
+      ? `Xe ${plate} đã check-in và bắt đầu rửa tại ${laneName}.`
+      : `Xe ${plate} đã check-in và bắt đầu rửa.`;
+  }
+  if (booking?.status === "Checked-in" && hasAssignedLane(booking)) {
+    const laneName = getLaneDisplayName(booking, "");
+    return laneName
       ? `Xe ${plate} đã check-in và được phân vào ${laneName}.`
-      : `Xe ${plate} đã check-in và bắt đầu vào làn.`;
+      : `Xe ${plate} đã check-in và được phân buồng rửa.`;
   }
   return `Xe ${plate} đã check-in và đang chờ làn trống.`;
 }
@@ -1293,7 +1365,11 @@ function CustomerInfoPanel({
         <div className="flex items-center justify-between">
           <StatusBadge status={booking.status} />
           <span className="text-xs font-medium text-on-surface-variant">
-            #{booking.bookingId}
+            {booking.bookingId
+              ? `#${booking.bookingId}`
+              : booking.fleetVehicleId
+                ? `Fleet #${booking.fleetVehicleId}`
+                : '—'}
           </span>
         </div>
 
@@ -1454,7 +1530,7 @@ function ProcessingVehiclesPanel({
         <div className="flex items-center gap-3">
           <span className="material-symbols-outlined text-primary">wash</span>
           <h3 className="font-sora text-xl font-semibold text-on-surface">
-            Đang rửa
+            Buồng rửa
           </h3>
         </div>
         <span className="rounded border border-secondary/25 bg-secondary/10 px-2 py-1 text-xs font-semibold text-secondary">
@@ -1467,7 +1543,7 @@ function ProcessingVehiclesPanel({
             water_drop
           </span>
           <p className="text-center text-sm text-on-surface-variant">
-            Chưa có xe đang rửa
+            Chưa có xe trong buồng rửa
           </p>
         </div>
       ) : (
@@ -1480,16 +1556,20 @@ function ProcessingVehiclesPanel({
               <button
                 type="button"
                 className="mb-3 w-full text-left"
-                onClick={() => v.bookingId && onSelect(v)}
-                disabled={!v.bookingId}
+                onClick={() => (v.bookingId || v.fleetWashLogId) && onSelect(v)}
+                disabled={!v.bookingId && !v.fleetWashLogId}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="font-sora text-xl font-bold tracking-wide text-on-surface">
                     {v.licensePlate}
                   </span>
                   <span className="flex items-center gap-1 rounded-full border border-secondary/25 bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold text-secondary uppercase">
-                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-secondary" />
-                    Đang rửa
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full bg-secondary ${
+                        v.status === "Processing" ? "animate-pulse" : ""
+                      }`}
+                    />
+                    {v.status === "Processing" ? "Đang rửa" : "Đã phân buồng"}
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -1507,7 +1587,7 @@ function ProcessingVehiclesPanel({
                   <WashDurationBadge booking={v} className="mt-2" />
                 </div>
               </button>
-              {v.bookingId ? (
+              {v.status === "Processing" && (v.bookingId || v.fleetWashLogId) ? (
                 <button
                   type="button"
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-amber-700 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-50"
@@ -1520,11 +1600,7 @@ function ProcessingVehiclesPanel({
                     ? "Đang xử lý…"
                     : "Hoàn thành thủ công"}
                 </button>
-              ) : (
-                <div className="rounded-xl border border-outline-variant px-3 py-2 text-center text-xs font-medium text-on-surface-variant">
-                  Xe Fleet · hoàn thành bằng camera cổng ra
-                </div>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
@@ -1830,7 +1906,10 @@ export default function DashboardPage() {
   }, [])
 
   const checkedInQueue = useMemo(
-    () => staffTasks.filter((b) => b.status === "Checked-in"),
+    () =>
+      staffTasks.filter(
+        (booking) => booking.status === "Checked-in" && !hasAssignedLane(booking),
+      ),
     [staffTasks],
   );
 
@@ -1866,22 +1945,27 @@ export default function DashboardPage() {
         Number(selectedBooking?.bookingId) === Number(occupancy.bookingId)
           ? selectedBooking
           : null;
-      const detail = { ...matchingTask, ...selected };
+      const detail = { ...occupancy, ...matchingTask, ...selected };
 
       return {
         ...detail,
         bookingId: occupancy.bookingId,
         fleetWashLogId: occupancy.fleetWashLogId,
         licensePlate: occupancy.licensePlate || detail.licensePlate,
-        status: "Processing",
+        status: detail.status ?? "Checked-in",
         processingLaneId: occupancy.laneId,
         processingLaneName: occupancy.laneName,
         processingStartTime:
-          detail.processingStartTime ?? occupancy.occupiedAt,
+          detail.status === "Processing"
+            ? (detail.processingStartTime ?? occupancy.occupiedAt)
+            : null,
         finalAmount: Number(detail.finalAmount ?? 0),
       };
     });
   })();
+  const activeWashCount = processingVehicles.filter(
+    (vehicle) => vehicle.status === "Processing",
+  ).length;
 
   const laneLabel = useMemo(
     () => formatStaffStationLabel(laneAssignment),
@@ -2238,24 +2322,11 @@ export default function DashboardPage() {
           return;
         }
 
-        try {
-          await fleetWalkIn({ licensePlate: plate, branchId });
-          setSelectedBooking(null);
-          setPlateInput("");
-          setLookupError("");
-          showToast(`Xe doanh nghiệp ${plate} đã được tiếp nhận và ghi nợ công ty.`);
-          return;
-        } catch (err) {
-          setSelectedBooking(null);
-          setLookupError(
-            err instanceof ApiError && err.status === 404
-              ? "Không tìm thấy phương tiện trong đội xe. Vui lòng chuyển sang luồng khách vãng lai cá nhân và thu tiền mặt/chuyển khoản trực tiếp."
-              : err instanceof ApiError
-              ? err.message
-              : "Không thể check-in xe doanh nghiệp. Vui lòng thử lại.",
-          );
-          return;
-        }
+        setSelectedBooking(createFleetLookupBooking(plate, lookup.fleetVehicle));
+        setLookupError(
+          `Đã tìm thấy xe doanh nghiệp ${plate}. Bấm “Check-in ngay” để tiếp nhận và phân buồng rửa.`,
+        );
+        return;
       }
 
       if (lookup.customerType === "WalkIn") {
@@ -2302,7 +2373,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingLookup(false);
     }
-  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices, showToast]);
+  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
 
   const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
     const plate = String(plateText ?? "").trim().toUpperCase();
@@ -2376,6 +2447,41 @@ export default function DashboardPage() {
       return next;
     };
 
+    const autoStartCameraBooking = async (booking) => {
+      if (
+        booking?.status !== "Checked-in" ||
+        !hasAssignedLane(booking) ||
+        !Number(booking?.bookingId)
+      ) {
+        return booking;
+      }
+
+      if (!canStartWash(booking)) {
+        return booking;
+      }
+
+      try {
+        await updateStaffBookingStatus(booking.bookingId, "Processing");
+        const processingBooking = await syncFreshBooking({
+          ...booking,
+          status: "Processing",
+          processingStartTime: new Date().toISOString(),
+          completedTime: null,
+          actualDurationMinutes: null,
+        });
+        publishBookingLaneState(processingBooking);
+        return processingBooking;
+      } catch (startError) {
+        const message =
+          startError instanceof ApiError
+            ? `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
+            : `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
+        setLookupError(message);
+        showToast(message, "error");
+        return booking;
+      }
+    };
+
     const checkInBooking = async (booking) => {
       let next = booking;
 
@@ -2392,9 +2498,27 @@ export default function DashboardPage() {
           });
           return next;
         }
-        const checkInResult = await staffCheckinBooking(next.bookingId, {
-          checkInImage: meta.imageBlob,
-        });
+        let checkInResult;
+        try {
+          checkInResult = await staffCheckinBooking(next.bookingId, {
+            checkInImage: meta.imageBlob,
+          });
+        } catch (checkInError) {
+          if (!confirmOutsideScheduledCheckIn(checkInError)) {
+            if (getApiErrorCode(checkInError) === CHECKIN_OUTSIDE_TIME_ERROR) {
+              throw new ApiError(
+                "Staff chưa xác nhận cho xe check-in ngoài giờ.",
+                409,
+                { errorCode: CHECKIN_TIME_CONFIRMATION_DECLINED },
+              );
+            }
+            throw checkInError;
+          }
+          checkInResult = await staffCheckinBooking(next.bookingId, {
+            checkInImage: meta.imageBlob,
+            allowOutsideScheduledTime: true,
+          });
+        }
         if (checkInResult.isAssigned && checkInResult.barrierCommandId) {
           const entryGate = resolveEntryBarrierGate({
             barrierId: checkInResult.barrierId,
@@ -2423,14 +2547,33 @@ export default function DashboardPage() {
         next = await syncFreshBooking(next);
       }
 
+      next = await autoStartCameraBooking(next);
       publishBookingLaneState(next);
       return next;
     };
 
     const fallbackCameraCheckIn = async () => {
-      const cameraBooking = await cameraCheckInByPlate(plate, {
-        checkInImage: meta.imageBlob,
-      });
+      let cameraBooking;
+      try {
+        cameraBooking = await cameraCheckInByPlate(plate, {
+          checkInImage: meta.imageBlob,
+        });
+      } catch (checkInError) {
+        if (!confirmOutsideScheduledCheckIn(checkInError)) {
+          if (getApiErrorCode(checkInError) === CHECKIN_OUTSIDE_TIME_ERROR) {
+            throw new ApiError(
+              "Staff chưa xác nhận cho xe check-in ngoài giờ.",
+              409,
+              { errorCode: CHECKIN_TIME_CONFIRMATION_DECLINED },
+            );
+          }
+          throw checkInError;
+        }
+        cameraBooking = await cameraCheckInByPlate(plate, {
+          checkInImage: meta.imageBlob,
+          allowOutsideScheduledTime: true,
+        });
+      }
       if (cameraBooking.barrierCommandId) {
         const entryGate = resolveEntryBarrierGate({
           barrierId: cameraBooking.barrierId,
@@ -2463,7 +2606,9 @@ export default function DashboardPage() {
               normalizePlate(plate),
           )
         : null;
-      const authoritativeBooking = freshBooking ?? cameraBooking;
+      const authoritativeBooking = await autoStartCameraBooking(
+        freshBooking ?? cameraBooking,
+      );
       await applySelectedBooking(authoritativeBooking);
       publishBookingLaneState(authoritativeBooking);
       const message = getCheckInSuccessMessage(authoritativeBooking);
@@ -2598,22 +2743,26 @@ export default function DashboardPage() {
                 : getCheckInSuccessMessage(updated);
             showToast(message);
             return { message };
-          } catch {
+          } catch (checkInError) {
+            if (isCheckInScheduleError(checkInError)) {
+              throw checkInError;
+            }
             return fallbackCameraCheckIn();
           }
         }
 
-        await applySelectedBooking(booking, {
-          message: plateLookupMessage(booking.status),
+        const updatedBooking = await autoStartCameraBooking(booking);
+        await applySelectedBooking(updatedBooking, {
+          message: plateLookupMessage(updatedBooking.status),
         });
-        publishBookingLaneState(booking);
+        publishBookingLaneState(updatedBooking);
 
         return {
           status:
-            booking.status === "Checked-in" || booking.status === "Processing"
+            updatedBooking.status === "Checked-in" || updatedBooking.status === "Processing"
               ? undefined
               : "needs-action",
-          message: `Booking #${booking.bookingId} đang ở trạng thái ${getBookingStatusLabel(booking.status)}.`,
+          message: `Booking #${updatedBooking.bookingId} đang ở trạng thái ${getBookingStatusLabel(updatedBooking.status)}.`,
         };
       }
 
@@ -2633,8 +2782,48 @@ export default function DashboardPage() {
         }
 
         const fleetResult = await fleetWalkIn({ licensePlate: plate, branchId });
+        const fleetAssigned =
+          !fleetResult?.isWaiting &&
+          Boolean(fleetResult?.laneId || fleetResult?.laneName);
+        let fleetBooking = {
+          ...createFleetLookupBooking(plate, lookup.fleetVehicle),
+          isFleetLookup: false,
+          bookingId: fleetResult?.bookingId ?? null,
+          fleetWashLogId: fleetResult?.fleetWashLogId,
+          fleetVehicleId:
+            fleetResult?.fleetVehicleId ?? lookup.fleetVehicle?.fleetVehicleId,
+          driverName:
+            fleetResult?.driverName ?? lookup.fleetVehicle?.driverName ?? "",
+          status: "Checked-in",
+          scheduledTime: fleetResult?.checkInTime ?? new Date().toISOString(),
+          processingLaneId: fleetResult?.laneId ?? null,
+          processingLaneName: fleetResult?.laneName ?? null,
+        };
+
+        if (fleetAssigned && fleetBooking.fleetWashLogId) {
+          try {
+            await fleetStartProcessing(
+              fleetBooking.fleetWashLogId,
+              fleetBooking.processingLaneId,
+            );
+            fleetBooking = {
+              ...fleetBooking,
+              status: "Processing",
+              processingStartTime: new Date().toISOString(),
+            };
+          } catch (startError) {
+            const message =
+              startError instanceof ApiError
+                ? `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
+                : `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
+            setLookupError(message);
+            showToast(message, "error");
+          }
+        }
+
+        setSelectedBooking(fleetBooking);
         await loadStaffTasks();
-        if (fleetResult?.laneId || fleetResult?.laneName) {
+        if (fleetAssigned) {
           publishLaneDisplayEvent({
             type: "assigned",
             plate,
@@ -2645,8 +2834,12 @@ export default function DashboardPage() {
         } else {
           publishLaneDisplayEvent({ type: "waiting", plate });
         }
-        showToast(`Camera AI đã tiếp nhận xe doanh nghiệp ${plate}.`);
-        return { message: `Đã tiếp nhận xe doanh nghiệp ${plate}.` };
+        const fleetMessage =
+          fleetBooking.status === "Processing"
+            ? `Camera AI đã check-in và tự động bắt đầu rửa xe doanh nghiệp ${plate}.`
+            : `Camera AI đã check-in xe doanh nghiệp ${plate} và đang chờ buồng rửa.`;
+        showToast(fleetMessage);
+        return { message: fleetMessage };
       }
 
       if (lookup.customerType === "WalkIn") {
@@ -2719,6 +2912,25 @@ export default function DashboardPage() {
       return { status: "needs-action", type: "error", message };
     } catch (err) {
       if (meta?.operationMode === 'exit') throw err;
+      if (isCheckInScheduleError(err)) {
+        const message =
+          err instanceof ApiError
+            ? err.message
+            : "Không thể check-in xe do không đúng lịch đặt.";
+        setWalkInDraft(null);
+        setLookupError(message);
+        showToast(message, "error");
+        publishLaneDisplayEvent({
+          type: "assistance",
+          plate,
+          title:
+            getApiErrorCode(err) === CHECKIN_WRONG_DATE_ERROR
+              ? "LỊCH ĐẶT KHÔNG PHẢI HÔM NAY"
+              : "STAFF CHƯA XÁC NHẬN CHECK-IN NGOÀI GIỜ",
+          message,
+        });
+        return { status: "needs-action", type: "error", message };
+      }
       if (meta?.queueLaneType && !queueLaneValidated) {
         const message = `Chưa xác định được hạng của xe ${plate}; giữ nguyên check-in và yêu cầu Staff kiểm tra làn.`;
         setWalkInDraft(null);
@@ -2776,6 +2988,25 @@ export default function DashboardPage() {
     }
     setConfirming(true);
     try {
+      if (selectedBooking.fleetWashLogId) {
+        await fleetStartProcessing(
+          selectedBooking.fleetWashLogId,
+          selectedBooking.processingLaneId,
+        );
+        const processingBooking = {
+          ...selectedBooking,
+          status: "Processing",
+          processingStartTime: new Date().toISOString(),
+          completedTime: null,
+          actualDurationMinutes: null,
+        };
+        setSelectedBooking(processingBooking);
+        showToast(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`);
+        setLookupError("");
+        await loadStaffTasks();
+        return;
+      }
+
       await updateStaffBookingStatus(selectedBooking.bookingId, "Processing");
       const freshTasks = await loadStaffTasks();
       let processingBooking = freshTasks?.find(
@@ -2819,19 +3050,75 @@ export default function DashboardPage() {
     }
     setCheckingIn(true);
     try {
+      if (selectedBooking.isFleetLookup) {
+        const branchId = Number(laneAssignment?.branchId);
+        if (!branchId) {
+          throw new ApiError(
+            "Chưa xác định được chi nhánh của nhân viên để check-in xe doanh nghiệp.",
+            400,
+          );
+        }
+
+        const result = await fleetWalkIn({
+          licensePlate: selectedBooking.licensePlate,
+          branchId,
+        });
+        const updated = {
+          ...selectedBooking,
+          isFleetLookup: false,
+          bookingId: result.bookingId ?? null,
+          fleetWashLogId: result.fleetWashLogId,
+          fleetVehicleId: result.fleetVehicleId ?? selectedBooking.fleetVehicleId,
+          driverName: result.driverName ?? selectedBooking.driverName,
+          status: "Checked-in",
+          scheduledTime: result.checkInTime ?? new Date().toISOString(),
+          processingLaneId: result.laneId ?? null,
+          processingLaneName: result.laneName ?? null,
+        };
+        setSelectedBooking(updated);
+        setLookupError("");
+        showToast(
+          result.isWaiting
+            ? `Xe doanh nghiệp ${updated.licensePlate} đã check-in và đang chờ buồng rửa.`
+            : `Xe doanh nghiệp ${updated.licensePlate} đã check-in và được phân vào ${updated.processingLaneName || "buồng rửa"}.`,
+        );
+        await loadStaffTasks();
+        return;
+      }
+
       const latestEntryFrame = latestCameraFramesRef.current.entry;
       const checkInImage =
         latestEntryFrame?.imageBlob instanceof Blob &&
         Date.now() - Number(latestEntryFrame.capturedAt) <= LATEST_CAMERA_IMAGE_MAX_AGE_MS
           ? latestEntryFrame.imageBlob
           : undefined;
-      if (!checkInImage) {
+      // The button is the manual fallback; a recent camera frame is optional.
+      const requiresCameraImage = false;
+      if (requiresCameraImage && !checkInImage) {
         showToast("Chưa có ảnh camera cổng vào mới, không thể check-in.", "error");
         return;
       }
-      const checkInResult = await staffCheckinBooking(selectedBooking.bookingId, {
-        checkInImage,
-      });
+      let checkInResult;
+      try {
+        checkInResult = await staffCheckinBooking(selectedBooking.bookingId, {
+          checkInImage,
+        });
+      } catch (checkInError) {
+        if (!confirmOutsideScheduledCheckIn(checkInError)) {
+          if (getApiErrorCode(checkInError) === CHECKIN_OUTSIDE_TIME_ERROR) {
+            const message =
+              "Staff chưa xác nhận cho xe check-in ngoài giờ. Xe vẫn ở trạng thái chờ check-in.";
+            setLookupError(message);
+            showToast(message, "error");
+            return;
+          }
+          throw checkInError;
+        }
+        checkInResult = await staffCheckinBooking(selectedBooking.bookingId, {
+          checkInImage,
+          allowOutsideScheduledTime: true,
+        });
+      }
       if (latestCameraFramesRef.current.entry?.imageBlob === checkInImage) {
         latestCameraFramesRef.current.entry = null;
       }
@@ -2889,52 +3176,55 @@ export default function DashboardPage() {
         err instanceof ApiError
           ? err.message
           : "Lỗi khi check-in. Vui lòng thử lại.";
+      setLookupError(msg);
       showToast(msg, "error");
     } finally {
       setCheckingIn(false);
     }
-  }, [selectedBooking, loadStaffTasks, executeBarrierCommand, showToast]);
+  }, [
+    selectedBooking,
+    laneAssignment,
+    loadStaffTasks,
+    executeBarrierCommand,
+    showToast,
+  ]);
 
   const handleComplete = useCallback(
     async (vehicle) => {
       const bookingId = vehicle?.bookingId;
-      if (!bookingId) return;
+      const fleetWashLogId = vehicle?.fleetWashLogId;
+      if (!bookingId && !fleetWashLogId) return;
       const task = vehicle;
       const processingKey = getProcessingVehicleKey(vehicle);
-      const latestExitFrame = latestCameraFramesRef.current.exit;
-      const checkOutImage =
-        latestExitFrame?.imageBlob instanceof Blob &&
-        Date.now() - Number(latestExitFrame.capturedAt) <= LATEST_CAMERA_IMAGE_MAX_AGE_MS
-          ? latestExitFrame.imageBlob
-          : undefined;
-      if (!checkOutImage) {
-        showToast("Chưa có ảnh camera cổng ra mới, không thể hoàn tất lượt rửa.", "error");
-        return;
-      }
       const confirmed = window.confirm(
         `Chỉ dùng khi camera cổng ra không nhận diện được biển số ${task?.licensePlate ?? ""}.\n\n` +
-          `Booking sẽ được hoàn thành và làn được giải phóng.${checkOutImage ? " Ảnh camera cổng ra hiện tại sẽ được lưu." : " Không có ảnh camera cổng ra mới trong 15 giây gần đây."} Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?`,
+          `Lượt rửa sẽ được hoàn thành và làn được giải phóng. Hoàn tất thủ công không yêu cầu ảnh camera cổng ra. Staff phải mở barie cổng ra bằng điều khiển thủ công.\n\nTiếp tục?`,
       );
       if (!confirmed) return;
 
       setCompletingId(processingKey);
       try {
-        await updateStaffBookingStatus(bookingId, "Completed", {
-          checkOutImage,
-        });
-        if (latestCameraFramesRef.current.exit?.imageBlob === checkOutImage) {
-          latestCameraFramesRef.current.exit = null;
+        if (fleetWashLogId) {
+          await fleetCheckout(fleetWashLogId);
+        } else {
+          await updateStaffBookingStatus(bookingId, "Completed");
         }
         rememberManualCompletion(task);
-        const message = `Xe ${task?.licensePlate ?? bookingId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
+        const message = `Xe ${task?.licensePlate ?? bookingId ?? fleetWashLogId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
         setBarrierAlert({ type: "manual", message });
         showToast(message);
         setStaffTasks((prev) =>
-          prev.filter((t) => Number(t.bookingId) !== Number(bookingId)),
+          prev.filter(
+            (t) =>
+              Number(t.bookingId) !== Number(bookingId) &&
+              Number(t.fleetWashLogId) !== Number(fleetWashLogId),
+          ),
         );
         setLaneOccupancies((current) =>
           current?.filter(
-            (occupancy) => Number(occupancy.bookingId) !== Number(bookingId),
+            (occupancy) =>
+              Number(occupancy.bookingId) !== Number(bookingId) &&
+              Number(occupancy.fleetWashLogId) !== Number(fleetWashLogId),
           ) ?? current,
         );
         if (selectedBooking?.bookingId === bookingId) {
@@ -3064,7 +3354,7 @@ export default function DashboardPage() {
           </span>
           <span className="flex items-center gap-2 rounded-full border border-secondary/30 bg-secondary/10 px-3 py-1.5 text-xs font-semibold text-secondary">
             <span className="material-symbols-outlined text-[16px]">wash</span>
-            {processingVehicles.length} đang rửa
+            {activeWashCount} đang rửa
           </span>
         </div>
       </div>
@@ -3096,7 +3386,7 @@ export default function DashboardPage() {
             onSearch={handleSearch}
             loading={loadingLookup}
             checkedInCount={checkedInQueue.length}
-            processingCount={processingVehicles.length}
+            processingCount={activeWashCount}
           />
           {walkInDraft ? (
             <PersonalWalkInPanel

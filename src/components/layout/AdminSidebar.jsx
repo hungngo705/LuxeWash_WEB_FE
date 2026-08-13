@@ -19,6 +19,7 @@ const navItems = [
   { to: '/admin/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
   { to: '/admin/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
   { to: '/admin/transactions', label: 'Giao dịch', icon: 'payments' },
+  { to: '/admin/business-invoices', label: 'Hóa đơn DN', icon: 'receipt_long' },
   { to: '/admin/business-applications', label: 'Đơn DN', icon: 'business' },
 ]
 
