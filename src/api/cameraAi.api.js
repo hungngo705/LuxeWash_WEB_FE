@@ -218,11 +218,7 @@ export async function submitVehicleVisionFeedback(
 }
 
 export async function cameraCheckInByPlate(licensePlate, options = {}) {
-  const {
-    checkInImage,
-    allowOutsideScheduledTime = false,
-    ...requestOptions
-  } = options
+  const { checkInImage, ...requestOptions } = options
   if (!(checkInImage instanceof Blob)) {
     throw new ApiError('Cần ảnh camera cổng vào để check-in.', 400)
   }
@@ -233,10 +229,6 @@ export async function cameraCheckInByPlate(licensePlate, options = {}) {
     'checkInImage',
     checkInImage,
     checkInImage.name || `checkin-${Date.now()}.jpg`,
-  )
-  formData.append(
-    'AllowOutsideScheduledTime',
-    String(allowOutsideScheduledTime === true),
   )
   const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-in?${params}`), {
     method: 'POST',

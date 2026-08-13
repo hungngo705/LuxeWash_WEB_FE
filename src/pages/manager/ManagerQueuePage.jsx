@@ -32,7 +32,7 @@ const STATUS_RAW_MAP = {
 }
 
 function normalizeStatus(raw) {
-  const s = String(raw ?? '').toLowerCase().replace(/[\s_-]+/g, '')
+  const s = String(raw ?? '').toLowerCase().replace(/\s+/g, '')
   return STATUS_RAW_MAP[s] ?? String(raw ?? '')
 }
 
@@ -121,16 +121,6 @@ export default function ManagerQueuePage() {
       return matchStatus && matchSearch
     })
   }, [bookings, statusFilter, search])
-
-  const assignableLanes = useMemo(() => {
-    const bookingType = String(assignTarget?.bookingType ?? '').toLowerCase()
-    const isBusinessBooking = bookingType === 'business' || bookingType === 'fleet'
-    return lanes.filter(
-      (lane) =>
-        lane.isActive !== false &&
-        Boolean(lane.isBusinessLane) === isBusinessBooking,
-    )
-  }, [assignTarget, lanes])
 
   const handleAssignLane = async () => {
     if (!assignTarget || !selectedLaneId) return
@@ -330,13 +320,13 @@ export default function ManagerQueuePage() {
           <p className="text-sm text-on-surface-variant">
             Chọn làn cho xe <strong className="text-on-surface">{assignTarget?.licensePlate}</strong>. Xe đã check-in nhưng chưa có làn sẽ không bị check-in lại.
           </p>
-          {assignableLanes.length === 0 ? (
+          {lanes.length === 0 ? (
             <p className="text-sm text-error">
               Không có làn nào khả dụng. Vui lòng liên hệ Admin để tạo làn rửa cho chi nhánh này.
             </p>
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              {assignableLanes.map((lane) => (
+              {lanes.map((lane) => (
                 <button
                   key={lane.laneId}
                   type="button"

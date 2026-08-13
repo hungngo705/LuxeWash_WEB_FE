@@ -22,46 +22,9 @@ export default function BusinessCreditPage() {
   }, [])
 
   useEffect(() => {
-    let cancelled = false
-    let retryTimer
-
-    const loadWallet = () =>
-      fetchMyWallet()
-        .then((data) => {
-          if (!cancelled) setWallet(data)
-        })
-        .catch(() => {
-          if (!cancelled) setWallet(null)
-        })
-
-    loadWallet()
-
-    // PayOS redirects back before a localhost webhook can be delivered (or
-    // before a production webhook finishes). Retry shortly so the reconciled
-    // balance is shown without requiring a manual page refresh.
-    const params = new URLSearchParams(window.location.search)
-    const returnedFromPayOs =
-      params.has('orderCode') || params.has('status') || params.has('code')
-    if (returnedFromPayOs) {
-      let attempts = 0
-      const retry = () => {
-        attempts += 1
-        loadWallet()
-        if (attempts < 3 && !cancelled) {
-          retryTimer = window.setTimeout(retry, 1500)
-        }
-      }
-      retryTimer = window.setTimeout(retry, 800)
-    }
-
-    const handleFocus = () => loadWallet()
-    window.addEventListener('focus', handleFocus)
-
-    return () => {
-      cancelled = true
-      if (retryTimer) window.clearTimeout(retryTimer)
-      window.removeEventListener('focus', handleFocus)
-    }
+    fetchMyWallet()
+      .then(setWallet)
+      .catch(() => setWallet(null))
   }, [])
 
   useEffect(() => {

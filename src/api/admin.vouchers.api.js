@@ -95,14 +95,6 @@ export function toTimeInputValue(value) {
   return String(value).slice(0, 5)
 }
 
-function toNullableId(value) {
-  const normalized = String(value ?? '').trim()
-  if (!normalized) return null
-
-  const id = Number(normalized)
-  return Number.isInteger(id) && id > 0 ? id : null
-}
-
 /** @param {Record<string, unknown>} voucher @param {Record<string, unknown>} [overrides] */
 export function buildVoucherPayload(voucher, overrides = {}) {
   const merged = { ...voucher, ...overrides }
@@ -130,14 +122,14 @@ export function buildVoucherPayload(voucher, overrides = {}) {
     imageUrl: merged.imageUrl?.trim?.() ? String(merged.imageUrl).trim() : merged.imageUrl ?? null,
     minOrderAmount: Number(merged.minOrderAmount ?? 0),
     isActive: merged.isActive !== false,
-    requiredTierId: toNullableId(merged.requiredTierId),
+    requiredTierId: merged.requiredTierId != null ? Number(merged.requiredTierId) : null,
     validStartTime: merged.validStartTime
       ? toApiTimeValue(toTimeInputValue(String(merged.validStartTime)))
       : null,
     validEndTime: merged.validEndTime
       ? toApiTimeValue(toTimeInputValue(String(merged.validEndTime)))
       : null,
-    vehicleTypeId: toNullableId(merged.vehicleTypeId),
+    vehicleTypeId: merged.vehicleTypeId != null ? Number(merged.vehicleTypeId) : null,
   }
 
   if (isPercent && Number(merged.discountPercent ?? 0) > 0) {

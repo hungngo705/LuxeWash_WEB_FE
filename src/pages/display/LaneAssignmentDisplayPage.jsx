@@ -258,26 +258,22 @@ export default function LaneAssignmentDisplayPage() {
   const enterFullscreen = () => document.documentElement.requestFullscreen?.()
 
   return (
-    <main
-      className="lane-display-root relative flex min-h-screen min-h-[100dvh] w-full overflow-hidden bg-[#06111d] text-white"
-      data-display-type={type}
-      data-has-plate={plate ? 'true' : 'false'}
-    >
+    <main className="relative flex min-h-screen min-h-[100dvh] w-full overflow-hidden bg-[#06111d] text-white">
       <div className={`absolute inset-0 bg-gradient-to-br ${config.glow}`} />
       <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] [background-size:64px_64px]" />
 
-      <div className="lane-display-shell relative z-10 flex min-h-screen min-h-[100dvh] w-full flex-col px-[clamp(1.5rem,5vw,6rem)] py-[clamp(1.5rem,4vh,3rem)]">
-        <header className="lane-display-header flex items-center justify-between gap-6">
-          <div className="lane-display-brand flex items-center gap-4">
-            <div className="lane-display-brand-icon flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10">
+      <div className="relative z-10 flex min-h-screen min-h-[100dvh] w-full flex-col px-[clamp(1.5rem,5vw,6rem)] py-[clamp(1.5rem,4vh,3rem)]">
+        <header className="flex items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10">
               <span className="material-symbols-outlined text-3xl text-cyan-200">local_car_wash</span>
             </div>
             <div>
-              <p className="lane-display-brand-name text-xl font-black tracking-[0.24em]">LUXEWASH</p>
-              <p className="lane-display-brand-subtitle text-sm font-medium tracking-[0.2em] text-slate-400">HỆ THỐNG PHÂN LÀN TỰ ĐỘNG</p>
+              <p className="text-xl font-black tracking-[0.24em]">LUXEWASH</p>
+              <p className="text-sm font-medium tracking-[0.2em] text-slate-400">HỆ THỐNG PHÂN LÀN TỰ ĐỘNG</p>
             </div>
           </div>
-          <div className="lane-display-connection flex items-center gap-3">
+          <div className="flex items-center gap-3">
             <span className={`h-3 w-3 rounded-full ${isDisconnected ? 'bg-rose-400' : 'animate-pulse bg-emerald-400'}`} />
             <span className="hidden text-sm font-semibold tracking-wider text-slate-300 sm:block">
               {connectionLabel}
@@ -285,7 +281,7 @@ export default function LaneAssignmentDisplayPage() {
             <button
               type="button"
               onClick={enterFullscreen}
-              className="lane-display-fullscreen ml-3 rounded-xl border border-white/15 bg-white/5 p-3 text-slate-200 transition hover:bg-white/10"
+              className="ml-3 rounded-xl border border-white/15 bg-white/5 p-3 text-slate-200 transition hover:bg-white/10"
               title="Toàn màn hình"
             >
               <span className="material-symbols-outlined">fullscreen</span>
@@ -293,48 +289,43 @@ export default function LaneAssignmentDisplayPage() {
           </div>
         </header>
 
-        <section className="lane-display-stage flex flex-1 flex-col items-center justify-center py-8 text-center">
-          <p className={`lane-display-eyebrow mb-5 text-[clamp(1rem,2vw,1.75rem)] font-bold tracking-[0.25em] ${config.accent}`}>
+        <section className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+          <p className={`mb-5 text-[clamp(1rem,2vw,1.75rem)] font-bold tracking-[0.25em] ${config.accent}`}>
             {config.eyebrow}
           </p>
-          <div className="lane-display-visual">
-            {plate && (
-              <div className="lane-display-plate mb-[clamp(1.5rem,4vh,3rem)] rounded-2xl border-2 border-white/20 bg-white/10 px-[clamp(2rem,5vw,5rem)] py-3 font-mono text-[clamp(2.5rem,7vw,6.5rem)] font-black leading-none tracking-[0.12em] shadow-2xl backdrop-blur">
-                {plate}
+          {plate && (
+            <div className="mb-[clamp(1.5rem,4vh,3rem)] rounded-2xl border-2 border-white/20 bg-white/10 px-[clamp(2rem,5vw,5rem)] py-3 font-mono text-[clamp(2.5rem,7vw,6.5rem)] font-black leading-none tracking-[0.12em] shadow-2xl backdrop-blur">
+              {plate}
+            </div>
+          )}
+
+          <span className={`material-symbols-outlined mb-5 text-[clamp(4rem,8vw,8rem)] ${config.accent}`}>
+            {config.icon}
+          </span>
+          <h1 className="max-w-6xl text-[clamp(2.25rem,5.7vw,6.5rem)] font-black leading-[1.05] tracking-tight">
+            {displayTitle}
+          </h1>
+          {shouldShowLane && laneName && (
+            <div className="my-[clamp(1.5rem,4vh,3rem)]">
+              <div className="rounded-3xl border-2 border-emerald-300/40 bg-emerald-300/10 px-[clamp(2rem,7vw,8rem)] py-[clamp(1rem,2.5vh,2rem)] text-[clamp(3.5rem,10vw,10rem)] font-black leading-none text-emerald-300 shadow-[0_0_80px_rgba(110,231,183,.18)]">
+                {laneName.toUpperCase()}
               </div>
-            )}
-
-            <span className={`lane-display-state-icon material-symbols-outlined mb-5 text-[clamp(4rem,8vw,8rem)] ${config.accent}`}>
-              {config.icon}
-            </span>
-          </div>
-
-          <div className="lane-display-content">
-            <h1 className="lane-display-title max-w-6xl text-[clamp(2.25rem,5.7vw,6.5rem)] font-black leading-[1.05] tracking-tight">
-              {displayTitle}
-            </h1>
-            {shouldShowLane && laneName && (
-              <div className="lane-display-lane-block my-[clamp(1.5rem,4vh,3rem)]">
-                <div className="lane-display-lane rounded-3xl border-2 border-emerald-300/40 bg-emerald-300/10 px-[clamp(2rem,7vw,8rem)] py-[clamp(1rem,2.5vh,2rem)] text-[clamp(3.5rem,10vw,10rem)] font-black leading-none text-emerald-300 shadow-[0_0_80px_rgba(110,231,183,.18)]">
-                  {laneName.toUpperCase()}
+              {isAdmissionGranted && (
+                <div className={`mx-auto mt-5 inline-flex items-center gap-3 rounded-full border px-6 py-3 text-[clamp(1rem,1.8vw,1.5rem)] font-bold tracking-wider ${barrierBadgeClass}`}>
+                  <span className="material-symbols-outlined text-3xl">garage_door</span>
+                  {barrierLabel}
                 </div>
-                {isAdmissionGranted && (
-                  <div className={`lane-display-barrier mx-auto mt-5 inline-flex items-center gap-3 rounded-full border px-6 py-3 text-[clamp(1rem,1.8vw,1.5rem)] font-bold tracking-wider ${barrierBadgeClass}`}>
-                    <span className="material-symbols-outlined text-3xl">garage_door</span>
-                    {barrierLabel}
-                  </div>
-                )}
-              </div>
-            )}
-            {!isQueueLaneCorrection && displayMessage && (
-              <p className="lane-display-message mt-6 max-w-5xl text-[clamp(1.25rem,2.5vw,2.25rem)] font-medium leading-relaxed text-slate-300">
-                {displayMessage}
-              </p>
-            )}
-          </div>
+              )}
+            </div>
+          )}
+          {!isQueueLaneCorrection && displayMessage && (
+            <p className="mt-6 max-w-5xl text-[clamp(1.25rem,2.5vw,2.25rem)] font-medium leading-relaxed text-slate-300">
+              {displayMessage}
+            </p>
+          )}
         </section>
 
-        <footer className="lane-display-footer flex items-end justify-between gap-4 text-sm text-slate-500">
+        <footer className="flex items-end justify-between gap-4 text-sm text-slate-500">
           <p>Vui lòng tuân theo hướng dẫn của nhân viên tại khu vực tiếp nhận</p>
           <time className="font-mono text-lg text-slate-400">
             {now

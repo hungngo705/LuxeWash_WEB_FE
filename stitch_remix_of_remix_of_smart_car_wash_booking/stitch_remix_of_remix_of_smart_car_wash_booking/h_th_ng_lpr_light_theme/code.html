@@ -1,0 +1,329 @@
+<!DOCTYPE html><html lang="vi"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Hệ thống LPR - Điều hành trạm</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=Sora:wght@600;700&amp;family=Geist:wght@500;600&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed": "#c3e8ff",
+                        "on-primary": "#ffffff",
+                        "surface-bright": "#f7f9fb",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#004d66",
+                        "inverse-on-surface": "#eff1f3",
+                        "surface-container-low": "#f2f4f6",
+                        "secondary": "#545f73",
+                        "on-surface": "#191c1e",
+                        "secondary-fixed-dim": "#bcc7de",
+                        "inverse-surface": "#2d3133",
+                        "on-secondary": "#ffffff",
+                        "on-secondary-fixed-variant": "#3c475a",
+                        "tertiary-container": "#50a9d0",
+                        "secondary-fixed": "#d8e3fb",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed-dim": "#7bd1fa",
+                        "surface-container": "#eceef0",
+                        "surface-variant": "#e0e3e5",
+                        "outline": "#6f787f",
+                        "on-background": "#191c1e",
+                        "on-tertiary-fixed": "#001e2b",
+                        "error": "#ba1a1a",
+                        "surface": "#f7f9fb",
+                        "primary": "#006689",
+                        "surface-container-high": "#e6e8ea",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f7f9fb",
+                        "primary-container": "#4aa9d7",
+                        "error-container": "#ffdad6",
+                        "primary-fixed-dim": "#7ad1ff",
+                        "on-secondary-fixed": "#111c2d",
+                        "on-primary-fixed": "#001e2c",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#003b4f",
+                        "surface-dim": "#d8dadc",
+                        "outline-variant": "#bec8cf",
+                        "on-primary-fixed-variant": "#004c68",
+                        "inverse-primary": "#7ad1ff",
+                        "secondary-container": "#d5e0f8",
+                        "surface-tint": "#006689",
+                        "surface-container-highest": "#e0e3e5",
+                        "on-surface-variant": "#3f484e",
+                        "on-primary-container": "#003b51",
+                        "tertiary": "#006686",
+                        "on-secondary-container": "#586377",
+                        "tertiary-fixed": "#c0e8ff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "base": "8px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "gutter": "24px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "sm": "12px",
+                        "container-margin": "20px"
+                    },
+                    "fontFamily": {
+                        "label-bold": ["Geist"],
+                        "headline-xl": ["Sora"],
+                        "label-sm": ["Geist"],
+                        "headline-md": ["Sora"],
+                        "headline-lg": ["Sora"],
+                        "body-md": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-bold": ["14px", { "lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+                        "headline-xl": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .metallic-edge {
+            border: 1px solid;
+            border-image-source: linear-gradient(to bottom right, #4aa9d7, #00a9e5);
+            border-image-slice: 1;
+        }
+        .soft-shadow {
+            box-shadow: 0 4px 20px 0 rgba(74, 169, 215, 0.1);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen font-body-md">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest h-screen w-64 fixed left-0 top-0 border-r border-outline-variant shadow-sm z-50">
+<div class="flex flex-col h-full py-lg">
+<div class="px-md mb-xl">
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">LuxeWash Pro</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant mt-xs">Station 04 - Active</p>
+</div>
+<div class="flex flex-col gap-xs flex-grow">
+<a class="flex items-center gap-md px-md py-sm text-on-primary bg-primary rounded-lg mx-sm transition-all duration-200 active:scale-95" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: &quot;FILL&quot; 1;">dashboard</span>
+<span class="font-label-bold text-label-bold">Dashboard</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors mx-sm rounded-lg" href="#">
+<span class="material-symbols-outlined">format_list_numbered</span>
+<span class="font-label-bold text-label-bold">Queue</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors mx-sm rounded-lg" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-bold text-label-bold">History</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors mx-sm rounded-lg" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-label-bold text-label-bold">Customers</span>
+</a>
+<a class="flex items-center gap-md px-md py-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-colors mx-sm rounded-lg mt-auto" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-bold text-label-bold">Settings</span>
+</a>
+</div>
+</div>
+</nav>
+<!-- TopNavBar -->
+<header class="bg-surface-container-lowest fixed top-0 right-0 left-64 h-16 border-b border-outline-variant z-40">
+<div class="flex justify-between items-center px-lg h-full">
+<h2 class="font-headline-md text-headline-md text-on-surface">LPR System Control</h2>
+<div class="flex items-center gap-md">
+<div class="flex gap-sm">
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors active:opacity-80">notifications</span>
+<span class="material-symbols-outlined text-primary cursor-pointer hover:text-primary transition-colors active:opacity-80">wifi</span>
+<span class="material-symbols-outlined text-on-surface-variant cursor-pointer hover:text-primary transition-colors active:opacity-80">sensors</span>
+</div>
+<div class="h-6 w-px bg-outline-variant mx-sm"></div>
+<div class="flex items-center gap-sm">
+<span class="font-label-bold text-label-bold text-primary">System Online</span>
+<img alt="Staff member portrait" class="w-8 h-8 rounded-full object-cover border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClp7ADyI2iBVUMA7EIoPJsEAYC2R4QW-wLfbu4V-aXdn2Mz-TQbaCcFYwtlZAX9KsIFU7XGtg5P5AR6HmgOL12_CBKkQdCh9I-BO7ZutWni9cVeBvi07Qicp7uFO9EVhZ3lpQueRoPAmxh8p_bGfItEe3Q60cAdRRZDEUlgQ93Hj6MZEy9-MlXay4Ab63PaE6vJ6tQIlxr64EslF4K7_d4wmwqOG_XztDYgbI4RSQGLu2p4iTRecovl8-Wcs-iPQ7biJH3ov3inmPr">
+</div>
+</div>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-64 mt-16 p-lg min-h-[calc(100vh-4rem)]">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-lg h-full">
+<!-- Panel 1: Live LPR Camera Feed -->
+<section class="lg:col-span-7 bg-surface-container-lowest rounded-xl overflow-hidden border border-outline-variant soft-shadow flex flex-col h-[calc(100vh-8rem)]">
+<div class="p-md border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary">videocam</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Live LPR Feed - Lane 1</h3>
+</div>
+<span class="bg-primary-container/20 text-primary-container px-sm py-xs rounded-full font-label-bold text-label-bold flex items-center gap-xs">
+<span class="w-2 h-2 rounded-full bg-primary-container animate-pulse"></span>
+                        REC
+                    </span>
+</div>
+<div class="relative flex-grow bg-black">
+<img alt="Car entering wash lane" class="w-full h-full object-cover opacity-80" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFjN7-XxYHxosgsGY869CNoxfjrLh7Qt9VHdFFiW_AItYeZCpo7VbzGlAdWlfEvBg8BVeFEMV8DeNY_FYTGWe8JMGvJzF_OU4YNF1u-CJ-8g5vsAZM34a3Rcc_G_Y1_O4pp-DNmsgaIxEn-D1b_WiTS63Z1_QndSwW2KBHUL9KLOJb4ahrLqzxYEXq7gQO-4sT5EeGuv_YhwYbKTqk4vgLNvf82-E2WDsB4ND8H3Hi1O8uMSeJb6V1RatWd6ZYssjmj6KjnokaBqdu">
+<!-- Bounding Box Overlay -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="border-2 border-primary-container w-48 h-24 rounded-lg relative shadow-[0_0_15px_rgba(74,169,215,0.4)] glass-panel flex flex-col items-center justify-center">
+<div class="absolute top-0 left-0 w-3 h-3 border-t-4 border-l-4 border-primary-container rounded-tl-sm"></div>
+<div class="absolute top-0 right-0 w-3 h-3 border-t-4 border-r-4 border-primary-container rounded-tr-sm"></div>
+<div class="absolute bottom-0 left-0 w-3 h-3 border-b-4 border-l-4 border-primary-container rounded-bl-sm"></div>
+<div class="absolute bottom-0 right-0 w-3 h-3 border-b-4 border-r-4 border-primary-container rounded-br-sm"></div>
+<span class="font-headline-lg text-headline-lg text-primary-container tracking-widest font-bold drop-shadow-md">51F-123.45</span>
+<div class="mt-xs bg-surface-container-lowest/80 px-2 py-1 rounded text-on-surface-variant text-[10px] font-label-sm uppercase tracking-wider flex items-center gap-1 border border-outline-variant">
+<span class="material-symbols-outlined text-[12px]">speed</span>
+                                Xử lý: &lt; 10s
+                            </div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Column -->
+<div class="lg:col-span-5 flex flex-col gap-lg h-[calc(100vh-8rem)]">
+<!-- Auto-approve Toggle Standalone -->
+<div class="flex items-center justify-between p-md bg-surface-container-lowest rounded-xl border border-outline-variant soft-shadow glass-panel">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary">bolt</span>
+<span class="font-label-bold text-label-bold text-on-surface uppercase tracking-wider">Tự động duyệt</span>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" id="auto-approve-toggle" type="checkbox">
+<div class="w-11 h-6 bg-surface-variant peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-container-lowest after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]"></div>
+</label>
+</div>
+<!-- Panel 2: Instant Customer Profile -->
+<section class="bg-surface-container-lowest rounded-xl p-md border border-outline-variant soft-shadow metallic-edge relative overflow-hidden glass-panel">
+<div class="absolute inset-0 bg-gradient-to-br from-primary-container/5 to-transparent pointer-events-none"></div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-md relative z-10">Thông tin khách hàng</h3>
+<div class="flex items-start gap-md relative z-10">
+<div class="w-16 h-16 rounded-full border-2 border-primary-container p-1 shrink-0 bg-surface-container-highest">
+<img alt="Customer Avatar" class="w-full h-full rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAktu-bVzR_JT37ws89HE34c7n9b2UGWvHnlfvCVSDjTEr_RFXPHDpkSBd15xKzG7vUdBT2Fc1CWdiiUL0KeHKNfY7YtOg7gubxF9E6--aRPk-p1ymC2db7611wmlsWpkC3aY4pwWBbD5LUvx0EZLbvH43oucZLmYf4cYBRuWaq9ZRV5868ufwWzg4oBjPYQ_car6rm2rODEa_1g4f02IjpMzdwMVHaKuEjG2ielfKCDNSUedXMvoTW5m-Ac5PtIxkgQe-nI8TMdszD">
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-start">
+<div>
+<h4 class="font-headline-lg text-headline-lg text-on-surface">Nguyễn Văn A</h4>
+<p class="font-body-md text-body-md text-on-surface-variant flex items-center gap-xs mt-1">
+<span class="material-symbols-outlined text-[16px]">call</span>
+                                        090****890
+                                    </p>
+</div>
+<span class="bg-primary-container text-on-primary px-sm py-xs rounded-full font-label-bold text-label-bold uppercase tracking-wider flex items-center gap-xs shadow-[0_2px_10px_rgba(74,169,215,0.2)] border border-primary-container/50">
+<span class="material-symbols-outlined text-[14px]">stars</span>
+                                    PLATINUM VIP
+                                </span>
+</div>
+<div class="mt-sm pt-sm border-t border-outline-variant/50 grid grid-cols-2 gap-sm">
+<div>
+<span class="font-label-sm text-label-sm text-on-surface-variant block mb-1">Xe Đăng Ký</span>
+<span class="font-body-md text-body-md text-on-surface">Mercedes-Benz S-Class</span>
+</div>
+<div>
+<span class="font-label-sm text-label-sm text-on-surface-variant block mb-1">Lần Rửa Cuối</span>
+<span class="font-body-md text-body-md text-on-surface">12/10/2023</span>
+</div>
+</div>
+<div class="mt-md flex gap-sm" id="action-buttons-container">
+<button class="flex-1 bg-primary text-on-primary py-sm px-md rounded-lg font-label-bold text-label-bold uppercase hover:bg-primary/90 transition-colors text-center shadow-sm">Xác Nhận</button>
+<button class="flex-1 bg-transparent text-on-surface border border-outline py-sm px-md rounded-lg font-label-bold text-label-bold uppercase hover:bg-surface-variant transition-colors text-center">Bỏ Qua</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Panel 3: Smart Priority Queue -->
+<section class="bg-surface-container-lowest rounded-xl border border-outline-variant soft-shadow flex-grow flex flex-col overflow-hidden glass-panel">
+<div class="p-md border-b border-outline-variant bg-surface-container-low flex justify-between items-center">
+<div class="flex items-center gap-sm">
+<span class="material-symbols-outlined text-primary">format_list_numbered</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Hàng chờ ưu tiên</h3>
+</div>
+<span class="bg-surface-variant text-on-surface-variant px-2 py-1 rounded font-label-sm text-label-sm">3 xe đang đợi</span>
+</div>
+<div class="overflow-y-auto flex-grow p-sm flex flex-col gap-sm">
+<!-- Active Item -->
+<div class="bg-surface-container-lowest border border-primary-container p-sm rounded-lg flex items-center gap-md relative overflow-hidden group hover:bg-surface-bright transition-colors cursor-pointer shadow-sm">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary-container"></div>
+<div class="w-12 h-12 rounded bg-surface-container-low flex items-center justify-center border border-primary-container/30 shrink-0">
+<span class="material-symbols-outlined text-primary-container text-3xl">directions_car</span>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-center mb-1">
+<span class="font-headline-md text-headline-md text-primary-container tracking-wide">51F-123.45</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Vừa tới</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="bg-primary-container/10 text-primary-container px-2 py-[2px] rounded text-[10px] font-label-bold uppercase border border-primary-container/30">VIP</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Vào làn Platinum riêng biệt</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity">chevron_right</span>
+</div>
+<!-- Secondary Item -->
+<div class="bg-surface-container-lowest border border-outline-variant p-sm rounded-lg flex items-center gap-md hover:bg-surface-bright transition-colors cursor-pointer">
+<div class="w-12 h-12 rounded bg-surface-container-low flex items-center justify-center border border-outline-variant shrink-0">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">directions_car</span>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-center mb-1">
+<span class="font-body-lg text-body-lg text-on-surface tracking-wide">30A-987.65</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">5p trước</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="bg-surface-variant text-on-surface-variant px-2 py-[2px] rounded text-[10px] font-label-bold uppercase border border-outline-variant">SILVER</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Chờ tại hàng ưu tiên</span>
+</div>
+</div>
+</div>
+<!-- Tertiary Item -->
+<div class="bg-surface-container-lowest border border-outline-variant p-sm rounded-lg flex items-center gap-md hover:bg-surface-bright transition-colors cursor-pointer opacity-70">
+<div class="w-12 h-12 rounded bg-surface-container-low flex items-center justify-center border border-outline-variant shrink-0">
+<span class="material-symbols-outlined text-on-surface-variant text-3xl">local_taxi</span>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between items-center mb-1">
+<span class="font-body-lg text-body-lg text-on-surface tracking-wide">29C-456.78</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">12p trước</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="bg-surface-variant text-on-surface-variant px-2 py-[2px] rounded text-[10px] font-label-bold uppercase border border-outline-variant">STANDARD</span>
+<span class="font-body-md text-body-md text-on-surface-variant">Chờ tại hàng tiêu chuẩn</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+<script>
+        const toggle = document.getElementById('auto-approve-toggle');
+        const buttonsContainer = document.getElementById('action-buttons-container');
+        
+        toggle.addEventListener('change', function() {
+            if (this.checked) {
+                buttonsContainer.classList.add('hidden');
+            } else {
+                buttonsContainer.classList.remove('hidden');
+            }
+        });
+    </script>
+</body></html>

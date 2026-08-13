@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import {
-  downloadInvoicePdf,
-  fetchInvoiceDetail,
-  fetchInvoicePaymentStatus,
-  payBusinessInvoice,
-} from '../../api/business.api'
-import { fetchMyWallet } from '../../api/wallet.api'
-import { getVietnameseApiErrorMessage } from '../../api/errors'
+import { fetchInvoiceDetail, downloadInvoicePdf } from '../../api/business.api'
 import { formatVnd, formatDateTime } from '../../utils/format'
 
 export default function BusinessInvoiceDetailPage() {
@@ -16,81 +9,13 @@ export default function BusinessInvoiceDetailPage() {
   const [invoice, setInvoice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [downloadError, setDownloadError] = useState('')
-  const [paymentError, setPaymentError] = useState('')
-  const [payingMethod, setPayingMethod] = useState('')
-  const [wallet, setWallet] = useState(null)
 
   useEffect(() => {
-    let cancelled = false
-
-    async function load() {
-      try {
-        const params = new URLSearchParams(window.location.search)
-        if (params.has('orderCode') || params.has('status') || params.has('code')) {
-          await fetchInvoicePaymentStatus(id).catch(() => null)
-          window.history.replaceState({}, '', window.location.pathname)
-        }
-
-        const [invoiceData, walletData] = await Promise.all([
-          fetchInvoiceDetail(id),
-          fetchMyWallet().catch(() => null),
-        ])
-        if (!cancelled) {
-          setInvoice(invoiceData)
-          setWallet(walletData)
-        }
-      } catch {
-        if (!cancelled) setError('Không thể tải chi tiết hóa đơn.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-
-    load()
-    return () => {
-      cancelled = true
-    }
+    fetchInvoiceDetail(id)
+      .then(setInvoice)
+      .catch(() => setError('Không thể tải chi tiết hóa đơn.'))
+      .finally(() => setLoading(false))
   }, [id])
-
-  async function handleWalletPayment() {
-    setPaymentError('')
-    setPayingMethod('Wallet')
-    try {
-      await payBusinessInvoice(id, { paymentMethod: 'Wallet' })
-      const [invoiceData, walletData] = await Promise.all([
-        fetchInvoiceDetail(id),
-        fetchMyWallet().catch(() => null),
-      ])
-      setInvoice(invoiceData)
-      setWallet(walletData)
-    } catch (err) {
-      setPaymentError(
-        getVietnameseApiErrorMessage(err, 'Không thể thanh toán hóa đơn bằng ví.'),
-      )
-    } finally {
-      setPayingMethod('')
-    }
-  }
-
-  async function handlePayOsPayment() {
-    setPaymentError('')
-    setPayingMethod('PayOS')
-    try {
-      const returnUrl = `${window.location.origin}/business/invoices/${id}`
-      const result = await payBusinessInvoice(id, {
-        paymentMethod: 'PayOS',
-        returnUrl,
-        cancelUrl: returnUrl,
-      })
-      const paymentUrl = result?.paymentUrl || result?.checkoutUrl || result?.url
-      if (!paymentUrl) throw new Error('Không nhận được đường dẫn thanh toán PayOS.')
-      window.location.href = String(paymentUrl)
-    } catch (err) {
-      setPaymentError(getVietnameseApiErrorMessage(err, 'Không thể tạo giao dịch PayOS.'))
-      setPayingMethod('')
-    }
-  }
 
   if (loading) {
     return (
@@ -133,14 +58,7 @@ export default function BusinessInvoiceDetailPage() {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={async () => {
-                  setDownloadError('')
-                  try {
-                    await downloadInvoicePdf(id)
-                  } catch (err) {
-                    setDownloadError(err?.message || 'Không thể tải PDF hóa đơn.')
-                  }
-                }}
+                onClick={() => downloadInvoicePdf(id)}
                 className="px-4 py-2 text-sm font-medium text-primary border border-primary rounded-xl hover:bg-primary/5 transition-colors flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm">download</span>
@@ -158,16 +76,6 @@ export default function BusinessInvoiceDetailPage() {
         </div>
 
         <div className="p-6 space-y-6">
-          {downloadError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {downloadError}
-            </div>
-          )}
-          {paymentError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              {paymentError}
-            </div>
-          )}
           <div className="grid grid-cols-2 gap-4">
             {invoice.businessName && (
               <div>
@@ -226,13 +134,13 @@ export default function BusinessInvoiceDetailPage() {
           )}
 
           <div className="bg-surface-container rounded-xl p-4 space-y-2 max-w-sm ml-auto">
-            {Number(invoice.subtotal) > 0 && (
+            {invoice.subtotal && (
               <div className="flex justify-between text-sm">
                 <span className="text-on-surface-variant">Tạm tính</span>
                 <span className="text-on-surface">{formatVnd(invoice.subtotal)}</span>
               </div>
             )}
-            {Number(invoice.taxAmount) > 0 && (
+            {invoice.taxAmount && (
               <div className="flex justify-between text-sm">
                 <span className="text-on-surface-variant">Thuế (8%)</span>
                 <span className="text-on-surface">{formatVnd(invoice.taxAmount)}</span>
@@ -243,43 +151,6 @@ export default function BusinessInvoiceDetailPage() {
               <span className="text-primary">{formatVnd(invoice.totalAmount)}</span>
             </div>
           </div>
-
-          {invoice.status === 'Paid' ? (
-            <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-800">
-              <span className="material-symbols-outlined">check_circle</span>
-              <div>
-                <p className="font-medium">Hóa đơn đã được thanh toán</p>
-                <p className="text-xs">Doanh nghiệp không cần thực hiện thêm thao tác thanh toán.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-outline-variant p-4">
-              <h3 className="font-medium text-on-surface">Thanh toán hóa đơn</h3>
-              <p className="mt-1 text-sm text-on-surface-variant">
-                Chọn trừ trực tiếp từ ví doanh nghiệp hoặc thanh toán qua PayOS/QR.
-              </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={handleWalletPayment}
-                  disabled={Boolean(payingMethod)}
-                  className="rounded-xl border border-primary px-4 py-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 disabled:opacity-50"
-                >
-                  {payingMethod === 'Wallet'
-                    ? 'Đang thanh toán...'
-                    : `Thanh toán bằng ví (${formatVnd(wallet?.balance || 0)})`}
-                </button>
-                <button
-                  type="button"
-                  onClick={handlePayOsPayment}
-                  disabled={Boolean(payingMethod)}
-                  className="rounded-xl bg-primary px-4 py-3 text-sm font-medium text-white transition-opacity disabled:opacity-50"
-                >
-                  {payingMethod === 'PayOS' ? 'Đang chuyển đến PayOS...' : 'Thanh toán PayOS / QR'}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

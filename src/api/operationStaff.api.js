@@ -613,14 +613,8 @@ export function normalizeStaffTask(item) {
 
   return {
     bookingId: Number(flat.bookingId ?? flat.id ?? 0),
-    fleetWashLogId:
-      flat.fleetWashLogId != null ? Number(flat.fleetWashLogId) : undefined,
-    fleetVehicleId:
-      flat.fleetVehicleId != null ? Number(flat.fleetVehicleId) : undefined,
-    isFleetLookup: flat.isFleetLookup === true,
     licensePlate: String(flat.licensePlate ?? firstDetail?.licensePlate ?? '—'),
     customerName: String(flat.customerName ?? '—'),
-    driverName: String(flat.driverName ?? ''),
     userId: flat.userId != null ? Number(flat.userId) : undefined,
     phoneNumber: String(phoneRaw || '—'),
     phoneMasked: maskPhoneNumber(String(phoneRaw || '')),
@@ -647,7 +641,6 @@ export function normalizeStaffTask(item) {
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,
     status: normalizeBookingStatus(flat.status ?? flat.bookingStatus),
-    bookingType: String(flat.bookingType ?? flat.BookingType ?? ''),
     finalAmount: Number(flat.finalAmount ?? flat.totalAmount ?? flat.amount ?? 0),
     originalAmount: Number(flat.originalAmount ?? flat.originalPrice ?? flat.finalAmount ?? 0),
     discountAmount: Number(flat.discountAmount ?? 0),
@@ -805,38 +798,15 @@ export function fetchStaffLaneAssignment(options = {}) {
  */
 export function fetchStaffLaneOccupancies(options = {}) {
   return apiRequest('/operation-staff/lane-occupancies', options).then((data) =>
-    (Array.isArray(data) ? data : []).map((item) => {
-      const serviceNames = Array.isArray(item.serviceNames)
-        ? item.serviceNames.map(String).filter(Boolean)
-        : []
-      const fleetWashLogId =
-        item.fleetWashLogId == null ? null : Number(item.fleetWashLogId)
-
-      const status = normalizeBookingStatus(
-        item.status ?? item.bookingStatus ?? 'CheckedIn',
-      )
-
-      return {
-        laneId: Number(item.laneId),
-        laneName: String(item.laneName ?? ''),
-        licensePlate: String(item.licensePlate ?? ''),
-        bookingId: item.bookingId == null ? null : Number(item.bookingId),
-        fleetWashLogId,
-        status,
-        occupiedAt: item.occupiedAt ?? null,
-        processingStartTime: status === 'Processing' ? item.occupiedAt ?? null : null,
-        customerName: String(item.customerName ?? ''),
-        driverName: String(item.driverName ?? ''),
-        vehicleType: String(item.vehicleTypeName ?? ''),
-        serviceNames,
-        serviceName:
-          serviceNames.join(', ') || (fleetWashLogId ? 'Dịch vụ Fleet (walk-in)' : ''),
-        finalAmount: Number(item.finalAmount ?? 0),
-        bookingType: String(item.bookingType ?? (fleetWashLogId ? 'Fleet' : '')),
-        paymentMethod: fleetWashLogId ? 'Business account' : undefined,
-        paymentStatus: fleetWashLogId ? 'Completed' : undefined,
-      }
-    }),
+    (Array.isArray(data) ? data : []).map((item) => ({
+      laneId: Number(item.laneId),
+      laneName: String(item.laneName ?? ''),
+      licensePlate: String(item.licensePlate ?? ''),
+      bookingId: item.bookingId == null ? null : Number(item.bookingId),
+      fleetWashLogId:
+        item.fleetWashLogId == null ? null : Number(item.fleetWashLogId),
+      occupiedAt: item.occupiedAt ?? null,
+    })),
   )
 }
 
@@ -954,7 +924,7 @@ export function normalizeStaffCheckInResult(item) {
     isWaiting,
     isAssigned,
     hasAdmissionDecision: isWaiting || isAssigned,
-    bookingStatus: isWaiting || isAssigned ? 'Checked-in' : undefined,
+    bookingStatus: isWaiting ? 'Checked-in' : isAssigned ? 'Processing' : undefined,
     laneId: Number.isFinite(laneId) ? laneId : undefined,
     laneName,
     barrierCommandId:
@@ -972,12 +942,9 @@ export function normalizeStaffCheckInResult(item) {
  * POST /api/v1/operation-staff/bookings/{bookingId}/checkin
  * Checks in a Pending booking and returns either Assigned or Waiting.
  * @param {number} bookingId
- * @param {{ checkInImage?: Blob | File, allowOutsideScheduledTime?: boolean }} [options]
+ * @param {{ checkInImage?: Blob | File }} [options]
  */
-export async function staffCheckinBooking(
-  bookingId,
-  { checkInImage, allowOutsideScheduledTime = false } = {},
-) {
+export async function staffCheckinBooking(bookingId, { checkInImage } = {}) {
   const formData = new FormData()
   if (checkInImage instanceof Blob) {
     formData.append(
@@ -986,10 +953,6 @@ export async function staffCheckinBooking(
       checkInImage.name || `checkin-${bookingId}-${Date.now()}.jpg`,
     )
   }
-  formData.append(
-    'AllowOutsideScheduledTime',
-    String(allowOutsideScheduledTime === true),
-  )
 
   const result = await apiRequest(`/operation-staff/bookings/${bookingId}/checkin`, {
     method: 'POST',

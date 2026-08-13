@@ -121,7 +121,7 @@ export default function BusinessVehicleDetailPage() {
               </div>
               <div className="bg-green-50 rounded-xl p-3 text-center">
                 <p className="text-2xl font-bold text-green-600">
-                  {formatVnd(history.reduce((sum, h) => sum + (h.totalAmount ?? h.cost ?? h.washCost ?? 0), 0))}
+                  {formatVnd(history.reduce((sum, h) => sum + (h.totalAmount || h.cost || 0), 0))}
                 </p>
                 <p className="text-xs text-on-surface-variant">Chi phí</p>
               </div>
@@ -168,7 +168,7 @@ export default function BusinessVehicleDetailPage() {
                           </span>
                         </td>
                         <td className="px-4 py-2 text-xs text-right font-medium text-primary">
-                          {formatVnd(item.totalAmount ?? item.cost ?? item.washCost ?? 0)}
+                          {formatVnd(item.totalAmount || item.cost || 0)}
                         </td>
                       </tr>
                     ))

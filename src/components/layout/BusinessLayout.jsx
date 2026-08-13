@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { fetchBusinessProfile } from '../../api/business.api'
-import { useAuth } from '../../context/AuthContext'
 import BusinessSidebar from './BusinessSidebar'
 import BusinessTopBar from './BusinessTopBar'
 
@@ -39,24 +38,15 @@ function getTitle(pathname) {
 }
 
 export default function BusinessLayout() {
-  const { patchUser } = useAuth()
   const { pathname } = useLocation()
   const title = getTitle(pathname)
   const [approvalStatus, setApprovalStatus] = useState(null)
 
   useEffect(() => {
     fetchBusinessProfile()
-      .then((profile) => {
-        setApprovalStatus(profile?.approvalStatus ?? null)
-        if (profile) {
-          patchUser({
-            companyName: profile.companyName,
-            email: profile.billingEmail,
-          })
-        }
-      })
+      .then((profile) => setApprovalStatus(profile?.approvalStatus ?? null))
       .catch(() => {})
-  }, [patchUser])
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">

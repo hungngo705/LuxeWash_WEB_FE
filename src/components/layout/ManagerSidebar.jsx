@@ -12,6 +12,7 @@ const navItems = [
   { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
   { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
   { to: '/manager/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
+  { to: '/manager/business-applications', label: 'Đơn DN', icon: 'business' },
 ]
 
 export default function ManagerSidebar() {

@@ -30,6 +30,7 @@ export default function BusinessHistoryPage() {
   }, [])
 
   useEffect(() => {
+    setLoading(true)
     const params = {
       page,
       pageSize: 20,
@@ -178,7 +179,7 @@ export default function BusinessHistoryPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-right font-medium text-primary">
-                      {formatVnd(item.totalAmount ?? item.cost ?? item.washCost ?? 0)}
+                      {formatVnd(item.totalAmount || item.cost || 0)}
                     </td>
                   </tr>
                 ))

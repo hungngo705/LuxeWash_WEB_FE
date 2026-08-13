@@ -9,15 +9,9 @@ import {
   resolveVehicleTypeId,
 } from '../../api/business.api'
 import { fetchBranches } from '../../api/admin.branches.api'
-import { getVietnameseApiErrorMessage } from '../../api/errors'
 import { formatVnd } from '../../utils/format'
 
 const STEPS = ['Chọn xe', 'Dịch vụ từng xe', 'Chi nhánh & slot', 'Xác nhận']
-
-function formatScheduleTime(value) {
-  const match = String(value || '').match(/T(\d{2}:\d{2})/)
-  return match ? match[1] : '—'
-}
 
 function VehicleServiceRow({ vehicle, services, selectedServices, onToggleService, resolvedVehicleTypeId, branchId }) {
   const price = (serviceId) => {
@@ -109,7 +103,6 @@ export default function BusinessNewBookingPage() {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotError, setSlotError] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [scheduleUpdating, setScheduleUpdating] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -126,45 +119,35 @@ export default function BusinessNewBookingPage() {
   // Fetch slots when branch/date/vehicles/services change
   useEffect(() => {
     if (step !== 2 || !selectedBranch || !selectedDate || selectedVehicleIds.length === 0) return
-    let ignore = false
 
-    const vehicleSelections = selectedVehicleIds.map((id) => ({
-      fleetVehicleId: id,
-      serviceIds: selectedServices[id] || [],
-    }))
+    const firstVehicle = vehicles.find((v) => v.fleetVehicleId === selectedVehicleIds[0])
+    const vehicleServiceIds = selectedVehicleIds.flatMap((id) => selectedServices[id] || [])
 
-    if (vehicleSelections.some((vehicle) => vehicle.serviceIds.length === 0)) return
+    if (!firstVehicle || vehicleServiceIds.length === 0) {
+      setSlots([])
+      return
+    }
 
-    Promise.resolve().then(() => {
-      if (ignore) return
-      setSelectedSlot(null)
-      setSlotsLoading(true)
-      setSlotError('')
-    })
+    setSelectedSlot(null)
+    setSlotsLoading(true)
+    setSlotError('')
 
     getBusinessAvailableSlots({
       branchId: selectedBranch,
+      fleetVehicleId: firstVehicle.fleetVehicleId,
       targetDate: selectedDate,
-      vehicles: vehicleSelections,
+      serviceIds: vehicleServiceIds,
+      vehicleCount: selectedVehicleIds.length,
     })
-      .then((data) => {
-        if (!ignore) setSlots(Array.isArray(data) ? data : [])
-      })
+      .then((data) => setSlots(Array.isArray(data) ? data : []))
       .catch((err) => {
-        if (ignore) return
         setSlots([])
         setSlotError(
           err.message ||
             'Không thể kiểm tra khung giờ. Tài khoản có thể chưa được duyệt hoặc chưa đủ điều kiện đặt lịch.',
         )
       })
-      .finally(() => {
-        if (!ignore) setSlotsLoading(false)
-      })
-
-    return () => {
-      ignore = true
-    }
+      .finally(() => setSlotsLoading(false))
   }, [step, selectedBranch, selectedDate, selectedVehicleIds, selectedServices])
 
   const toggleVehicle = (vehicleId) => {
@@ -183,9 +166,7 @@ export default function BusinessNewBookingPage() {
     })
   }
 
-  const selectedVehicles = selectedVehicleIds
-    .map((id) => vehicles.find((vehicle) => vehicle.fleetVehicleId === id))
-    .filter(Boolean)
+  const selectedVehicles = vehicles.filter((v) => selectedVehicleIds.includes(v.fleetVehicleId))
 
   const allServicesSelected = () => {
     return selectedVehicleIds.every((id) => (selectedServices[id] || []).length > 0)
@@ -225,48 +206,6 @@ export default function BusinessNewBookingPage() {
     return false
   }
 
-  const moveVehicle = async (currentIndex, direction) => {
-    const targetIndex = currentIndex + direction
-    if (
-      scheduleUpdating ||
-      targetIndex < 0 ||
-      targetIndex >= selectedVehicleIds.length ||
-      !selectedSlot
-    ) return
-
-    const reorderedIds = [...selectedVehicleIds]
-    const movedVehicleId = reorderedIds[currentIndex]
-    reorderedIds[currentIndex] = reorderedIds[targetIndex]
-    reorderedIds[targetIndex] = movedVehicleId
-
-    setScheduleUpdating(true)
-    setError('')
-    try {
-      const updatedSlots = await getBusinessAvailableSlots({
-        branchId: selectedBranch,
-        targetDate: selectedDate,
-        vehicles: reorderedIds.map((id) => ({
-          fleetVehicleId: id,
-          serviceIds: selectedServices[id] || [],
-        })),
-      })
-      const updatedSlot = updatedSlots.find(
-        (slot) => slot.slotId === selectedSlot.slotId && slot.isAvailable,
-      )
-      if (!updatedSlot) {
-        throw new Error('Thứ tự này không còn phù hợp với khung giờ đã chọn.')
-      }
-
-      setSelectedVehicleIds(reorderedIds)
-      setSlots(updatedSlots)
-      setSelectedSlot(updatedSlot)
-    } catch (err) {
-      setError(err.message || 'Không thể cập nhật thứ tự rửa xe.')
-    } finally {
-      setScheduleUpdating(false)
-    }
-  }
-
   const handleSubmit = async () => {
     setSubmitting(true)
     setError('')
@@ -283,11 +222,7 @@ export default function BusinessNewBookingPage() {
       await createBusinessBooking(dto)
       navigate('/business/bookings')
     } catch (err) {
-      setError(
-        err.message === 'BUSINESS_SLOT_CAPACITY_EXCEEDED'
-          ? 'Khung giờ vừa hết chỗ cho toàn bộ xe đã chọn. Vui lòng quay lại và chọn khung giờ khác.'
-          : getVietnameseApiErrorMessage(err, 'Tạo đặt lịch thất bại.'),
-      )
+      setError(err.message || 'Tạo đặt lịch thất bại.')
       setSubmitting(false)
     }
   }
@@ -482,7 +417,14 @@ export default function BusinessNewBookingPage() {
                   )}
                 </label>
                 <p className="mb-3 text-xs text-on-surface-variant rounded-lg border border-outline-variant/60 bg-surface-container-low/50 px-3 py-2">
-                  Đây là khung giờ bắt đầu. Nếu không đủ chỗ, hệ thống tự xếp các xe còn lại sang những khung giờ tiếp theo trong cùng ngày.
+                  Mỗi khung giờ là thời điểm bắt đầu rửa cho xe đầu tiên. Hệ thống tự sắp xếp thứ tự các xe trong khung giờ.
+                  {slots[0]?.estimatedLastEndMinutesIntoSlot != null && slots[0].estimatedLastEndMinutesIntoSlot > 0 && (
+                    <span className="block mt-1 font-medium text-on-surface">
+                      Dự kiến xe cuối hoàn tất: sau{' '}
+                      <strong className="text-primary">{slots[0].estimatedLastEndMinutesIntoSlot} phút</strong>{' '}
+                      kể từ giờ bắt đầu.
+                    </span>
+                  )}
                 </p>
 
                 {slotsLoading ? (
@@ -528,11 +470,6 @@ export default function BusinessNewBookingPage() {
                             )}
                             {durationHint && (
                               <p className={`text-[10px] mt-0.5 ${isSelected ? 'opacity-80' : 'text-primary'}`}>{durationHint}</p>
-                            )}
-                            {slot.overflowSlotCount > 0 && (
-                              <p className={`text-[10px] mt-0.5 ${isSelected ? 'opacity-80' : 'text-amber-700'}`}>
-                                Tràn qua {slot.overflowSlotCount} slot tiếp theo
-                              </p>
                             )}
                           </button>
                         )
@@ -584,78 +521,23 @@ export default function BusinessNewBookingPage() {
                   </span>
                 )}
               </p>
-              {selectedSlot?.overflowSlotCount > 0 && (
-                <p className="text-xs font-medium text-amber-700">
-                  Hệ thống đã tự phân bổ đoàn xe qua {selectedSlot.overflowSlotCount + 1} khung giờ.
-                </p>
-              )}
             </div>
 
             <div>
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-sm font-medium text-on-surface">
-                    Thứ tự rửa · {selectedVehicleIds.length} xe
-                  </p>
-                  <p className="text-xs text-on-surface-variant mt-0.5">
-                    Dùng nút lên/xuống để chọn xe rửa trước hoặc rửa sau.
-                  </p>
-                </div>
-                {scheduleUpdating && (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-primary whitespace-nowrap">
-                    <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                    Đang tính lại
-                  </span>
-                )}
-              </div>
-              <div className={`space-y-2 transition-opacity ${scheduleUpdating ? 'opacity-60' : ''}`}>
-                {selectedVehicles.map((vehicle, index) => {
+              <p className="text-sm font-medium text-on-surface mb-2">
+                {selectedVehicleIds.length} xe được đặt lịch
+              </p>
+              <div className="space-y-2">
+                {selectedVehicles.map((vehicle) => {
                   const serviceIds = selectedServices[vehicle.fleetVehicleId] || []
                   const vehicleSvcs = serviceIds.map((id) => services.find((s) => s.serviceId === id)).filter(Boolean)
-                  const projection = selectedSlot?.vehicleProjections?.find(
-                    (item) => item.fleetVehicleId === vehicle.fleetVehicleId,
-                  )
                   return (
                     <div key={vehicle.fleetVehicleId} className="bg-surface rounded-xl p-3 border border-outline-variant/50">
-                      <div className="flex items-start gap-3 mb-2">
-                        <div className="w-7 h-7 shrink-0 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                          {index + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-on-surface">{vehicle.licensePlate}</p>
-                              <p className="text-xs font-medium text-primary mt-0.5">
-                                {formatScheduleTime(projection?.estimatedStart)}–{formatScheduleTime(projection?.estimatedEnd)}
-                              </p>
-                            </div>
-                            <p className="text-sm font-bold text-primary whitespace-nowrap">{formatVnd(vehiclePriceMap[vehicle.fleetVehicleId] || 0)}</p>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 gap-1">
-                          <button
-                            type="button"
-                            onClick={() => moveVehicle(index, -1)}
-                            disabled={index === 0 || scheduleUpdating}
-                            aria-label={`Đưa xe ${vehicle.licensePlate} lên trước`}
-                            title="Rửa trước"
-                            className="w-8 h-8 rounded-lg border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-30 disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-lg">arrow_upward</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveVehicle(index, 1)}
-                            disabled={index === selectedVehicles.length - 1 || scheduleUpdating}
-                            aria-label={`Đưa xe ${vehicle.licensePlate} xuống sau`}
-                            title="Rửa sau"
-                            className="w-8 h-8 rounded-lg border border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary disabled:opacity-30 disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-lg">arrow_downward</span>
-                          </button>
-                        </div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-semibold text-on-surface">{vehicle.licensePlate}</p>
+                        <p className="text-sm font-bold text-primary">{formatVnd(vehiclePriceMap[vehicle.fleetVehicleId] || 0)}</p>
                       </div>
-                      <div className="flex flex-wrap gap-1 pl-10">
+                      <div className="flex flex-wrap gap-1">
                         {vehicleSvcs.map((svc) => (
                           <span key={svc.serviceId} className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] rounded-full font-medium">
                             {svc.name}
@@ -701,7 +583,7 @@ export default function BusinessNewBookingPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || scheduleUpdating}
+              disabled={submitting}
               className="px-6 py-2 text-sm font-medium text-on-primary bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2"
             >
               {submitting ? (

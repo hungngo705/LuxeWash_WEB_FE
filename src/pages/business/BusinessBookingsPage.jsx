@@ -49,18 +49,16 @@ export default function BusinessBookingsPage() {
     }
   }
 
-  // Completed washes belong to the wash-history screen. Keeping them here would
-  // mix finished services with actionable bookings and may expose stale actions.
-  const activeBookings = bookings.filter((booking) => booking.status !== 'Completed')
   const filteredBookings = filter === 'All'
-    ? activeBookings
-    : activeBookings.filter((b) => b.status === filter)
+    ? bookings
+    : bookings.filter((b) => b.status === filter)
 
   const filterOptions = [
     { value: 'All', label: 'Tất cả' },
     { value: 'Pending', label: 'Đã đặt lịch' },
     { value: 'CheckedIn', label: 'Đã check-in' },
     { value: 'Processing', label: 'Đang rửa' },
+    { value: 'Completed', label: 'Hoàn tất' },
     { value: 'Cancelled', label: 'Đã hủy' },
   ]
 

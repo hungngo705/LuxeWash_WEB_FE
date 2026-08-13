@@ -14,6 +14,7 @@ const PAGE_TITLES = {
   '/manager/settings': 'Cài đặt Manager',
   '/manager/shifts': 'Quản lý ca làm',
   '/manager/customers': 'Tra cứu khách hàng',
+  '/manager/business-applications': 'Đơn doanh nghiệp',
 }
 
 export default function ManagerLayout() {
