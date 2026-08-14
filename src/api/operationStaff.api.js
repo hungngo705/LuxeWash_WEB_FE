@@ -643,6 +643,9 @@ export function normalizeStaffTask(item) {
       flat.expiresAt ??
       flat.ExpiresAt ??
       null,
+    barrierCommandStatus:
+      String(flat.barrierCommandStatus ?? flat.BarrierCommandStatus ?? '').trim() || undefined,
+    isDuplicate: flat.isDuplicate === true || flat.IsDuplicate === true,
     serviceName: String(flat.serviceName ?? firstDetail?.serviceName ?? '—'),
     slotLabel: String(slotLabel),
     scheduledTime: scheduledRaw ? String(scheduledRaw) : null,

@@ -271,10 +271,19 @@ export async function cameraCheckOutByPlate(licensePlate, options = {}) {
     body: formData,
     timeoutMs: 30_000,
     ...requestOptions,
+    unwrapResponse: false,
   })
   const root = data && typeof data === 'object' ? data : {}
   const payload = root.data && typeof root.data === 'object' ? root.data : root
-  return normalizeStaffTask(payload)
+  return {
+    ...normalizeStaffTask(payload),
+    isDuplicate:
+      root.isDuplicate === true ||
+      root.IsDuplicate === true ||
+      payload.isDuplicate === true ||
+      payload.IsDuplicate === true,
+    responseMessage: String(root.message ?? payload.message ?? '').trim() || undefined,
+  }
 }
 
 export async function automatedWashCheckIn(

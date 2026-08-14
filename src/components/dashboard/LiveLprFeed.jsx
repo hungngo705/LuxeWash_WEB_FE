@@ -7,6 +7,8 @@ import {
 
 const SCAN_INTERVAL_MS = 3000
 const PLATE_COOLDOWN_MS = 8000
+const EXIT_PLATE_LOCK_MS = 10 * 60 * 1000
+const EMPTY_SCANS_TO_RESET_EXIT_LOCK = 2
 const MAX_LOGS = 9
 const MIN_REGION_ZOOM = 1
 const MAX_REGION_ZOOM = 4
@@ -179,6 +181,8 @@ function CameraStation({
   const busyRef = useRef(false)
   const scanAbortRef = useRef(null)
   const cooldownUntilRef = useRef(0)
+  const handledExitPlatesRef = useRef(new Map())
+  const consecutiveEmptyScansRef = useRef(0)
   const scanEnabledRef = useRef(true)
   const disabledRef = useRef(disabled)
 
@@ -462,8 +466,23 @@ function CameraStation({
 
       setCarCount(detectedCarCount)
       if (detectedCarCount === 0) {
+        consecutiveEmptyScansRef.current += 1
+        if (
+          mode === 'exit' &&
+          consecutiveEmptyScansRef.current >= EMPTY_SCANS_TO_RESET_EXIT_LOCK
+        ) {
+          handledExitPlatesRef.current.clear()
+        }
         setStatus('scanning')
         return
+      }
+      consecutiveEmptyScansRef.current = 0
+
+      if (mode === 'exit') {
+        const cutoff = Date.now() - EXIT_PLATE_LOCK_MS
+        for (const [handledPlate, handledAt] of handledExitPlatesRef.current) {
+          if (handledAt < cutoff) handledExitPlatesRef.current.delete(handledPlate)
+        }
       }
 
       const frameWidth = canvasRef.current?.width || videoRef.current?.videoWidth || 640
@@ -590,6 +609,11 @@ function CameraStation({
           queueLaneSide,
           queueLaneType,
         } = detection
+        if (mode === 'exit' && handledExitPlatesRef.current.has(plate)) {
+          successfulCount += 1
+          continue
+        }
+
         let vehicleRecognition = null
         if (mode === 'entry') {
           try {
@@ -629,6 +653,9 @@ function CameraStation({
 
           successfulCount += 1
           needsAction ||= result?.status === 'needs-action'
+          if (mode === 'exit' && result?.handled === true) {
+            handledExitPlatesRef.current.set(plate, Date.now())
+          }
           if (result?.message) {
             addLog(result.message, result.type === 'error' ? 'error' : 'success')
           }
