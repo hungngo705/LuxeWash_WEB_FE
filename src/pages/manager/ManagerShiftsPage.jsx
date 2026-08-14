@@ -49,6 +49,15 @@ export default function ManagerShiftsPage() {
   const [deleteAssignId, setDeleteAssignId] = useState(null)
   const [deleting, setDeleting] = useState(false)
 
+  const todayLocal = (() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  })()
+  const [assignmentDateFilter, setAssignmentDateFilter] = useState(todayLocal)
+
   const [lastFetchAt, setLastFetchAt] = useState(() => {
     const saved = localStorage.getItem('managerShifts_lastFetchAt')
     return saved ? new Date(saved) : new Date(0)
@@ -108,6 +117,24 @@ export default function ManagerShiftsPage() {
       ? swapRequests.length
       : swapRequests.filter((r) => new Date(r.createdAt) > seenSwapAt).length
 
+  const toLocalDateKey = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
+  const filteredAssignments = assignments
+    .filter((a) => toLocalDateKey(a.workDate) === assignmentDateFilter)
+    .slice()
+    .sort((a, b) => {
+      if (a.shiftName === b.shiftName) return a.staffName.localeCompare(b.staffName, 'vi')
+      return a.shiftName.localeCompare(b.shiftName, 'vi')
+    })
+
   const TABS = TAB_BASE.map((t) => {
     if (t.id === 'overtime') return { ...t, badgeCount: newOvertimeCount }
     if (t.id === 'swap') return { ...t, badgeCount: newSwapCount }
@@ -158,12 +185,12 @@ export default function ManagerShiftsPage() {
     try {
       await deleteManagerShiftAssignment(deleteAssignId)
       showToast('Đã xóa phân ca')
-      setDeleteAssignId(null)
-      await loadAll()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không xóa được phân ca')
     } finally {
+      setDeleteAssignId(null)
       setDeleting(false)
+      await loadAll()
     }
   }
 
@@ -286,44 +313,71 @@ export default function ManagerShiftsPage() {
             </div>
           )
         ) : tab === 'assignments' ? (
-          assignments.length === 0 ? (
-            <EmptyState icon="badge" title="Chưa có phân ca" />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-              <table className="w-full min-w-[640px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                    <th className="px-4 py-3">Nhân viên</th>
-                    <th className="px-4 py-3">Ca</th>
-                    <th className="px-4 py-3">Ngày</th>
-                    <th className="px-4 py-3">Trạng thái</th>
-                    <th className="px-4 py-3">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60">
-                  {assignments.map((row) => (
-                    <tr key={row.shiftAssignmentId}>
-                      <td className="px-4 py-3">{row.staffName}</td>
-                      <td className="px-4 py-3">{row.shiftName}</td>
-                      <td className="px-4 py-3">{formatDateTime(row.workDate)}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={row.status} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          className="text-error hover:underline"
-                          onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
-                        >
-                          Xóa
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3">
+              <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+                <span className="font-medium">Ngày:</span>
+                <input
+                  type="date"
+                  value={assignmentDateFilter}
+                  onChange={(e) => setAssignmentDateFilter(e.target.value)}
+                  className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm text-on-surface"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setAssignmentDateFilter(todayLocal)}
+                className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container"
+              >
+                Hôm nay
+              </button>
+              <span className="ml-auto text-sm text-on-surface-variant">
+                Tổng: <span className="font-semibold text-on-surface">{filteredAssignments.length}</span> phân ca
+              </span>
             </div>
-          )
+
+            {assignments.length === 0 ? (
+              <EmptyState icon="badge" title="Chưa có phân ca" />
+            ) : filteredAssignments.length === 0 ? (
+              <EmptyState
+                icon="calendar_today"
+                title={`Không có phân ca ngày ${assignmentDateFilter}`}
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
+                      <th className="px-4 py-3">Ca</th>
+                      <th className="px-4 py-3">Nhân viên</th>
+                      <th className="px-4 py-3">Trạng thái</th>
+                      <th className="px-4 py-3">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/60">
+                    {filteredAssignments.map((row) => (
+                      <tr key={row.shiftAssignmentId}>
+                        <td className="px-4 py-3 font-medium text-on-surface">{row.shiftName}</td>
+                        <td className="px-4 py-3">{row.staffName}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={row.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className="text-error hover:underline"
+                            onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
+                          >
+                            Xóa
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         ) : tab === 'overtime' ? (
           overtimeRequests.length === 0 ? (
             <EmptyState icon="more_time" title="Không có yêu cầu tăng ca chờ duyệt" />
