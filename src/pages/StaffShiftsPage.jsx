@@ -276,7 +276,6 @@ export default function StaffShiftsPage() {
     : !swapToDate
     ? 'Bước 2/2: Chọn ngày muốn đổi sang'
     : 'Chọn ca bạn muốn đổi'
-
   return (
     <div className="w-full">
       <PageHeader
@@ -438,8 +437,11 @@ export default function StaffShiftsPage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm text-on-surface">
-                    Ca của {req.fromStaffName || `#${req.fromAssignmentId}`} ({req.fromWorkDate ? formatDateTime(req.fromWorkDate) : '—'}) →{' '}
-                    Ca của {req.toStaffName || `#${req.toAssignmentId}`} ({req.toWorkDate ? formatDateTime(req.toWorkDate) : '—'})
+                    Đổi từ{' '}
+                    <span className="font-medium">{req.fromShiftName || `Ca #${req.fromAssignmentId}`}</span>{' '}
+                    ({req.fromWorkDate ? formatDateTime(req.fromWorkDate) : '—'}) sang{' '}
+                    <span className="font-medium">{req.toShiftName || `Ca #${req.toAssignmentId}`}</span>{' '}
+                    ({req.toWorkDate ? formatDateTime(req.toWorkDate) : '—'})
                   </p>
                   {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
                 </div>
@@ -509,6 +511,15 @@ export default function StaffShiftsPage() {
         size="lg"
       >
         <div className="space-y-5">
+          <div className="rounded-lg border border-primary/30 bg-primary-container/20 p-3 text-xs text-on-primary-container">
+            <p className="font-medium">Hướng dẫn:</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              <li>Bước 1: chọn ngày có ca bạn muốn đổi đi.</li>
+              <li>Bước 2: chọn ngày muốn đổi sang (phải có ca của bạn trong ngày đó).</li>
+              <li>Sau khi manager duyệt, bạn sẽ đổi ca với nhân viên khác có ca trùng ngày/ca đích.</li>
+              <li>Muốn đổi sang ca của nhân viên khác (ngày bạn không có ca)? Hãy liên hệ manager.</li>
+            </ul>
+          </div>
           <div className="flex items-center justify-between">
             <p className="text-xs text-on-surface-variant">
               {swapFromDate && swapFromShift && swapToDate && swapToShift
@@ -594,9 +605,15 @@ export default function StaffShiftsPage() {
               {swapTargetLoading ? (
                 <p className="text-sm text-on-surface-variant">Đang tải ca trong ngày…</p>
               ) : swapTargetShifts.length === 0 ? (
-                <p className="text-sm text-on-surface-variant">
-                  Không có ca nào khả dụng trong ngày này. Vui lòng chọn ngày khác.
-                </p>
+                <div className="space-y-2 text-sm text-on-surface-variant">
+                  <p>
+                    Bạn không có ca nào khả dụng trong ngày{' '}
+                    <span className="font-medium">{formatDateTime(swapToDate)}</span>.
+                  </p>
+                  <p>
+                    Bạn có thể chọn ngày khác (nơi bạn có ca) hoặc liên hệ manager để được hỗ trợ đổi sang ca của nhân viên khác.
+                  </p>
+                </div>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {swapTargetShifts.map((s) => {

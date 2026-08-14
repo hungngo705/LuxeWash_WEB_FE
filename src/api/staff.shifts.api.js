@@ -51,6 +51,8 @@ export function normalizeStaffShiftSwapRequest(item) {
     requestedByName: item.requestedByName != null ? String(item.requestedByName) : '',
     fromStaffName: item.fromStaffName != null ? String(item.fromStaffName) : '',
     toStaffName: item.toStaffName != null ? String(item.toStaffName) : '',
+    fromShiftName: item.fromShiftName != null ? String(item.fromShiftName) : '',
+    toShiftName: item.toShiftName != null ? String(item.toShiftName) : '',
     fromWorkDate: item.fromWorkDate != null ? String(item.fromWorkDate) : '',
     toWorkDate: item.toWorkDate != null ? String(item.toWorkDate) : '',
     reason: item.reason != null ? String(item.reason) : '',

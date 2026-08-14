@@ -27,7 +27,7 @@ export function normalizeWorkShift(item) {
 /** @param {Record<string, unknown>} item */
 export function normalizeShiftAssignment(item) {
   return {
-    shiftAssignmentId: Number(item.shiftAssignmentId ?? item.id),
+    shiftAssignmentId: Number(item.shiftAssignmentId ?? item.assignmentId ?? item.id),
     staffUserId: Number(item.staffUserId ?? 0),
     staffName: String(item.staffName ?? item.fullName ?? '—'),
     workShiftId: Number(item.workShiftId ?? 0),
@@ -57,9 +57,15 @@ export function normalizeOvertimeRequest(item) {
 export function normalizeShiftSwapRequest(item) {
   return {
     shiftSwapRequestId: Number(item.shiftSwapRequestId ?? item.id),
-    requesterName: String(item.requesterName ?? item.staffName ?? '—'),
+    requesterName: String(item.requesterName ?? item.requestedByName ?? '—'),
     fromAssignmentId: Number(item.fromAssignmentId ?? 0),
     toAssignmentId: Number(item.toAssignmentId ?? 0),
+    fromStaffName: String(item.fromStaffName ?? '—'),
+    toStaffName: String(item.toStaffName ?? '—'),
+    fromShiftName: String(item.fromShiftName ?? ''),
+    toShiftName: String(item.toShiftName ?? ''),
+    fromWorkDate: String(item.fromWorkDate ?? ''),
+    toWorkDate: String(item.toWorkDate ?? ''),
     reason: item.reason != null ? String(item.reason) : '',
     status: String(item.status ?? 'Pending'),
     reviewNote: item.reviewNote != null ? String(item.reviewNote) : '',
