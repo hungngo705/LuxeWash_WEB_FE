@@ -137,7 +137,7 @@ async function refreshStoredSession(timeoutMs) {
  * SmartWash API wrapper — response shape: { statusCode, message, data }
  *
  * @param {string} path e.g. `/admin/services`
- * @param {RequestInit & { auth?: boolean; timeoutMs?: number }} [options]
+ * @param {RequestInit & { auth?: boolean; timeoutMs?: number; unwrapResponse?: boolean }} [options]
  * @param {boolean} [options.auth=true] Attach Bearer token when present
  * @returns {Promise<unknown>} `data` field from API wrapper
  */
@@ -157,6 +157,7 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh, ba
   const {
     auth = true,
     timeoutMs = API_DEFAULT_TIMEOUT_MS,
+    unwrapResponse = true,
     headers: customHeaders,
     ...fetchOptions
   } = options
@@ -279,7 +280,7 @@ async function apiRequestInternal(path, options = {}, hasRetriedAfterRefresh, ba
       throw new ApiError(wrapper.message ?? 'Request failed', wrapper.statusCode, body)
     }
 
-    return wrapper.data
+    return unwrapResponse ? wrapper.data : body
   }
 
   return body

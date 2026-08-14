@@ -2623,7 +2623,7 @@ export default function DashboardPage() {
           const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
           setBarrierAlert({ type: 'manual', message });
           showToast(message);
-          return { status: 'needs-action', type: 'warning', message };
+          return { status: 'needs-action', type: 'warning', message, handled: true };
         }
 
         try {
@@ -2636,6 +2636,38 @@ export default function DashboardPage() {
           const completed = await cameraCheckOutByPlate(plate, {
             checkOutImage: meta.imageBlob,
           });
+          if (completed.isDuplicate) {
+            if (latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob) {
+              latestCameraFramesRef.current.exit = null;
+            }
+
+            const commandStatus = String(completed.barrierCommandStatus ?? '').trim().toLowerCase();
+            const barrierWasAcknowledged =
+              commandStatus === 'completed' || commandStatus === 'acknowledged';
+            const commandExpired =
+              commandStatus === 'expired' ||
+              (completed.barrierCommandExpiresAt &&
+                Date.parse(completed.barrierCommandExpiresAt) <= Date.now());
+            const message = barrierWasAcknowledged
+              ? `Xe ${plate} đã hoàn tất dịch vụ trước đó và ESP32 đã xác nhận lệnh mở barie.`
+              : commandExpired
+                ? `Xe ${plate} đã hoàn tất dịch vụ trước đó; lệnh mở barie đã hết hạn nên hệ thống không gửi lại tự động.`
+                : `Xe ${plate} đã hoàn tất dịch vụ trước đó — bỏ qua lần quét trùng.`;
+
+            setBarrierAlert({
+              type: barrierWasAcknowledged ? 'success' : 'manual',
+              message,
+              booking: completed,
+            });
+            showToast(message, barrierWasAcknowledged ? 'success' : 'warning');
+            return {
+              status: barrierWasAcknowledged ? 'completed' : 'needs-action',
+              type: barrierWasAcknowledged ? 'success' : 'warning',
+              message,
+              handled: true,
+            };
+          }
+
           const exitCommandId =
             completed.exitBarrierCommandId ?? completed.barrierCommandId;
           let barrierOpened = null;
@@ -2680,7 +2712,7 @@ export default function DashboardPage() {
           );
           showToast(message, "success");
           await loadStaffTasks();
-          return { message };
+          return { message, handled: true };
         } catch (checkoutError) {
           const rawMessage = checkoutError instanceof ApiError
             ? checkoutError.message
