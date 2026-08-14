@@ -20,15 +20,15 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import { formatDateTime } from '../../utils/format'
 
-const TABS = [
+const emptyShiftForm = { shiftName: '', startTime: '07:00', endTime: '15:00' }
+const emptyAssignForm = { staffUserId: '', workShiftId: '', workDate: '', note: '' }
+
+const TAB_BASE = [
   { id: 'shifts', label: 'Ca làm' },
   { id: 'assignments', label: 'Phân ca' },
   { id: 'overtime', label: 'Tăng ca' },
   { id: 'swap', label: 'Đổi ca' },
 ]
-
-const emptyShiftForm = { shiftName: '', startTime: '07:00', endTime: '15:00' }
-const emptyAssignForm = { staffUserId: '', workShiftId: '', workDate: '', note: '' }
 
 export default function ManagerShiftsPage() {
   const [tab, setTab] = useState('shifts')
@@ -48,6 +48,29 @@ export default function ManagerShiftsPage() {
   const [saving, setSaving] = useState(false)
   const [deleteAssignId, setDeleteAssignId] = useState(null)
   const [deleting, setDeleting] = useState(false)
+
+  const todayLocal = (() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  })()
+  const [assignmentDateFilter, setAssignmentDateFilter] = useState(todayLocal)
+
+  const [lastFetchAt, setLastFetchAt] = useState(() => {
+    const saved = localStorage.getItem('managerShifts_lastFetchAt')
+    return saved ? new Date(saved) : new Date(0)
+  })
+
+  const [seenOvertimeAt, setSeenOvertimeAt] = useState(() => {
+    const saved = localStorage.getItem('managerShifts_seenOvertimeAt')
+    return saved ? new Date(saved) : null
+  })
+  const [seenSwapAt, setSeenSwapAt] = useState(() => {
+    const saved = localStorage.getItem('managerShifts_seenSwapAt')
+    return saved ? new Date(saved) : null
+  })
 
   const showToast = (msg) => {
     setToast(msg)
@@ -70,6 +93,10 @@ export default function ManagerShiftsPage() {
       setOvertimeRequests(overtime)
       setSwapRequests(swaps)
       setStaffs(staffList)
+
+      const now = new Date()
+      localStorage.setItem('managerShifts_lastFetchAt', now.toISOString())
+      setLastFetchAt(now)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được dữ liệu ca làm')
     } finally {
@@ -80,6 +107,39 @@ export default function ManagerShiftsPage() {
   useEffect(() => {
     loadAll()
   }, [loadAll])
+
+  const newOvertimeCount =
+    seenOvertimeAt === null
+      ? overtimeRequests.length
+      : overtimeRequests.filter((r) => new Date(r.createdAt) > seenOvertimeAt).length
+  const newSwapCount =
+    seenSwapAt === null
+      ? swapRequests.length
+      : swapRequests.filter((r) => new Date(r.createdAt) > seenSwapAt).length
+
+  const toLocalDateKey = (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
+
+  const filteredAssignments = assignments
+    .filter((a) => toLocalDateKey(a.workDate) === assignmentDateFilter)
+    .slice()
+    .sort((a, b) => {
+      if (a.shiftName === b.shiftName) return a.staffName.localeCompare(b.staffName, 'vi')
+      return a.shiftName.localeCompare(b.shiftName, 'vi')
+    })
+
+  const TABS = TAB_BASE.map((t) => {
+    if (t.id === 'overtime') return { ...t, badgeCount: newOvertimeCount }
+    if (t.id === 'swap') return { ...t, badgeCount: newSwapCount }
+    return t
+  })
 
   const handleCreateShift = async () => {
     if (!shiftForm.shiftName.trim()) {
@@ -125,12 +185,12 @@ export default function ManagerShiftsPage() {
     try {
       await deleteManagerShiftAssignment(deleteAssignId)
       showToast('Đã xóa phân ca')
-      setDeleteAssignId(null)
-      await loadAll()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không xóa được phân ca')
     } finally {
+      setDeleteAssignId(null)
       setDeleting(false)
+      await loadAll()
     }
   }
 
@@ -180,14 +240,33 @@ export default function ManagerShiftsPage() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setTab(item.id)}
+            onClick={() => {
+              setTab(item.id)
+              if (item.id === 'overtime') {
+                const now = new Date()
+                localStorage.setItem('managerShifts_seenOvertimeAt', now.toISOString())
+                setSeenOvertimeAt(now)
+              }
+              if (item.id === 'swap') {
+                const now = new Date()
+                localStorage.setItem('managerShifts_seenSwapAt', now.toISOString())
+                setSeenSwapAt(now)
+              }
+            }}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
               tab === item.id
                 ? 'bg-secondary text-on-secondary'
                 : 'bg-surface-container text-on-surface-variant hover:bg-surface-variant'
             }`}
           >
-            {item.label}
+            <span className="inline-flex items-center gap-2">
+              <span>{item.label}</span>
+              {item.badgeCount > 0 && (
+                <span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {item.badgeCount}
+                </span>
+              )}
+            </span>
           </button>
         ))}
       </div>
@@ -201,154 +280,230 @@ export default function ManagerShiftsPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải…</p>
-      ) : tab === 'shifts' ? (
-        workShifts.length === 0 ? (
-          <EmptyState icon="schedule" title="Chưa có ca làm" />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-            <table className="w-full min-w-[520px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                  <th className="px-4 py-3">Tên ca</th>
-                  <th className="px-4 py-3">Bắt đầu</th>
-                  <th className="px-4 py-3">Kết thúc</th>
-                  <th className="px-4 py-3">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/60">
-                {workShifts.map((shift) => (
-                  <tr key={shift.workShiftId}>
-                    <td className="px-4 py-3 font-medium">{shift.shiftName}</td>
-                    <td className="px-4 py-3">{toTimeInputValue(shift.startTime)}</td>
-                    <td className="px-4 py-3">{toTimeInputValue(shift.endTime)}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={shift.isActive ? 'Active' : 'Cancelled'} />
-                    </td>
+      <div key={tab}>
+        {loading ? (
+          <p className="text-sm text-on-surface-variant">Đang tải…</p>
+        ) : tab === 'shifts' ? (
+          workShifts.length === 0 ? (
+            <EmptyState icon="schedule" title="Chưa có ca làm" />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+              <table className="w-full min-w-[520px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
+                    <th className="px-4 py-3">Tên ca</th>
+                    <th className="px-4 py-3">Bắt đầu</th>
+                    <th className="px-4 py-3">Kết thúc</th>
+                    <th className="px-4 py-3">Trạng thái</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/60">
+                  {workShifts.map((shift) => (
+                    <tr key={shift.workShiftId}>
+                      <td className="px-4 py-3 font-medium">{shift.shiftName}</td>
+                      <td className="px-4 py-3">{toTimeInputValue(shift.startTime)}</td>
+                      <td className="px-4 py-3">{toTimeInputValue(shift.endTime)}</td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={shift.isActive ? 'Active' : 'Cancelled'} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : tab === 'assignments' ? (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3">
+              <label className="flex items-center gap-2 text-sm text-on-surface-variant">
+                <span className="font-medium">Ngày:</span>
+                <input
+                  type="date"
+                  value={assignmentDateFilter}
+                  onChange={(e) => setAssignmentDateFilter(e.target.value)}
+                  className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm text-on-surface"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => setAssignmentDateFilter(todayLocal)}
+                className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs font-medium text-on-surface-variant hover:bg-surface-container"
+              >
+                Hôm nay
+              </button>
+              <span className="ml-auto text-sm text-on-surface-variant">
+                Tổng: <span className="font-semibold text-on-surface">{filteredAssignments.length}</span> phân ca
+              </span>
+            </div>
+
+            {assignments.length === 0 ? (
+              <EmptyState icon="badge" title="Chưa có phân ca" />
+            ) : filteredAssignments.length === 0 ? (
+              <EmptyState
+                icon="calendar_today"
+                title={`Không có phân ca ngày ${assignmentDateFilter}`}
+              />
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
+                      <th className="px-4 py-3">Ca</th>
+                      <th className="px-4 py-3">Nhân viên</th>
+                      <th className="px-4 py-3">Trạng thái</th>
+                      <th className="px-4 py-3">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/60">
+                    {filteredAssignments.map((row) => (
+                      <tr key={row.shiftAssignmentId}>
+                        <td className="px-4 py-3 font-medium text-on-surface">{row.shiftName}</td>
+                        <td className="px-4 py-3">{row.staffName}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={row.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className="text-error hover:underline"
+                            onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
+                          >
+                            Xóa
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )
-      ) : tab === 'assignments' ? (
-        assignments.length === 0 ? (
-          <EmptyState icon="badge" title="Chưa có phân ca" />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                  <th className="px-4 py-3">Nhân viên</th>
-                  <th className="px-4 py-3">Ca</th>
-                  <th className="px-4 py-3">Ngày</th>
-                  <th className="px-4 py-3">Trạng thái</th>
-                  <th className="px-4 py-3">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/60">
-                {assignments.map((row) => (
-                  <tr key={row.shiftAssignmentId}>
-                    <td className="px-4 py-3">{row.staffName}</td>
-                    <td className="px-4 py-3">{row.shiftName}</td>
-                    <td className="px-4 py-3">{formatDateTime(row.workDate)}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={row.status} />
-                    </td>
-                    <td className="px-4 py-3">
+        ) : tab === 'overtime' ? (
+          overtimeRequests.length === 0 ? (
+            <EmptyState icon="more_time" title="Không có yêu cầu tăng ca chờ duyệt" />
+          ) : (
+            <div className="space-y-3">
+              {overtimeRequests.map((req) => (
+                <div
+                  key={req.overtimeRequestId}
+                  className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-on-surface">{req.staffName}</p>
+                      <p className="text-sm text-on-surface-variant">
+                        {formatDateTime(req.workDate)} · {toTimeInputValue(req.startTime)} –{' '}
+                        {toTimeInputValue(req.endTime)}
+                      </p>
+                      {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
+                    </div>
+                    <div className="flex gap-2">
                       <button
                         type="button"
-                        className="text-error hover:underline"
-                        onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm text-on-primary"
+                        onClick={() => handleReviewOvertime(req.overtimeRequestId, true)}
                       >
-                        Xóa
+                        Duyệt
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      ) : tab === 'overtime' ? (
-        overtimeRequests.length === 0 ? (
-          <EmptyState icon="more_time" title="Không có yêu cầu tăng ca chờ duyệt" />
+                      <button
+                        type="button"
+                        className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm"
+                        onClick={() => handleReviewOvertime(req.overtimeRequestId, false)}
+                      >
+                        Từ chối
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : swapRequests.length === 0 ? (
+          <EmptyState icon="swap_horiz" title="Không có yêu cầu đổi ca chờ duyệt" />
         ) : (
           <div className="space-y-3">
-            {overtimeRequests.map((req) => (
-              <div
-                key={req.overtimeRequestId}
-                className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-on-surface">{req.staffName}</p>
-                    <p className="text-sm text-on-surface-variant">
-                      {formatDateTime(req.workDate)} · {toTimeInputValue(req.startTime)} –{' '}
-                      {toTimeInputValue(req.endTime)}
-                    </p>
-                    {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-primary px-3 py-1.5 text-sm text-on-primary"
-                      onClick={() => handleReviewOvertime(req.overtimeRequestId, true)}
-                    >
-                      Duyệt
-                    </button>
-                    <button
-                      type="button"
-                      className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm"
-                      onClick={() => handleReviewOvertime(req.overtimeRequestId, false)}
-                    >
-                      Từ chối
-                    </button>
+            {swapRequests.map((req) => {
+              const fromAssign = assignments.find((a) => a.shiftAssignmentId === req.fromAssignmentId)
+              const toAssign = assignments.find((a) => a.shiftAssignmentId === req.toAssignmentId)
+              const fromShift = fromAssign?.shiftName || req.fromShiftName || `Ca #${req.fromAssignmentId}`
+              const toShift = toAssign?.shiftName || req.toShiftName || `Ca #${req.toAssignmentId}`
+              const fromDate = fromAssign?.workDate?.slice(0, 10) || req.fromWorkDate?.slice(0, 10) || '—'
+              const toDate = toAssign?.workDate?.slice(0, 10) || req.toWorkDate?.slice(0, 10) || '—'
+              const fromStaff = fromAssign?.staffName || req.fromStaffName || '—'
+              const toStaff = toAssign?.staffName || req.toStaffName || '—'
+              const conflict = Boolean(
+                fromAssign && toAssign
+                  ? assignments.some(
+                      (a) =>
+                        a.shiftAssignmentId !== req.toAssignmentId &&
+                        a.staffUserId === toAssign.staffUserId &&
+                        a.workShiftId === fromAssign.workShiftId &&
+                        a.workDate === fromAssign.workDate,
+                    ) ||
+                    assignments.some(
+                      (a) =>
+                        a.shiftAssignmentId !== req.fromAssignmentId &&
+                        a.staffUserId === fromAssign.staffUserId &&
+                        a.workShiftId === toAssign.workShiftId &&
+                        a.workDate === toAssign.workDate,
+                    )
+                  : false,
+              )
+              return (
+                <div
+                  key={req.shiftSwapRequestId}
+                  className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="font-medium text-on-surface">
+                        <span className="text-primary">{req.requesterName}</span> yêu cầu đổi ca
+                      </p>
+                      <div className="space-y-1 text-sm text-on-surface-variant">
+                        <p>
+                          <span className="font-medium">Ca hiện tại của {fromStaff}:</span>{' '}
+                          {fromShift} · ngày {fromDate}
+                        </p>
+                        <p>
+                          <span className="font-medium">Ca muốn đổi của {toStaff}:</span>{' '}
+                          {toShift} · ngày {toDate}
+                        </p>
+                      </div>
+                      {req.reason && (
+                        <p className="text-sm text-on-surface-variant">
+                          <span className="font-medium">Lý do:</span> {req.reason}
+                        </p>
+                      )}
+                      {conflict && (
+                        <p className="mt-1 text-sm text-error">
+                          ⚠ Xung đột lịch làm — một trong hai nhân viên đã có ca trùng ngày/ca đích. Không thể duyệt.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={conflict}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm text-on-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => handleReviewSwap(req.shiftSwapRequestId, true)}
+                      >
+                        Duyệt
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm"
+                        onClick={() => handleReviewSwap(req.shiftSwapRequestId, false)}
+                      >
+                        Từ chối
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
-        )
-      ) : swapRequests.length === 0 ? (
-        <EmptyState icon="swap_horiz" title="Không có yêu cầu đổi ca chờ duyệt" />
-      ) : (
-        <div className="space-y-3">
-          {swapRequests.map((req) => (
-            <div
-              key={req.shiftSwapRequestId}
-              className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-medium text-on-surface">{req.requesterName}</p>
-                  <p className="text-sm text-on-surface-variant">
-                    Ca #{req.fromAssignmentId} → Ca #{req.toAssignmentId}
-                  </p>
-                  {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg bg-primary px-3 py-1.5 text-sm text-on-primary"
-                    onClick={() => handleReviewSwap(req.shiftSwapRequestId, true)}
-                  >
-                    Duyệt
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-outline-variant px-3 py-1.5 text-sm"
-                    onClick={() => handleReviewSwap(req.shiftSwapRequestId, false)}
-                  >
-                    Từ chối
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
+      </div>
 
       <FormModal
         open={shiftModalOpen}
