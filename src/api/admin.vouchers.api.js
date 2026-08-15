@@ -106,6 +106,7 @@ function toNullableId(value) {
 /** @param {Record<string, unknown>} voucher @param {Record<string, unknown>} [overrides] */
 export function buildVoucherPayload(voucher, overrides = {}) {
   const merged = { ...voucher, ...overrides }
+  const expiryDate = String(merged.expiryDate ?? '').trim()
   const isPercent =
     merged.discountKind === DISCOUNT_KIND.Percent ||
     Number(merged.discountPercent ?? 0) > 0
@@ -117,9 +118,11 @@ export function buildVoucherPayload(voucher, overrides = {}) {
       : Number(merged.discountAmount ?? 0),
     maxUsages: Number(merged.maxUsages ?? 0),
     maxUsagePerUser: Number(merged.maxUsagePerUser ?? 1),
-    expiryDate: String(merged.expiryDate ?? '').includes('T')
-      ? String(merged.expiryDate)
-      : toApiExpiryDate(String(merged.expiryDate)),
+    expiryDate: expiryDate
+      ? expiryDate.includes('T')
+        ? expiryDate
+        : toApiExpiryDate(expiryDate)
+      : null,
     startDate: merged.startDate
       ? String(merged.startDate).includes('T')
         ? String(merged.startDate)

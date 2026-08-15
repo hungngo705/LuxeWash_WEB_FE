@@ -35,6 +35,7 @@ export const CAMPAIGN_TYPE_LABEL = {
  *   maxUsagePerUser: number
  *   expiryDays: number | null
  *   startDate: string | null
+ *   expiryDate: string
  *   endDate: string
  *   minOrderAmount: number
  *   imageUrl: string | null
@@ -54,6 +55,7 @@ export const CAMPAIGN_TYPE_LABEL = {
 
 /** @param {CampaignVoucher} v @returns {CampaignVoucher} */
 export function normalizeCampaignVoucher(v) {
+  const expiryDate = v.expiryDate ?? v.ExpiryDate ?? v.endDate ?? v.EndDate ?? ''
   return {
     voucherId: Number(v.voucherId ?? v.VoucherId),
     code: String(v.code ?? v.Code ?? ''),
@@ -63,7 +65,8 @@ export function normalizeCampaignVoucher(v) {
     maxUsagePerUser: Number(v.maxUsagePerUser ?? v.MaxUsagePerUser ?? 1),
     expiryDays: v.expiryDays ?? v.ExpiryDays ?? null,
     startDate: v.startDate ?? v.StartDate ?? null,
-    endDate: v.endDate ?? v.EndDate ?? '',
+    expiryDate,
+    endDate: v.endDate ?? v.EndDate ?? expiryDate,
     minOrderAmount: Number(v.minOrderAmount ?? v.MinOrderAmount ?? 0),
     imageUrl: v.imageUrl ?? v.ImageUrl ?? null,
     requiredTierId: v.requiredTierId ?? v.RequiredTierId ?? null,
