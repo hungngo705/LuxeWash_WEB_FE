@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError,
   createManagerShiftAssignment,
@@ -63,13 +63,23 @@ export default function ManagerShiftsPage() {
     return saved ? new Date(saved) : new Date(0)
   })
 
-  const [seenOvertimeAt, setSeenOvertimeAt] = useState(() => {
-    const saved = localStorage.getItem('managerShifts_seenOvertimeAt')
-    return saved ? new Date(saved) : null
+  const [seenOvertimeIds, setSeenOvertimeIds] = useState(() => {
+    const saved = localStorage.getItem('managerShifts_seenOvertimeIds')
+    if (!saved) return new Set()
+    try {
+      return new Set(JSON.parse(saved))
+    } catch {
+      return new Set()
+    }
   })
-  const [seenSwapAt, setSeenSwapAt] = useState(() => {
-    const saved = localStorage.getItem('managerShifts_seenSwapAt')
-    return saved ? new Date(saved) : null
+  const [seenSwapIds, setSeenSwapIds] = useState(() => {
+    const saved = localStorage.getItem('managerShifts_seenSwapIds')
+    if (!saved) return new Set()
+    try {
+      return new Set(JSON.parse(saved))
+    } catch {
+      return new Set()
+    }
   })
 
   const showToast = (msg) => {
@@ -108,14 +118,39 @@ export default function ManagerShiftsPage() {
     loadAll()
   }, [loadAll])
 
-  const newOvertimeCount =
-    seenOvertimeAt === null
-      ? overtimeRequests.length
-      : overtimeRequests.filter((r) => new Date(r.createdAt) > seenOvertimeAt).length
-  const newSwapCount =
-    seenSwapAt === null
-      ? swapRequests.length
-      : swapRequests.filter((r) => new Date(r.createdAt) > seenSwapAt).length
+  // Polling để cập nhật badge đơn (swap + overtime) khi Staff tạo đơn mới.
+  // Chỉ poll 2 endpoint nhẹ này; không reload toàn bộ để tránh flicker.
+  const pollingRef = useRef(null)
+  useEffect(() => {
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const [overtime, swaps] = await Promise.all([
+          fetchManagerOvertimeRequests('Pending'),
+          fetchManagerShiftSwapRequests('Pending'),
+        ])
+        if (cancelled) return
+        setOvertimeRequests(overtime)
+        setSwapRequests(swaps)
+      } catch {
+        // im lặng lỗi polling — không ảnh hưởng UI
+      }
+    }
+    // Poll đầu tiên sau 30s, sau đó mỗi 30s.
+    pollingRef.current = setInterval(tick, 30000)
+    return () => {
+      cancelled = true
+      if (pollingRef.current) clearInterval(pollingRef.current)
+      pollingRef.current = null
+    }
+  }, [])
+
+  const newOvertimeCount = overtimeRequests.filter(
+    (r) => !seenOvertimeIds.has(r.overtimeRequestId),
+  ).length
+  const newSwapCount = swapRequests.filter(
+    (r) => !seenSwapIds.has(r.shiftSwapRequestId),
+  ).length
 
   const toLocalDateKey = (iso) => {
     if (!iso) return ''
@@ -243,14 +278,20 @@ export default function ManagerShiftsPage() {
             onClick={() => {
               setTab(item.id)
               if (item.id === 'overtime') {
-                const now = new Date()
-                localStorage.setItem('managerShifts_seenOvertimeAt', now.toISOString())
-                setSeenOvertimeAt(now)
+                setSeenOvertimeIds((prev) => {
+                  const next = new Set(prev)
+                  overtimeRequests.forEach((r) => next.add(r.overtimeRequestId))
+                  localStorage.setItem('managerShifts_seenOvertimeIds', JSON.stringify([...next]))
+                  return next
+                })
               }
               if (item.id === 'swap') {
-                const now = new Date()
-                localStorage.setItem('managerShifts_seenSwapAt', now.toISOString())
-                setSeenSwapAt(now)
+                setSeenSwapIds((prev) => {
+                  const next = new Set(prev)
+                  swapRequests.forEach((r) => next.add(r.shiftSwapRequestId))
+                  localStorage.setItem('managerShifts_seenSwapIds', JSON.stringify([...next]))
+                  return next
+                })
               }
             }}
             className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
@@ -424,13 +465,24 @@ export default function ManagerShiftsPage() {
           <div className="space-y-3">
             {swapRequests.map((req) => {
               const fromAssign = assignments.find((a) => a.shiftAssignmentId === req.fromAssignmentId)
-              const toAssign = assignments.find((a) => a.shiftAssignmentId === req.toAssignmentId)
+              const toAssign = req.toAssignmentId != null
+                ? assignments.find((a) => a.shiftAssignmentId === req.toAssignmentId)
+                : null
+              const isEmptyMode = req.toAssignmentId == null && req.toWorkShiftId != null
+              const targetWorkShift = isEmptyMode
+                ? workShifts.find((w) => w.workShiftId === req.toWorkShiftId)
+                : null
               const fromShift = fromAssign?.shiftName || req.fromShiftName || `Ca #${req.fromAssignmentId}`
-              const toShift = toAssign?.shiftName || req.toShiftName || `Ca #${req.toAssignmentId}`
+              const toShift = isEmptyMode
+                ? (targetWorkShift?.shiftName || `Ca #${req.toWorkShiftId}`)
+                : (toAssign?.shiftName || req.toShiftName || `Ca #${req.toAssignmentId}`)
               const fromDate = fromAssign?.workDate?.slice(0, 10) || req.fromWorkDate?.slice(0, 10) || '—'
-              const toDate = toAssign?.workDate?.slice(0, 10) || req.toWorkDate?.slice(0, 10) || '—'
+              const toDate = isEmptyMode
+                ? (req.toWorkDate?.slice(0, 10) || '—')
+                : (toAssign?.workDate?.slice(0, 10) || req.toWorkDate?.slice(0, 10) || '—')
               const fromStaff = fromAssign?.staffName || req.fromStaffName || '—'
               const toStaff = toAssign?.staffName || req.toStaffName || '—'
+              const targetStaffTag = isEmptyMode ? ' (Ca trống)' : ''
               const conflict = Boolean(
                 fromAssign && toAssign
                   ? assignments.some(
@@ -447,7 +499,15 @@ export default function ManagerShiftsPage() {
                         a.workShiftId === toAssign.workShiftId &&
                         a.workDate === toAssign.workDate,
                     )
-                  : false,
+                  : isEmptyMode && fromAssign && req.toWorkShiftId != null && req.toWorkDate
+                    ? assignments.some(
+                        (a) =>
+                          a.shiftAssignmentId !== req.fromAssignmentId &&
+                          a.staffUserId === fromAssign.staffUserId &&
+                          a.workShiftId === req.toWorkShiftId &&
+                          a.workDate?.slice(0, 10) === req.toWorkDate.slice(0, 10),
+                      )
+                    : false,
               )
               return (
                 <div
@@ -465,8 +525,16 @@ export default function ManagerShiftsPage() {
                           {fromShift} · ngày {fromDate}
                         </p>
                         <p>
-                          <span className="font-medium">Ca muốn đổi của {toStaff}:</span>{' '}
-                          {toShift} · ngày {toDate}
+                          <span className="font-medium">
+                            {isEmptyMode ? 'Ca trống muốn đổi sang' : `Ca muốn đổi của ${toStaff}`}:
+                          </span>{' '}
+                          {toShift}
+                          {targetStaffTag} · ngày {toDate}
+                          {isEmptyMode && targetWorkShift && (
+                            <span className="ml-1 text-[11px]">
+                              ({toTimeInputValue(targetWorkShift.startTime)} – {toTimeInputValue(targetWorkShift.endTime)})
+                            </span>
+                          )}
                         </p>
                       </div>
                       {req.reason && (

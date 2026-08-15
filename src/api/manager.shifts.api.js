@@ -50,6 +50,7 @@ export function normalizeOvertimeRequest(item) {
     reason: item.reason != null ? String(item.reason) : '',
     status: String(item.status ?? 'Pending'),
     reviewNote: item.reviewNote != null ? String(item.reviewNote) : '',
+    createdAt: item.createdAt != null ? String(item.createdAt) : '',
   }
 }
 
@@ -59,7 +60,8 @@ export function normalizeShiftSwapRequest(item) {
     shiftSwapRequestId: Number(item.shiftSwapRequestId ?? item.id),
     requesterName: String(item.requesterName ?? item.requestedByName ?? '—'),
     fromAssignmentId: Number(item.fromAssignmentId ?? 0),
-    toAssignmentId: Number(item.toAssignmentId ?? 0),
+    toAssignmentId: item.toAssignmentId != null ? Number(item.toAssignmentId) : null,
+    toWorkShiftId: item.toWorkShiftId != null ? Number(item.toWorkShiftId) : null,
     fromStaffName: String(item.fromStaffName ?? '—'),
     toStaffName: String(item.toStaffName ?? '—'),
     fromShiftName: String(item.fromShiftName ?? ''),
@@ -69,6 +71,7 @@ export function normalizeShiftSwapRequest(item) {
     reason: item.reason != null ? String(item.reason) : '',
     status: String(item.status ?? 'Pending'),
     reviewNote: item.reviewNote != null ? String(item.reviewNote) : '',
+    createdAt: item.createdAt != null ? String(item.createdAt) : '',
   }
 }
 

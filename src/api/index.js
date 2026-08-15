@@ -239,9 +239,12 @@ export {
   createStaffOvertimeRequest,
   fetchStaffShiftSwapRequests,
   createStaffShiftSwapRequest,
+  fetchStaffWorkShifts,
+  fetchStaffAvailableShiftsForSwap,
   normalizeStaffShift,
   normalizeStaffOvertimeRequest,
   normalizeStaffShiftSwapRequest,
+  normalizeStaffWorkShift,
 } from './staff.shifts.api'
 
 export { fetchMyWallet, createWalletTopUp, normalizeWallet } from './wallet.api'
