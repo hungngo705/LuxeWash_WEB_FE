@@ -3,9 +3,11 @@ import {
   ApiError,
   createStaffOvertimeRequest,
   createStaffShiftSwapRequest,
+  fetchStaffAvailableShiftsForSwap,
   fetchStaffOvertimeRequests,
   fetchStaffShifts,
   fetchStaffShiftSwapRequests,
+  fetchStaffWorkShifts,
   swapStaffLaneByPhone,
   toTimeInputValue,
 } from '../api'
@@ -79,9 +81,15 @@ export default function StaffShiftsPage() {
   const [swapToShift, setSwapToShift] = useState(null)
   const [swapTargetShifts, setSwapTargetShifts] = useState([])
   const [swapTargetLoading, setSwapTargetLoading] = useState(false)
+  const [swapMode, setSwapMode] = useState('other')
+  const [swapEmptyWorkShiftId, setSwapEmptyWorkShiftId] = useState('')
+  const [swapEmptyDate, setSwapEmptyDate] = useState('')
+  const [swapEmptyShifts, setSwapEmptyShifts] = useState([])
+  const [swapEmptyLoading, setSwapEmptyLoading] = useState(false)
   const [laneSwapModalOpen, setLaneSwapModalOpen] = useState(false)
   const [laneSwapForm, setLaneSwapForm] = useState(emptyLaneSwapForm)
   const [saving, setSaving] = useState(false)
+  const [workShiftCatalog, setWorkShiftCatalog] = useState([])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -92,14 +100,16 @@ export default function StaffShiftsPage() {
     setLoading(true)
     setLoadError('')
     try {
-      const [shiftList, overtime, swaps] = await Promise.all([
+      const [shiftList, overtime, swaps, workShifts] = await Promise.all([
         fetchStaffShifts(shiftFilter),
         fetchStaffOvertimeRequests(),
         fetchStaffShiftSwapRequests(),
+        fetchStaffWorkShifts(),
       ])
       setShifts(shiftList)
       setOvertimeRequests(overtime)
       setSwapRequests(swaps)
+      setWorkShiftCatalog(workShifts)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được lịch ca')
     } finally {
@@ -124,6 +134,31 @@ export default function StaffShiftsPage() {
       return d.getTime() >= today && s.status === 'Scheduled'
     })
   }, [shifts, swapHorizonStart])
+
+  // Lookup "ca nào của Manager tôi đang giữ ở ngày nào"
+  // Dùng để làm mờ / disable khi Staff chọn ca đích trùng workShiftId + ngày.
+  const myShiftByDate = useMemo(() => {
+    /** @type {Record<string, { workShiftId: number, shiftName: string, startTime: string, endTime: string }>} */
+    const map = {}
+    for (const s of myFutureShifts) {
+      const key = toDateInputValue(s.workDate)
+      if (!key) continue
+      map[key] = {
+        workShiftId: s.workShiftId,
+        shiftName: s.shiftName,
+        startTime: s.startTime,
+        endTime: s.endTime,
+      }
+    }
+    return map
+  }, [myFutureShifts])
+
+  // Helper: ca tôi đang giữ ở 1 ngày cụ thể hay không
+  const findMyShiftOnDate = (date) => {
+    if (!date) return null
+    const key = toDateInputValue(date)
+    return myShiftByDate[key] || null
+  }
 
   const handleCreateOvertime = async () => {
     if (!overtimeForm.workDate) {
@@ -161,18 +196,30 @@ export default function StaffShiftsPage() {
   const fetchTargetShiftsForDate = async (date) => {
     setSwapTargetLoading(true)
     try {
-      const list = await fetchStaffShifts({
-        fromDate: toDateInputValue(date),
-        toDate: toDateInputValue(date),
-      })
+      // Lấy song song: ca của nhân viên khác (ưu tiên) + ca của chính tôi ở ngày đó
+      // để hỗ trợ cả case "đổi với nhân viên khác" lẫn "đổi giữa 2 ca của tôi cùng workShiftId khác ngày".
+      const [otherStaffShifts, myShifts] = await Promise.all([
+        fetchStaffAvailableShiftsForSwap({ date: toDateInputValue(date) }).catch(() => []),
+        fetchStaffShifts({
+          fromDate: toDateInputValue(date),
+          toDate: toDateInputValue(date),
+        }).catch(() => []),
+      ])
       const today = swapHorizonStart.getTime()
-      const future = list.filter((s) => {
+      const isFutureScheduled = (s) => {
         const d = new Date(s.workDate)
         if (Number.isNaN(d.getTime())) return false
         d.setHours(0, 0, 0, 0)
         return d.getTime() >= today && s.status === 'Scheduled'
-      })
-      setSwapTargetShifts(future)
+      }
+      const mineFuture = myShifts.filter(isFutureScheduled)
+      // Loại trừ ca của chính mình khỏi danh sách "other", tránh trùng
+      const otherFuture = otherStaffShifts
+        .filter(isFutureScheduled)
+        .filter((s) => !mineFuture.some((m) => m.shiftAssignmentId === s.shiftAssignmentId))
+      // Gộp: ca của staff khác trước (mục đích chính của mode "đổi với nhân viên khác"),
+      // rồi đến ca của tôi (cho case đổi giữa 2 ca của mình).
+      setSwapTargetShifts([...otherFuture, ...mineFuture])
     } catch {
       setSwapTargetShifts([])
       showToast('Không tải được ca trong ngày đã chọn')
@@ -195,6 +242,10 @@ export default function StaffShiftsPage() {
     setSwapFromShift(null)
     setSwapToShift(null)
     setSwapTargetShifts([])
+    setSwapMode('other')
+    setSwapEmptyWorkShiftId('')
+    setSwapEmptyDate('')
+    setSwapEmptyShifts([])
   }
 
   const handleCalendarSelect = (date) => {
@@ -218,21 +269,56 @@ export default function StaffShiftsPage() {
   }
 
   const handleCreateSwap = async () => {
-    if (!swapFromShift || !swapToShift) {
-      showToast('Vui lòng chọn ca nguồn và ca đích')
+    if (!swapFromShift) {
+      showToast('Vui lòng chọn ca nguồn')
       return
     }
-    if (swapFromShift.shiftAssignmentId === swapToShift.shiftAssignmentId) {
-      showToast('Không thể đổi sang cùng một ca')
+    const isEmptyMode = swapMode === 'empty'
+    if (!isEmptyMode && !swapToShift) {
+      showToast('Vui lòng chọn ca đích')
       return
+    }
+    if (isEmptyMode) {
+      if (!swapEmptyWorkShiftId || !swapEmptyDate) {
+        showToast('Vui lòng chọn ca và ngày muốn đổi sang')
+        return
+      }
+      const fromKey = toDateInputValue(swapFromShift.workDate)
+      const sameDay = toDateInputValue(swapEmptyDate) === fromKey
+      const sameShift = Number(swapEmptyWorkShiftId) === swapFromShift.workShiftId
+      if (sameDay && sameShift) {
+        showToast('Ca trống phải khác ca hoặc khác ngày so với ca nguồn')
+        return
+      }
+    } else {
+      if (swapFromShift.shiftAssignmentId === swapToShift.shiftAssignmentId) {
+        showToast('Không thể đổi sang cùng một ca')
+        return
+      }
+      if (
+        swapFromShift.workShiftId === swapToShift.workShiftId &&
+        toDateInputValue(swapFromShift.workDate) === toDateInputValue(swapToShift.workDate)
+      ) {
+        showToast('Ca đích phải khác ngày hoặc khác ca với ca nguồn')
+        return
+      }
     }
     setSaving(true)
     try {
-      await createStaffShiftSwapRequest({
-        fromAssignmentId: swapFromShift.shiftAssignmentId,
-        toAssignmentId: swapToShift.shiftAssignmentId,
-        reason: swapForm.reason,
-      })
+      if (isEmptyMode) {
+        await createStaffShiftSwapRequest({
+          fromAssignmentId: swapFromShift.shiftAssignmentId,
+          toWorkShiftId: swapEmptyWorkShiftId,
+          toWorkDate: swapEmptyDate,
+          reason: swapForm.reason,
+        })
+      } else {
+        await createStaffShiftSwapRequest({
+          fromAssignmentId: swapFromShift.shiftAssignmentId,
+          toAssignmentId: swapToShift.shiftAssignmentId,
+          reason: swapForm.reason,
+        })
+      }
       showToast('Đã gửi yêu cầu đổi ca')
       setSwapModalOpen(false)
       setSwapForm(emptySwapForm)
@@ -241,11 +327,35 @@ export default function StaffShiftsPage() {
       setSwapFromShift(null)
       setSwapToShift(null)
       setSwapTargetShifts([])
+      setSwapMode('other')
+      setSwapEmptyWorkShiftId('')
+      setSwapEmptyDate('')
+      setSwapEmptyShifts([])
       await loadAll()
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không gửi được yêu cầu')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Lấy các ca của nhân viên khác đang giữ workShift+date đã chọn (cho mode "swap sang ca trống").
+  const fetchEmptyShiftOptions = async (workShiftId, date) => {
+    if (!workShiftId || !date) {
+      setSwapEmptyShifts([])
+      return
+    }
+    setSwapEmptyLoading(true)
+    try {
+      const list = await fetchStaffAvailableShiftsForSwap({
+        workShiftId: Number(workShiftId),
+        date: toDateInputValue(date),
+      })
+      setSwapEmptyShifts(list.filter((s) => s.status === 'Scheduled'))
+    } catch {
+      setSwapEmptyShifts([])
+    } finally {
+      setSwapEmptyLoading(false)
     }
   }
 
@@ -271,11 +381,21 @@ export default function StaffShiftsPage() {
     }
   }
 
-  const stepLabel = !swapFromDate
-    ? 'Bước 1/2: Chọn ngày có ca bạn muốn đổi đi'
-    : !swapToDate
-    ? 'Bước 2/2: Chọn ngày muốn đổi sang'
-    : 'Chọn ca bạn muốn đổi'
+  const stepLabel = (() => {
+    if (!swapFromShift) return 'Bước 1: Chọn ca nguồn — ca của bạn muốn đổi đi'
+    if (swapMode === 'other') {
+      if (!swapFromDate) return 'Bước 2: Chọn ngày có ca bạn muốn đổi sang'
+      if (!swapToShift) return 'Bước 3: Chọn ca của nhân viên khác muốn đổi sang'
+      return 'Đã chọn xong. Có thể bấm "Chọn lại từ đầu" để thao tác lại.'
+    }
+    if (!swapEmptyWorkShiftId) return 'Bước 2: Chọn ca muốn đổi sang (ca trống của quản lý)'
+    if (!swapEmptyDate) return 'Bước 3: Chọn ngày muốn đổi sang'
+    return 'Đã chọn xong. Có thể bấm "Chọn lại từ đầu" để thao tác lại.'
+  })()
+
+  // Tính ngày tối thiểu cho date input "ngày muốn đổi sang ca trống" (từ hôm nay → +30 ngày)
+  const minSwapDate = useMemo(() => toDateInputValue(new Date()), [])
+  const maxSwapDate = useMemo(() => toDateInputValue(addDays(new Date(), SWAP_HORIZON_DAYS)), [])
   return (
     <div className="w-full">
       <PageHeader
@@ -514,12 +634,51 @@ export default function StaffShiftsPage() {
           <div className="rounded-lg border border-primary/30 bg-primary-container/20 p-3 text-xs text-on-primary-container">
             <p className="font-medium">Hướng dẫn:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
-              <li>Bước 1: chọn ngày có ca bạn muốn đổi đi.</li>
-              <li>Bước 2: chọn ngày muốn đổi sang (phải có ca của bạn trong ngày đó).</li>
-              <li>Sau khi manager duyệt, bạn sẽ đổi ca với nhân viên khác có ca trùng ngày/ca đích.</li>
-              <li>Muốn đổi sang ca của nhân viên khác (ngày bạn không có ca)? Hãy liên hệ manager.</li>
+              <li>Bước 1: chọn ca nguồn — ca của bạn muốn đổi đi.</li>
+              <li>Bước 2: chọn ca đích — ca khác (của bạn hoặc nhân viên khác) muốn đổi sang.</li>
+              <li>Ca hiện đang do bạn giữ sẽ tự động bị làm mờ và không thể chọn làm ca đích.</li>
+              <li>Sau khi gửi, manager sẽ duyệt yêu cầu.</li>
             </ul>
           </div>
+
+          {workShiftCatalog.length > 0 && (
+            <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+              <p className="text-xs font-semibold uppercase text-on-surface-variant">
+                Ca làm việc quản lý đang tạo ({workShiftCatalog.length} ca)
+              </p>
+              <p className="text-[11px] text-on-surface-variant">
+                Đây là danh sách ca mà quản lý đã tạo. Ca nào trùng với ca bạn đang giữ sẽ bị làm mờ khi chọn ca đích.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {workShiftCatalog.map((w) => {
+                  const isMyShiftId = swapFromShift?.workShiftId === w.workShiftId
+                  return (
+                    <div
+                      key={w.workShiftId}
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
+                        isMyShiftId
+                          ? 'border-outline-variant/40 bg-surface-container-low text-on-surface-variant/60'
+                          : 'border-outline-variant bg-surface-container-lowest text-on-surface'
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium">{w.shiftName}</span>
+                        <span className="text-[11px]">
+                          {toTimeInputValue(w.startTime)} – {toTimeInputValue(w.endTime)}
+                        </span>
+                      </div>
+                      {isMyShiftId && (
+                        <span className="ml-2 rounded-full bg-warning-container px-2 py-0.5 text-[10px] font-medium text-on-warning-container">
+                          Ca nguồn
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-xs text-on-surface-variant">
               {swapFromDate && swapFromShift && swapToDate && swapToShift
@@ -537,117 +696,291 @@ export default function StaffShiftsPage() {
             )}
           </div>
 
-          <ShiftCalendar
-            shifts={myFutureShifts}
-            futureOnly={true}
-            minDate={swapHorizonStart}
-            maxDate={swapHorizonEnd}
-            selectedDate={!swapFromDate ? swapFromDate : swapToDate}
-            onSelectDate={handleCalendarSelect}
-            title={stepLabel}
-            helperText="Bấm vào 1 ngày để chọn. Ngày quá khứ sẽ bị vô hiệu."
-            emptyText="Không có ca"
-          />
+          {/* Bước 1 - chọn ca nguồn */}
+          <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+            <p className="text-xs font-semibold uppercase text-on-surface-variant">
+              Ca của bạn (chọn ca muốn đổi đi)
+            </p>
+            {myFutureShifts.length === 0 ? (
+              <p className="text-sm text-on-surface-variant">Bạn không có ca nào trong tương lai.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {myFutureShifts.map((s) => {
+                  const selected = swapFromShift?.shiftAssignmentId === s.shiftAssignmentId
+                  return (
+                    <button
+                      key={s.shiftAssignmentId}
+                      type="button"
+                      onClick={() => {
+                        setSwapFromShift(s)
+                        setSwapFromDate(startOfDay(s.workDate))
+                        setSwapForm((f) => ({ ...f, fromAssignmentId: s.shiftAssignmentId }))
+                        setSwapToDate(null)
+                        setSwapToShift(null)
+                        setSwapTargetShifts([])
+                        setSwapEmptyDate('')
+                        setSwapEmptyWorkShiftId('')
+                        setSwapEmptyShifts([])
+                      }}
+                      className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                        selected
+                          ? 'border-primary bg-primary-container text-on-primary-container'
+                          : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
+                      }`}
+                    >
+                      <span className="font-medium">{s.shiftName}</span>
+                      <span className="text-[11px]">
+                        {formatDateTime(s.workDate)} · {toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
-          {swapFromDate && (
-            <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
-              <p className="text-xs font-semibold uppercase text-on-surface-variant">
-                Ca làm hiện tại — {formatDateTime(swapFromDate)}
-              </p>
-              {myFutureShifts.filter((s) => toDateInputValue(s.workDate) === toDateInputValue(swapFromDate)).length === 0 ? (
-                <p className="text-sm text-on-surface-variant">Bạn không có ca nào trong ngày này.</p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {myFutureShifts
-                    .filter((s) => toDateInputValue(s.workDate) === toDateInputValue(swapFromDate))
-                    .map((s) => {
-                      const selected = swapFromShift?.shiftAssignmentId === s.shiftAssignmentId
+          {swapFromShift && (
+            <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+              <p className="text-xs font-semibold uppercase text-on-surface-variant">Chọn hình thức đổi ca</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSwapMode('other')
+                    setSwapEmptyWorkShiftId('')
+                    setSwapEmptyDate('')
+                    setSwapEmptyShifts([])
+                  }}
+                  className={`flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    swapMode === 'other'
+                      ? 'border-primary bg-primary-container text-on-primary-container'
+                      : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
+                  }`}
+                >
+                  <span className="font-medium">Đổi với nhân viên khác</span>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Chọn ca của nhân viên khác cùng workShift + ngày để hoán đổi.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSwapMode('empty')
+                    setSwapFromDate(null)
+                    setSwapToDate(null)
+                    setSwapToShift(null)
+                    setSwapTargetShifts([])
+                  }}
+                  className={`flex flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    swapMode === 'empty'
+                      ? 'border-primary bg-primary-container text-on-primary-container'
+                      : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
+                  }`}
+                >
+                  <span className="font-medium">Đổi sang ca trống</span>
+                  <span className="text-[11px] text-on-surface-variant">
+                    Chọn ca quản lý đã tạo + ngày trống — manager sẽ duyệt.
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {swapFromShift && swapMode === 'other' && (
+            <>
+              <ShiftCalendar
+                shifts={myFutureShifts}
+                futureOnly={true}
+                minDate={swapHorizonStart}
+                maxDate={swapHorizonEnd}
+                selectedDate={swapToDate}
+                onSelectDate={handleCalendarSelect}
+                title={stepLabel}
+                helperText="Bấm vào 1 ngày để chọn ngày muốn đổi sang. Ngày quá khứ sẽ bị vô hiệu."
+                emptyText="Không có ca"
+              />
+
+              {swapToDate && (
+                <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase text-on-surface-variant">
+                      Ca của nhân viên khác — {formatDateTime(swapToDate)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={resetSwapTarget}
+                      className="text-xs text-primary underline"
+                    >
+                      Đổi ngày khác
+                    </button>
+                  </div>
+                  {swapTargetLoading ? (
+                    <p className="text-sm text-on-surface-variant">Đang tải ca trong ngày…</p>
+                  ) : swapTargetShifts.length === 0 ? (
+                    <div className="space-y-2 text-sm text-on-surface-variant">
+                      <p>
+                        Chưa có nhân viên nào được phân ca trong ngày{' '}
+                        <span className="font-medium">{formatDateTime(swapToDate)}</span>.
+                      </p>
+                      <p>Hãy chọn ngày khác hoặc chuyển sang chế độ "Đổi sang ca trống".</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {swapTargetShifts.map((s) => {
+                        const isCurrentFromShift =
+                          swapFromShift && s.shiftAssignmentId === swapFromShift.shiftAssignmentId
+                        // BE cho phép swap 2 ca cùng workShiftId nếu KHÁC NGÀY.
+                        // Vậy disable chỉ khi cùng workShiftId + cùng workDate với ca nguồn
+                        // (đây chính là "cùng ngày, cùng ca" — không có ý nghĩa swap).
+                        const fromKey = toDateInputValue(swapFromShift?.workDate)
+                        const sKey = toDateInputValue(s.workDate)
+                        const isSameShiftSameDay =
+                          swapFromShift?.workShiftId != null &&
+                          s.workShiftId === swapFromShift.workShiftId &&
+                          fromKey === sKey
+                        const disabled = Boolean(isCurrentFromShift || isSameShiftSameDay)
+                        const selected = swapToShift?.shiftAssignmentId === s.shiftAssignmentId
+                        const myOnTarget = findMyShiftOnDate(swapToDate)
+                        const myHereTag =
+                          myOnTarget && s.shiftAssignmentId === myOnTarget.shiftAssignmentId
+                            ? ' (Ca bạn đang giữ)'
+                            : ''
+                        const isMyShift = Boolean(myOnTarget && s.shiftAssignmentId === myOnTarget.shiftAssignmentId)
+                        return (
+                          <button
+                            key={s.shiftAssignmentId}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => {
+                              if (disabled) return
+                              setSwapToShift(s)
+                              setSwapForm((f) => ({
+                                ...f,
+                                toAssignmentId: String(s.shiftAssignmentId),
+                              }))
+                            }}
+                            className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                              disabled
+                                ? 'cursor-not-allowed border-outline-variant/40 bg-surface-container-low/60 text-on-surface-variant/50'
+                                : selected
+                                  ? 'border-primary bg-primary-container text-on-primary-container'
+                                  : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
+                            }`}
+                          >
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span className="font-medium">
+                                {s.shiftName}
+                                {myHereTag}
+                              </span>
+                              {isMyShift && (
+                                <span className="rounded-full bg-secondary-container px-2 py-0.5 text-[10px] font-medium text-on-secondary-container">
+                                  Của bạn
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[11px]">
+                              {s.staffName || 'Nhân viên'} · {toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {swapFromShift && swapMode === 'empty' && (
+            <div className="space-y-3 rounded-lg border border-outline-variant bg-surface-container-low p-3">
+              <p className="text-xs font-semibold uppercase text-on-surface-variant">Chọn ca trống muốn đổi sang</p>
+
+              <div className="space-y-1">
+                <span className="text-xs font-medium text-on-surface-variant">Ca làm việc (của quản lý)</span>
+                {workShiftCatalog.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant">Chưa có ca làm việc nào được tạo.</p>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {workShiftCatalog.map((w) => {
+                      const isMyFromShift =
+                        swapFromShift && swapFromShift.workShiftId === w.workShiftId
+                      const selected = String(swapEmptyWorkShiftId) === String(w.workShiftId)
                       return (
                         <button
-                          key={s.shiftAssignmentId}
+                          key={w.workShiftId}
                           type="button"
+                          disabled={Boolean(isMyFromShift)}
                           onClick={() => {
-                            setSwapFromShift(s)
-                            setSwapForm((f) => ({ ...f, fromAssignmentId: s.shiftAssignmentId }))
+                            setSwapEmptyWorkShiftId(w.workShiftId)
+                            setSwapEmptyDate('')
+                            setSwapEmptyShifts([])
+                            fetchEmptyShiftOptions(w.workShiftId, '')
                           }}
-                          className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                            selected
-                              ? 'border-primary bg-primary-container text-on-primary-container'
-                              : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
+                          className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            isMyFromShift
+                              ? 'cursor-not-allowed border-outline-variant/40 bg-surface-container-low text-on-surface-variant/50'
+                              : selected
+                                ? 'border-primary bg-primary-container text-on-primary-container'
+                                : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
                           }`}
                         >
-                          <span className="font-medium">{s.shiftName}</span>
-                          <span className="text-xs">
-                            {toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)}
+                          <span className="font-medium">{w.shiftName}</span>
+                          <span className="text-[11px]">
+                            {toTimeInputValue(w.startTime)} – {toTimeInputValue(w.endTime)}
                           </span>
+                          {isMyFromShift && (
+                            <span className="mt-1 rounded-full bg-warning-container px-2 py-0.5 text-[10px] font-medium text-on-warning-container">
+                              Ca nguồn của bạn
+                            </span>
+                          )}
                         </button>
                       )
                     })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {swapToDate && (
-            <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-low p-3">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase text-on-surface-variant">
-                  Ca cần đổi — {formatDateTime(swapToDate)}
-                </p>
-                <button
-                  type="button"
-                  onClick={resetSwapTarget}
-                  className="text-xs text-primary underline"
-                >
-                  Đổi ngày khác
-                </button>
+                  </div>
+                )}
               </div>
-              {swapTargetLoading ? (
-                <p className="text-sm text-on-surface-variant">Đang tải ca trong ngày…</p>
-              ) : swapTargetShifts.length === 0 ? (
-                <div className="space-y-2 text-sm text-on-surface-variant">
-                  <p>
-                    Bạn không có ca nào khả dụng trong ngày{' '}
-                    <span className="font-medium">{formatDateTime(swapToDate)}</span>.
+
+              {swapEmptyWorkShiftId && (
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-on-surface-variant">Ngày muốn đổi sang</span>
+                  <input
+                    type="date"
+                    min={minSwapDate}
+                    max={maxSwapDate}
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
+                    value={swapEmptyDate}
+                    onChange={(e) => {
+                      setSwapEmptyDate(e.target.value)
+                      fetchEmptyShiftOptions(swapEmptyWorkShiftId, e.target.value)
+                    }}
+                  />
+                </label>
+              )}
+
+              {swapEmptyWorkShiftId && swapEmptyDate && (
+                <div className="space-y-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+                  <p className="text-[11px] text-on-surface-variant">
+                    {swapEmptyLoading
+                      ? 'Đang kiểm tra xem ngày này có nhân viên nào giữ ca đó không…'
+                      : swapEmptyShifts.length === 0
+                        ? 'Chưa có nhân viên nào giữ ca này vào ngày đã chọn — đây là ca trống. Manager sẽ duyệt yêu cầu của bạn.'
+                        : `Có ${swapEmptyShifts.length} nhân viên đang giữ ca này — nếu được duyệt, ca của bạn sẽ được gán sang workShift & ngày đó.`}
                   </p>
-                  <p>
-                    Bạn có thể chọn ngày khác (nơi bạn có ca) hoặc liên hệ manager để được hỗ trợ đổi sang ca của nhân viên khác.
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {swapTargetShifts.map((s) => {
-                    const selected = swapToShift?.shiftAssignmentId === s.shiftAssignmentId
-                    return (
-                      <button
-                        key={s.shiftAssignmentId}
-                        type="button"
-                        onClick={() => {
-                          setSwapToShift(s)
-                          setSwapForm((f) => ({
-                            ...f,
-                            toAssignmentId: String(s.shiftAssignmentId),
-                          }))
-                        }}
-                        className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                          selected
-                            ? 'border-primary bg-primary-container text-on-primary-container'
-                            : 'border-outline-variant bg-surface-container-lowest hover:border-primary'
-                        }`}
-                      >
-                        <span className="font-medium">{s.shiftName}</span>
-                        <span className="text-xs">
-                          {toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)}
-                        </span>
-                      </button>
-                    )
-                  })}
+                  {!swapEmptyLoading && swapEmptyShifts.length > 0 && (
+                    <ul className="space-y-1 text-xs text-on-surface-variant">
+                      {swapEmptyShifts.map((s) => (
+                        <li key={s.shiftAssignmentId}>
+                          • {s.staffName || 'Nhân viên'} · {toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {(swapFromShift || swapToShift) && (
+          {(swapFromShift || swapToShift || swapEmptyWorkShiftId) && (
             <label className="block space-y-1">
               <span className="text-xs font-semibold uppercase text-on-surface-variant">Lý do</span>
               <textarea
@@ -660,15 +993,36 @@ export default function StaffShiftsPage() {
             </label>
           )}
 
-          {swapFromShift && swapToShift && (
+          {swapFromShift && (swapMode === 'other' ? swapToShift : (swapEmptyWorkShiftId && swapEmptyDate)) && (
             <div className="rounded-lg border border-primary/30 bg-primary-container/20 p-3 text-sm text-on-primary-container">
-              <p>
-                Đổi từ <span className="font-semibold">{swapFromShift.shiftName}</span> ({formatDateTime(swapFromShift.workDate)}) →{' '}
-                <span className="font-semibold">{swapToShift.shiftName}</span> ({formatDateTime(swapToShift.workDate)})
-              </p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                Ca đích sẽ được gửi về ID <span className="font-mono">{swapToShift.shiftAssignmentId}</span> — ca này sẽ do quản lý duyệt.
-              </p>
+              {swapMode === 'other' ? (
+                <>
+                  <p>
+                    Đổi từ <span className="font-semibold">{swapFromShift.shiftName}</span> ({formatDateTime(swapFromShift.workDate)}) →{' '}
+                    <span className="font-semibold">{swapToShift.shiftName}</span> ({formatDateTime(swapToShift.workDate)})
+                  </p>
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    Ca đích sẽ được gửi về ID <span className="font-mono">{swapToShift.shiftAssignmentId}</span> — ca này sẽ do quản lý duyệt.
+                  </p>
+                </>
+              ) : (
+                (() => {
+                  const target = workShiftCatalog.find(
+                    (w) => String(w.workShiftId) === String(swapEmptyWorkShiftId),
+                  )
+                  return (
+                    <>
+                      <p>
+                        Xin đổi từ <span className="font-semibold">{swapFromShift.shiftName}</span> ({formatDateTime(swapFromShift.workDate)}) →{' '}
+                        ca trống <span className="font-semibold">{target?.shiftName || `Ca #${swapEmptyWorkShiftId}`}</span> ({swapEmptyDate})
+                      </p>
+                      <p className="mt-1 text-xs text-on-surface-variant">
+                        Yêu cầu sẽ được quản lý duyệt. Nếu được duyệt, ca của bạn sẽ chuyển sang workShift và ngày đã chọn.
+                      </p>
+                    </>
+                  )
+                })()
+              )}
             </div>
           )}
         </div>

@@ -45,6 +45,7 @@ export default function AdminTimeSlotsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
+  const [branchBeforeEdit, setBranchBeforeEdit] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -84,11 +85,13 @@ export default function AdminTimeSlotsPage() {
     setEditingId(null)
     setForm(emptyForm)
     setFormError('')
+    setBranchBeforeEdit(null)
     setModalOpen(true)
   }
 
   const openEdit = (slot) => {
     setEditingId(slot.slotId)
+    setBranchBeforeEdit(selectedBranchId)
     if (slot.branchId != null) {
       setSelectedBranchId(String(slot.branchId))
     }
@@ -128,6 +131,12 @@ export default function AdminTimeSlotsPage() {
         await createTimeSlot(payload)
         showToast('Đã thêm khung giờ mới')
       }
+      if (branchBeforeEdit !== null) {
+        setSelectedBranchId(branchBeforeEdit)
+        setBranchBeforeEdit(null)
+      }
+      setEditingId(null)
+      setForm(emptyForm)
       setModalOpen(false)
       await loadSlots()
     } catch (err) {
@@ -266,6 +275,12 @@ export default function AdminTimeSlotsPage() {
           if (!saving) {
             setModalOpen(false)
             setFormError('')
+            if (branchBeforeEdit !== null) {
+              setSelectedBranchId(branchBeforeEdit)
+              setBranchBeforeEdit(null)
+            }
+            setEditingId(null)
+            setForm(emptyForm)
           }
         }}
         onSubmit={handleSave}
