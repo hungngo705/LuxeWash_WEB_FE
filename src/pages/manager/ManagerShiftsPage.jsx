@@ -471,11 +471,21 @@ export default function ManagerShiftsPage() {
               const isEmptyMode = req.toAssignmentId == null && req.toWorkShiftId != null
               const targetWorkShift = isEmptyMode
                 ? workShifts.find((w) => w.workShiftId === req.toWorkShiftId)
-                : null
-              const fromShift = fromAssign?.shiftName || req.fromShiftName || `Ca #${req.fromAssignmentId}`
+                : workShifts.find((w) => w.workShiftId === req.toAssignmentWorkShiftId)
+              const fromWorkShiftCatalog = workShifts.find(
+                (w) => w.workShiftId === req.fromWorkShiftId,
+              )
+              const fromShift =
+                fromAssign?.shiftName ||
+                req.fromShiftName ||
+                fromWorkShiftCatalog?.shiftName ||
+                (req.fromAssignmentId ? `Ca #${req.fromAssignmentId}` : 'Ca')
               const toShift = isEmptyMode
-                ? (targetWorkShift?.shiftName || `Ca #${req.toWorkShiftId}`)
-                : (toAssign?.shiftName || req.toShiftName || `Ca #${req.toAssignmentId}`)
+                ? (targetWorkShift?.shiftName || 'Ca trống')
+                : (toAssign?.shiftName ||
+                  req.toShiftName ||
+                  targetWorkShift?.shiftName ||
+                  (req.toAssignmentId ? `Ca #${req.toAssignmentId}` : 'Ca trống'))
               const fromDate = fromAssign?.workDate?.slice(0, 10) || req.fromWorkDate?.slice(0, 10) || '—'
               const toDate = isEmptyMode
                 ? (req.toWorkDate?.slice(0, 10) || '—')

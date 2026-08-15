@@ -30,6 +30,24 @@ const emptyLaneSwapForm = { targetPhoneNumber: '', date: '' }
 
 const SWAP_HORIZON_DAYS = 30
 
+/**
+ * Trích xuất các ngày (YYYY-MM-DD) từ danh sách swap requests.
+ * Dùng để gọi `available-shifts-for-swap?date=X` lấy các ca của Staff khác
+ * nhằm hiển thị tên ca khi assignment không thuộc Staff đang login.
+ * @param {Array<{ fromWorkDate?: string, toWorkDate?: string }>} swaps
+ * @returns {string[]} danh sách date unique (YYYY-MM-DD)
+ */
+function collectDatesFromSwapRequests(swaps) {
+  const out = new Set()
+  for (const s of swaps) {
+    for (const raw of [s.fromWorkDate, s.toWorkDate]) {
+      const key = toDateInputValue(raw)
+      if (key) out.add(key)
+    }
+  }
+  return Array.from(out)
+}
+
 function toDateInputValue(date) {
   if (!date) return ''
   const d = new Date(date)
@@ -90,6 +108,9 @@ export default function StaffShiftsPage() {
   const [laneSwapForm, setLaneSwapForm] = useState(emptyLaneSwapForm)
   const [saving, setSaving] = useState(false)
   const [workShiftCatalog, setWorkShiftCatalog] = useState([])
+  // Cache assignments của Staff khác theo date — dùng để lookup tên ca
+  // khi swap request liên quan tới assignment không thuộc Staff đang login.
+  const [otherStaffAssignments, setOtherStaffAssignments] = useState([])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -110,8 +131,30 @@ export default function StaffShiftsPage() {
       setOvertimeRequests(overtime)
       setSwapRequests(swaps)
       setWorkShiftCatalog(workShifts)
+
+      // Với mỗi swap request, nếu assignment không thuộc Staff đang login
+      // (vd. Staff khác gửi swap tới mình, hoặc mình là người gửi đổi với Staff khác),
+      // ta fetch `available-shifts-for-swap?date=X` để lấy shiftName từ assignment id.
+      const otherDates = collectDatesFromSwapRequests(swaps)
+      const otherLists = await Promise.all(
+        otherDates.map((d) =>
+          fetchStaffAvailableShiftsForSwap({ date: d }).catch(() => []),
+        ),
+      )
+      const merged = []
+      const seen = new Set()
+      for (const list of otherLists) {
+        for (const item of list) {
+          const key = item.shiftAssignmentId
+          if (seen.has(key)) continue
+          seen.add(key)
+          merged.push(item)
+        }
+      }
+      setOtherStaffAssignments(merged)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được lịch ca')
+      setOtherStaffAssignments([])
     } finally {
       setLoading(false)
     }
@@ -549,26 +592,64 @@ export default function StaffShiftsPage() {
         <EmptyState icon="swap_horiz" title="Chưa có yêu cầu đổi ca" />
       ) : (
         <div className="space-y-3">
-          {swapRequests.map((req) => (
-            <div
-              key={req.shiftSwapRequestId}
-              className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <p className="text-sm text-on-surface">
-                    Đổi từ{' '}
-                    <span className="font-medium">{req.fromShiftName || `Ca #${req.fromAssignmentId}`}</span>{' '}
-                    ({req.fromWorkDate ? formatDateTime(req.fromWorkDate) : '—'}) sang{' '}
-                    <span className="font-medium">{req.toShiftName || `Ca #${req.toAssignmentId}`}</span>{' '}
-                    ({req.toWorkDate ? formatDateTime(req.toWorkDate) : '—'})
-                  </p>
-                  {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
+          {swapRequests.map((req) => {
+            // Lookup tên ca từ dữ liệu đã load để hiển thị thân thiện
+            // thay vì fallback "Ca #13", "Ca #null".
+            // Priority:
+            //  1. Từ `shifts` (assignment của Staff đang login) — có shiftName sẵn
+            //  2. Từ `otherStaffAssignments` (assignment của Staff khác, fetch qua
+            //     `available-shifts-for-swap?date=X`) — bao gồm ca của Staff khác
+            //     trong swap request
+            //  3. Từ `workShiftCatalog` (toàn bộ work shifts Manager đã tạo)
+            //     bằng cách match qua assignment.workShiftId
+            //  4. Fallback "Ca #X" nếu id hợp lệ, "Ca" nếu không
+            const allKnownAssignments = shifts.concat(otherStaffAssignments)
+            const fromAssign = allKnownAssignments.find(
+              (s) => s.shiftAssignmentId === req.fromAssignmentId,
+            )
+            const toAssign = req.toAssignmentId != null
+              ? allKnownAssignments.find((s) => s.shiftAssignmentId === req.toAssignmentId)
+              : null
+            const isEmptyMode = req.toAssignmentId == null && req.toWorkShiftId != null
+            const targetWorkShift = isEmptyMode
+              ? workShiftCatalog.find((w) => w.workShiftId === req.toWorkShiftId)
+              : workShiftCatalog.find((w) => w.workShiftId === toAssign?.workShiftId)
+            const fromWorkShiftCatalog = workShiftCatalog.find(
+              (w) => w.workShiftId === fromAssign?.workShiftId,
+            )
+            const fromShift =
+              fromAssign?.shiftName ||
+              fromWorkShiftCatalog?.shiftName ||
+              (req.fromAssignmentId ? `Ca #${req.fromAssignmentId}` : 'Ca')
+            const toShift = isEmptyMode
+              ? (targetWorkShift?.shiftName || 'Ca trống')
+              : (toAssign?.shiftName ||
+                targetWorkShift?.shiftName ||
+                (req.toAssignmentId ? `Ca #${req.toAssignmentId}` : 'Ca trống'))
+            const fromDate = fromAssign?.workDate || req.fromWorkDate || ''
+            const toDate = isEmptyMode
+              ? (req.toWorkDate || '')
+              : (toAssign?.workDate || req.toWorkDate || '')
+            return (
+              <div
+                key={req.shiftSwapRequestId}
+                className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm text-on-surface">
+                      Đổi từ <span className="font-medium">{fromShift}</span>{' '}
+                      ({fromDate ? formatDateTime(fromDate) : '—'}) sang{' '}
+                      <span className="font-medium">{toShift}</span>{' '}
+                      ({toDate ? formatDateTime(toDate) : '—'})
+                    </p>
+                    {req.reason && <p className="mt-1 text-sm text-on-surface-variant">{req.reason}</p>}
+                  </div>
+                  <StatusBadge status={req.status} />
                 </div>
-                <StatusBadge status={req.status} />
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
