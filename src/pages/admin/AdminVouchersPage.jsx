@@ -15,6 +15,7 @@ import {
   updateVoucher,
   VOUCHER_TYPE,
   VOUCHER_TYPE_LABEL,
+  CAMPAIGN_TYPE,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import DiscountFields from '../../components/admin/shared/DiscountFields'
@@ -31,7 +32,6 @@ import {
 } from '../../utils/voucherDisplay'
 const VOUCHER_TYPE_OPTIONS = [
   { value: VOUCHER_TYPE.Discount, label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Discount] },
-  { value: VOUCHER_TYPE.Gift, label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Gift] },
 ]
 
 const emptyForm = {
@@ -286,7 +286,7 @@ export default function AdminVouchersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/60">
-              {vouchers.filter((v) => !v.campaignType).map((voucher) => (
+              {vouchers.filter((v) => Number(v.campaignType ?? 0) === CAMPAIGN_TYPE.Manual).map((voucher) => (
                 <tr key={voucher.voucherId} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 font-mono font-medium text-on-surface">{voucher.code}</td>
                   <td className="px-4 py-3 text-on-surface">{formatVoucherDiscount(voucher)}</td>
@@ -420,7 +420,7 @@ export default function AdminVouchersPage() {
           <div className="grid grid-cols-2 gap-4">
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Max usages
+                Tổng Voucher
               </span>
               <input
                 type="number"
@@ -437,7 +437,7 @@ export default function AdminVouchersPage() {
             </label>
             <label className="block space-y-1">
               <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                Max / khách
+                Tối đa / khách
               </span>
               <input
                 type="number"
