@@ -92,29 +92,28 @@ class BarrierGate {
     servo_.attach(servoPin_, Config::SERVO_MIN_US, Config::SERVO_MAX_US);
   }
 
-  void update() {
+  bool update() {
+    const bool previousSensorBlocked = sensorBlocked_;
+    const GateState previousState = state_;
     updateSensor();
     releaseServoSignalWhenSettled();
-    if (state_ == GateState::Closed) return;
-
-    const unsigned long now = millis();
-    if (sensorBlocked_) {
-      vehicleSeen_ = true;
-      clearSince_ = 0;
-      state_ = GateState::OpenVehiclePassing;
-      return;
-    }
-
-    if (vehicleSeen_) {
-      if (clearSince_ == 0) clearSince_ = now;
-      if (now - openedAt_ >= Config::MIN_OPEN_MS &&
-          now - clearSince_ >= Config::CLEAR_BEFORE_CLOSE_MS) {
+    if (state_ != GateState::Closed) {
+      const unsigned long now = millis();
+      if (sensorBlocked_) {
+        vehicleSeen_ = true;
+        clearSince_ = 0;
+        state_ = GateState::OpenVehiclePassing;
+      } else if (vehicleSeen_) {
+        if (clearSince_ == 0) clearSince_ = now;
+        if (now - openedAt_ >= Config::MIN_OPEN_MS &&
+            now - clearSince_ >= Config::CLEAR_BEFORE_CLOSE_MS) {
+          close(false);
+        }
+      } else if (now - openedAt_ >= Config::AUTO_CLOSE_NO_VEHICLE_MS) {
         close(false);
       }
-      return;
     }
-
-    if (now - openedAt_ >= Config::AUTO_CLOSE_NO_VEHICLE_MS) close(false);
+    return previousSensorBlocked != sensorBlocked_ || previousState != state_;
   }
 
   bool open(const String& commandId, bool& duplicate) {
@@ -237,8 +236,27 @@ BarrierGate exitGate(
     Config::EXIT_SENSOR_ACTIVE_DEBOUNCE_MS,
     Config::EXIT_SENSOR_CLEAR_DEBOUNCE_MS);
 unsigned long lastWifiReconnectAt = 0;
-unsigned long lastCommandPollAt = 0;
-unsigned long lastHeartbeatAt = 0;
+
+struct BackendCommandMessage {
+  char commandId[64];
+  char barrierId[32];
+  char action[12];
+};
+
+struct BackendAckMessage {
+  char commandId[64];
+  char status[16];
+  char details[128];
+};
+
+QueueHandle_t backendCommandQueue = nullptr;
+QueueHandle_t backendAckQueue = nullptr;
+TaskHandle_t backendTaskHandle = nullptr;
+SemaphoreHandle_t gateStateMutex = nullptr;
+
+void requestImmediateHeartbeat() {
+  if (backendTaskHandle != nullptr) xTaskNotifyGive(backendTaskHandle);
+}
 
 void addCorsHeaders() {
   server.sendHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
@@ -313,7 +331,11 @@ void handleOpen(BarrierGate& gate) {
     return;
   }
   bool duplicate = false;
-  gate.open(commandId, duplicate);
+  if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
+    gate.open(commandId, duplicate);
+    xSemaphoreGive(gateStateMutex);
+  }
+  requestImmediateHeartbeat();
   sendStatus(duplicate ? 200 : 202, duplicate);
 }
 
@@ -325,10 +347,16 @@ void handleClose(BarrierGate& gate) {
   StaticJsonDocument<384> body;
   if (!parseBody(body)) return;
   const bool force = body["force"] | false;
-  if (!gate.close(force)) {
+  bool closed = false;
+  if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
+    closed = gate.close(force);
+    xSemaphoreGive(gateStateMutex);
+  }
+  if (!closed) {
     sendMessage(409, "Sensor is blocked; refusing to close the barrier.");
     return;
   }
+  requestImmediateHeartbeat();
   sendStatus();
 }
 
@@ -439,20 +467,20 @@ BarrierGate* gateFromBarrierId(const String& barrierId) {
   return nullptr;
 }
 
-bool postCommandAck(const String& commandId, const char* status,
-                    const String& details) {
-  WiFiClientSecure client;
-  configureSecureClient(client);
+bool postCommandAck(WiFiClientSecure& client,
+                    const BackendAckMessage& ack) {
   HTTPClient http;
   const String url = String(BACKEND_BASE_URL) +
-                     "/api/v1/barrier/device/commands/" + commandId + "/ack";
+                     "/api/v1/barrier/device/commands/" + ack.commandId +
+                     "/ack";
   if (!http.begin(client, url)) return false;
+  http.setReuse(true);
   http.setTimeout(5000);
   addDeviceHeaders(http);
 
   StaticJsonDocument<384> body;
-  body["status"] = status;
-  body["details"] = details;
+  body["status"] = ack.status;
+  body["details"] = ack.details;
   String payload;
   serializeJson(body, payload);
   const int statusCode = http.POST(payload);
@@ -460,18 +488,14 @@ bool postCommandAck(const String& commandId, const char* status,
   return statusCode >= 200 && statusCode < 300;
 }
 
-void pollBackendCommand() {
+void pollBackendCommand(WiFiClientSecure& client) {
   if (WiFi.status() != WL_CONNECTED) return;
-  const unsigned long now = millis();
-  if (now - lastCommandPollAt < Config::COMMAND_POLL_MS) return;
-  lastCommandPollAt = now;
 
-  WiFiClientSecure client;
-  configureSecureClient(client);
   HTTPClient http;
   const String url =
       String(BACKEND_BASE_URL) + "/api/v1/barrier/device/commands/next";
   if (!http.begin(client, url)) return;
+  http.setReuse(true);
   http.setTimeout(5000);
   addDeviceHeaders(http);
   const int statusCode = http.GET();
@@ -499,50 +523,39 @@ void pollBackendCommand() {
   action.toUpperCase();
   if (commandId.isEmpty()) return;
 
-  BarrierGate* gate = gateFromBarrierId(barrierId);
-  bool completed = false;
-  String details;
-  if (gate == nullptr) {
-    details = "Unsupported barrierId: " + barrierId;
-  } else if (action == "OPEN") {
-    bool duplicate = false;
-    completed = gate->open(commandId, duplicate);
-    details = duplicate ? "Duplicate command already applied." : "Barrier opened.";
-  } else if (action == "CLOSE") {
-    completed = gate->close(false);
-    details = completed ? "Barrier closed." : "Sensor blocked; close refused.";
-  } else {
-    details = "Unsupported action: " + action;
-  }
-
-  if (!postCommandAck(commandId, completed ? "Completed" : "Failed", details)) {
-    Serial.printf("ACK failed for command %s\n", commandId.c_str());
+  BackendCommandMessage queued{};
+  strlcpy(queued.commandId, commandId.c_str(), sizeof(queued.commandId));
+  strlcpy(queued.barrierId, barrierId.c_str(), sizeof(queued.barrierId));
+  strlcpy(queued.action, action.c_str(), sizeof(queued.action));
+  if (xQueueSend(backendCommandQueue, &queued, 0) != pdTRUE) {
+    Serial.println("Backend command queue is full.");
   }
 }
 
-void sendBackendHeartbeat() {
+void sendBackendHeartbeat(WiFiClientSecure& client) {
   if (WiFi.status() != WL_CONNECTED) return;
-  const unsigned long now = millis();
-  if (now - lastHeartbeatAt < Config::HEARTBEAT_MS) return;
-  lastHeartbeatAt = now;
 
   StaticJsonDocument<1536> body;
   body["ipAddress"] = WiFi.localIP().toString();
   body["wifiRssi"] = WiFi.RSSI();
   body["uptimeMs"] = millis();
   JsonObject gates = body.createNestedObject("gates");
-  fillGateStatus(gates.createNestedObject("entryRegular"), entryRegularGate);
-  fillGateStatus(gates.createNestedObject("entryVip"), entryVipGate);
-  fillGateStatus(gates.createNestedObject("exit"), exitGate);
+  if (xSemaphoreTake(gateStateMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+    fillGateStatus(gates.createNestedObject("entryRegular"), entryRegularGate);
+    fillGateStatus(gates.createNestedObject("entryVip"), entryVipGate);
+    fillGateStatus(gates.createNestedObject("exit"), exitGate);
+    xSemaphoreGive(gateStateMutex);
+  } else {
+    return;
+  }
   String payload;
   serializeJson(body, payload);
 
-  WiFiClientSecure client;
-  configureSecureClient(client);
   HTTPClient http;
   const String url =
       String(BACKEND_BASE_URL) + "/api/v1/barrier/device/heartbeat";
   if (!http.begin(client, url)) return;
+  http.setReuse(true);
   http.setTimeout(5000);
   addDeviceHeaders(http);
   const int statusCode = http.POST(payload);
@@ -552,8 +565,87 @@ void sendBackendHeartbeat() {
   http.end();
 }
 
+void backendNetworkTask(void* parameter) {
+  WiFiClientSecure client;
+  configureSecureClient(client);
+  unsigned long lastCommandPollAt = 0;
+  unsigned long lastHeartbeatAt = 0;
+
+  for (;;) {
+    maintainWifi();
+    if (WiFi.status() == WL_CONNECTED) {
+      BackendAckMessage ack{};
+      if (xQueueReceive(backendAckQueue, &ack, 0) == pdTRUE &&
+          !postCommandAck(client, ack)) {
+        Serial.printf("ACK failed for command %s\n", ack.commandId);
+      }
+
+      const unsigned long now = millis();
+      if (now - lastCommandPollAt >= Config::COMMAND_POLL_MS) {
+        pollBackendCommand(client);
+        lastCommandPollAt = millis();
+      }
+
+      const bool immediateHeartbeat = ulTaskNotifyTake(pdTRUE, 0) > 0;
+      if (immediateHeartbeat || now - lastHeartbeatAt >= Config::HEARTBEAT_MS) {
+        lastHeartbeatAt = millis();
+        sendBackendHeartbeat(client);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+}
+
+void processBackendCommands() {
+  BackendCommandMessage command{};
+  while (xQueueReceive(backendCommandQueue, &command, 0) == pdTRUE) {
+    BarrierGate* gate = gateFromBarrierId(String(command.barrierId));
+    bool completed = false;
+    bool duplicate = false;
+    String details;
+
+    if (gate == nullptr) {
+      details = "Unsupported barrierId: " + String(command.barrierId);
+    } else if (strcmp(command.action, "OPEN") == 0) {
+      if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
+        completed = gate->open(String(command.commandId), duplicate);
+        xSemaphoreGive(gateStateMutex);
+      }
+      details = duplicate ? "Duplicate command already applied."
+                          : "Barrier opened.";
+    } else if (strcmp(command.action, "CLOSE") == 0) {
+      if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
+        completed = gate->close(false);
+        xSemaphoreGive(gateStateMutex);
+      }
+      details = completed ? "Barrier closed."
+                          : "Sensor blocked; close refused.";
+    } else {
+      details = "Unsupported action: " + String(command.action);
+    }
+
+    BackendAckMessage ack{};
+    strlcpy(ack.commandId, command.commandId, sizeof(ack.commandId));
+    strlcpy(ack.status, completed ? "Completed" : "Failed",
+            sizeof(ack.status));
+    strlcpy(ack.details, details.c_str(), sizeof(ack.details));
+    if (xQueueSend(backendAckQueue, &ack, 0) != pdTRUE) {
+      Serial.println("Backend ACK queue is full.");
+    }
+    requestImmediateHeartbeat();
+  }
+}
+
 void setup() {
   Serial.begin(115200);
+  gateStateMutex = xSemaphoreCreateMutex();
+  backendCommandQueue = xQueueCreate(8, sizeof(BackendCommandMessage));
+  backendAckQueue = xQueueCreate(8, sizeof(BackendAckMessage));
+  if (gateStateMutex == nullptr || backendCommandQueue == nullptr ||
+      backendAckQueue == nullptr) {
+    Serial.println("Unable to allocate backend synchronization primitives.");
+    while (true) delay(1000);
+  }
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
@@ -564,15 +656,27 @@ void setup() {
   exitGate.begin();
   connectWifi();
   configureHttpServer();
+  const BaseType_t taskCreated = xTaskCreatePinnedToCore(
+      backendNetworkTask, "barrier-backend", 12288, nullptr, 1,
+      &backendTaskHandle, 0);
+  if (taskCreated != pdPASS) {
+    backendTaskHandle = nullptr;
+    Serial.println("Unable to start backend network task.");
+  } else {
+    requestImmediateHeartbeat();
+  }
 }
 
 void loop() {
   server.handleClient();
-  entryRegularGate.update();
-  entryVipGate.update();
-  exitGate.update();
-  maintainWifi();
-  pollBackendCommand();
-  sendBackendHeartbeat();
+  processBackendCommands();
+  bool stateChanged = false;
+  if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
+    stateChanged = entryRegularGate.update();
+    stateChanged = entryVipGate.update() || stateChanged;
+    stateChanged = exitGate.update() || stateChanged;
+    xSemaphoreGive(gateStateMutex);
+  }
+  if (stateChanged) requestImmediateHeartbeat();
   delay(2);
 }

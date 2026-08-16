@@ -48,3 +48,6 @@ Có thể hiệu chỉnh tay barie bằng `CLOSED_ANGLE` và `OPEN_ANGLE`.
 - ESP32 từ chối đóng nếu sensor vẫn phát hiện xe, trừ lệnh đóng cưỡng bức.
 - ESP32 chủ động poll backend HTTPS để nhận lệnh và gửi ACK/heartbeat; frontend không gọi trực tiếp ESP32.
 - Backend phải cấu hình `BarrierDevice__DeviceId`, `BarrierDevice__DeviceKey` và `BarrierDevice__BranchId` trùng với thiết bị.
+- HTTPS chạy trong FreeRTOS task riêng; vòng đọc sensor/điều khiển servo không bị chặn bởi TLS hoặc độ trễ backend.
+- Kết nối TLS được tái sử dụng giữa các request khi server hỗ trợ keep-alive.
+- Ngoài heartbeat định kỳ 5 giây, thiết bị gửi heartbeat ngay khi sensor hoặc trạng thái barie thay đổi.
