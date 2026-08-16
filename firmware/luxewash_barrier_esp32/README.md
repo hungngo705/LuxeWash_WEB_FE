@@ -29,7 +29,7 @@ Các endpoint `/api/barriers/entry/...` cũ vẫn được giữ và trỏ vào 
 
 1. Cài board `esp32 by Espressif Systems`.
 2. Cài thư viện `ESP32Servo` và `ArduinoJson`.
-3. Tạo `secrets.h` từ `secrets.example.h`, sau đó điền Wi-Fi, device key và origin frontend.
+3. Tạo `secrets.h` từ `secrets.example.h`, sau đó điền Wi-Fi, backend HTTPS, device ID và device key.
 4. Chọn board ESP32, đúng cổng COM và Upload.
 5. Serial Monitor dùng tốc độ `115200 baud`.
 6. Cấu hình dashboard dùng IP hiển thị trên Serial Monitor hoặc `http://luxewash-barrier.local`.
@@ -46,4 +46,5 @@ Có thể hiệu chỉnh tay barie bằng `CLOSED_ANGLE` và `OPEN_ANGLE`.
 - Barie tự đóng sau khi xe đi qua và sensor trống liên tục 1,5 giây.
 - Nếu không có xe đi qua, barie tự đóng sau 15 giây.
 - ESP32 từ chối đóng nếu sensor vẫn phát hiện xe, trừ lệnh đóng cưỡng bức.
-- Frontend chạy HTTPS không thể gọi trực tiếp ESP32 HTTP; môi trường deploy cần HTTPS gateway trong LAN.
+- ESP32 chủ động poll backend HTTPS để nhận lệnh và gửi ACK/heartbeat; frontend không gọi trực tiếp ESP32.
+- Backend phải cấu hình `BarrierDevice__DeviceId`, `BarrierDevice__DeviceKey` và `BarrierDevice__BranchId` trùng với thiết bị.

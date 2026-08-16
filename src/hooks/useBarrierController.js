@@ -1,82 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ackBarrierCommand } from '../api'
-import { isLaneDisplayEventExpired } from '../api/laneDisplay.api'
+import {
+  createBarrierCommand,
+  fetchBarrierCommand,
+  fetchBarrierDeviceStatus,
+} from '../api'
 import {
   BARRIER_GATES,
-  closeBarrierDevice,
-  fetchBarrierDeviceStatus,
-  gateFromBarrierId,
   getBarrierGateLabel,
-  loadBarrierDeviceSettings,
-  openBarrierDevice,
-  saveBarrierDeviceSettings,
+  getBarrierId,
 } from '../services/barrierDevice'
-import { subscribeLaneDisplayRealtime } from '../services/laneDisplayRealtime'
 
-const PROCESSED_STORAGE_KEY = 'luxewash:barrier-device:processed-commands'
-const PROCESSED_TTL_MS = 24 * 60 * 60 * 1000
-const DEVICE_STATUS_POLL_MS = 500
+const DEVICE_STATUS_POLL_MS = 5_000
+const COMMAND_RESULT_POLL_MS = 500
+const COMMAND_RESULT_TIMEOUT_MS = 10_000
 
-function loadProcessedCommands() {
-  if (typeof window === 'undefined') return new Map()
-  try {
-    const cutoff = Date.now() - PROCESSED_TTL_MS
-    const values = JSON.parse(window.localStorage.getItem(PROCESSED_STORAGE_KEY) || '[]')
-    return new Map(
-      (Array.isArray(values) ? values : [])
-        .filter((item) => item?.commandId && Number(item.processedAt) >= cutoff)
-        .map((item) => [String(item.commandId), Number(item.processedAt)]),
-    )
-  } catch {
-    return new Map()
+async function waitForCommandResult(commandId) {
+  const deadline = Date.now() + COMMAND_RESULT_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    const command = await fetchBarrierCommand(commandId)
+    const status = String(command?.status ?? '').trim().toLowerCase()
+    if (status === 'completed' || status === 'acknowledged') return command
+    if (status === 'failed' || status === 'expired') {
+      throw new Error(`Lệnh barie ${status === 'expired' ? 'đã hết hạn' : 'thực thi thất bại'}.`)
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, COMMAND_RESULT_POLL_MS))
   }
-}
-
-function persistProcessedCommands(commands) {
-  if (typeof window === 'undefined') return
-  const values = [...commands.entries()]
-    .map(([commandId, processedAt]) => ({ commandId, processedAt }))
-    .slice(-100)
-  window.localStorage.setItem(PROCESSED_STORAGE_KEY, JSON.stringify(values))
+  throw new Error('ESP32 chưa xác nhận lệnh trong thời gian cho phép.')
 }
 
 export default function useBarrierController({ onNotice } = {}) {
-  const [settings, setSettingsState] = useState(loadBarrierDeviceSettings)
-  const settingsRef = useRef(settings)
   const [deviceStatus, setDeviceStatus] = useState(null)
   const [connectionState, setConnectionState] = useState('idle')
   const [lastAction, setLastAction] = useState(null)
-  const processedRef = useRef(loadProcessedCommands())
   const inFlightRef = useRef(new Map())
 
-  useEffect(() => {
-    settingsRef.current = settings
-  }, [settings])
-
-  const updateSettings = useCallback((next) => {
-    const saved = saveBarrierDeviceSettings(next)
-    settingsRef.current = saved
-    setSettingsState(saved)
-    setDeviceStatus(null)
-    setConnectionState(saved.enabled ? 'idle' : 'disabled')
-  }, [])
-
   const refreshStatus = useCallback(async ({ silent = false } = {}) => {
-    const current = settingsRef.current
-    if (!current.enabled) {
-      setConnectionState('disabled')
-      return null
-    }
     if (!silent) setConnectionState('connecting')
     try {
-      const status = await fetchBarrierDeviceStatus(current)
+      const status = await fetchBarrierDeviceStatus()
       setDeviceStatus(status)
-      setConnectionState('connected')
+      setConnectionState(status?.online ? 'connected' : 'error')
       return status
     } catch (error) {
       setConnectionState('error')
       if (!silent) {
-        onNotice?.(error instanceof Error ? error.message : 'Không kết nối được ESP32.', 'error')
+        onNotice?.(
+          error instanceof Error ? error.message : 'Không lấy được trạng thái ESP32 từ backend.',
+          'error',
+        )
       }
       return null
     }
@@ -85,70 +56,54 @@ export default function useBarrierController({ onNotice } = {}) {
   const executeCommand = useCallback(async ({
     gate = BARRIER_GATES.ENTRY_REGULAR,
     commandId,
-    licensePlate,
     expiresAt,
+    action = 'OPEN',
     source = 'frontend',
-    acknowledgeBackend = true,
   } = {}) => {
-    const current = settingsRef.current
     const normalizedId = String(commandId ?? '').trim()
-    if (!current.enabled) return { skipped: true, reason: 'disabled' }
-
     const expiresAtMs = Date.parse(String(expiresAt ?? ''))
     if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
       return { skipped: true, reason: 'expired' }
     }
-    if (normalizedId && processedRef.current.has(normalizedId)) {
-      return { skipped: true, reason: 'duplicate' }
-    }
+
     if (normalizedId && inFlightRef.current.has(normalizedId)) {
       return inFlightRef.current.get(normalizedId)
     }
 
     const actionPromise = (async () => {
       try {
-        const response = await openBarrierDevice(current, gate, {
-          commandId: normalizedId,
-          licensePlate,
-          source,
+        // Automatic check-in/out commands are already created by backend.
+        const queuedCommand = normalizedId
+          ? await fetchBarrierCommand(normalizedId)
+          : await createBarrierCommand(getBarrierId(gate), action)
+        const queuedCommandId = queuedCommand?.commandId ?? normalizedId
+        if (!queuedCommandId) throw new Error('Backend không trả về commandId của barie.')
+        const command = await waitForCommandResult(queuedCommandId)
+        setLastAction({
+          gate,
+          commandId: command?.commandId ?? (normalizedId || null),
+          status: command?.status ?? 'Pending',
+          ok: true,
+          at: Date.now(),
         })
-        if (normalizedId) {
-          processedRef.current.set(normalizedId, Date.now())
-          persistProcessedCommands(processedRef.current)
-        }
-        setConnectionState('connected')
-        setDeviceStatus(response?.status ?? response)
-        setLastAction({ gate, commandId: normalizedId || null, ok: true, at: Date.now() })
-
-        if (String(source).startsWith('signalr')) {
+        if (source === 'staff-manual') {
           onNotice?.(
-            `ESP32 đã nhận lệnh mở barie ${getBarrierGateLabel(gate)}${licensePlate ? ` cho xe ${licensePlate}` : ''}.`,
+            `ESP32 đã thực thi lệnh ${action === 'CLOSE' ? 'đóng' : 'mở'} ${getBarrierGateLabel(gate)}.`,
             'success',
           )
         }
-
-        if (normalizedId && acknowledgeBackend) {
-          try {
-            await ackBarrierCommand(normalizedId, 'Completed', `ESP32 ${gate} accepted OPEN command.`)
-          } catch (ackError) {
-            onNotice?.(
-              `ESP32 đã mở barie nhưng ACK backend thất bại: ${ackError instanceof Error ? ackError.message : 'không rõ lỗi'}`,
-              'error',
-            )
-          }
-        }
-        return response
+        void refreshStatus({ silent: true })
+        return { ...command, queued: false }
       } catch (error) {
-        setConnectionState('error')
         setLastAction({
           gate,
           commandId: normalizedId || null,
           ok: false,
-          message: error instanceof Error ? error.message : 'Không mở được barie.',
+          message: error instanceof Error ? error.message : 'Không gửi được lệnh barie.',
           at: Date.now(),
         })
         onNotice?.(
-          `Không mở được barie ${getBarrierGateLabel(gate)}: ${error instanceof Error ? error.message : 'không rõ lỗi'}`,
+          `Không gửi được lệnh ${getBarrierGateLabel(gate)}: ${error instanceof Error ? error.message : 'không rõ lỗi'}`,
           'error',
         )
         throw error
@@ -159,17 +114,15 @@ export default function useBarrierController({ onNotice } = {}) {
 
     if (normalizedId) inFlightRef.current.set(normalizedId, actionPromise)
     return actionPromise
-  }, [onNotice])
+  }, [onNotice, refreshStatus])
 
-  const closeGate = useCallback(async (gate) => {
-    const response = await closeBarrierDevice(settingsRef.current, gate)
-    setDeviceStatus(response?.status ?? response)
-    setConnectionState('connected')
-    return response
-  }, [])
+  const closeGate = useCallback((gate) => executeCommand({
+    gate,
+    action: 'CLOSE',
+    source: 'staff-manual',
+  }), [executeCommand])
 
   useEffect(() => {
-    if (!settings.enabled) return undefined
     let stopped = false
     let timer = null
     const poll = async () => {
@@ -181,58 +134,9 @@ export default function useBarrierController({ onNotice } = {}) {
       stopped = true
       if (timer) window.clearTimeout(timer)
     }
-  }, [settings.enabled, settings.baseUrl, settings.deviceKey, refreshStatus])
-
-  useEffect(() => subscribeLaneDisplayRealtime({
-    onEvent: (event) => {
-      if (
-        !event?.barrierCommandId ||
-        (event.type !== 'cleared' && isLaneDisplayEventExpired(event)) ||
-        (event.displayUntil && Date.parse(event.displayUntil) <= Date.now())
-      ) return
-      if (event.type === 'assigned') {
-        const gate = gateFromBarrierId(event.barrierId)
-        if (!gate || gate === BARRIER_GATES.EXIT) {
-          onNotice?.('Backend chưa gửi đúng barrierId cho lệnh mở cổng vào.', 'error')
-          return
-        }
-        void executeCommand({
-          gate,
-          commandId: event.barrierCommandId,
-          licensePlate: event.plate,
-          expiresAt: event.displayUntil,
-          source: 'signalr-lane-assigned',
-        }).catch(() => {})
-      } else if (event.type === 'cleared') {
-        void executeCommand({
-          gate: BARRIER_GATES.EXIT,
-          commandId: event.barrierCommandId,
-          licensePlate: event.plate,
-          expiresAt: event.displayUntil,
-          source: 'signalr-lane-cleared',
-        }).catch(() => {})
-      }
-    },
-    onBarrierCommand: (command) => {
-      if (!command?.commandId || String(command.action ?? 'OPEN').toUpperCase() !== 'OPEN') return
-      const gate = gateFromBarrierId(command.barrierId)
-      if (!gate) {
-        onNotice?.(`Không xác định được barie từ barrierId "${command.barrierId || ''}".`, 'error')
-        return
-      }
-      void executeCommand({
-        gate,
-        commandId: command.commandId,
-        licensePlate: command.licensePlate,
-        expiresAt: command.expiresAt,
-        source: 'signalr-barrier-command',
-      }).catch(() => {})
-    },
-  }), [executeCommand, onNotice])
+  }, [refreshStatus])
 
   return {
-    settings,
-    updateSettings,
     deviceStatus,
     connectionState,
     lastAction,

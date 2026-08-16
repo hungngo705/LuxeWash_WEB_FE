@@ -2,11 +2,27 @@
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
 #include <ESPmDNS.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
+#include <WiFiClientSecure.h>
 #include <WebServer.h>
 #include <WiFi.h>
 
 #include "secrets.h"
+
+// Backward-compatible defaults let an existing secrets.h compile during rollout.
+#ifndef DEVICE_ID
+#define DEVICE_ID "luxewash-branch-1"
+#endif
+#ifndef BACKEND_BASE_URL
+#define BACKEND_BASE_URL "https://smartwash-be.onrender.com"
+#endif
+#ifndef BACKEND_TLS_INSECURE
+#define BACKEND_TLS_INSECURE 1
+#endif
+#ifndef BACKEND_ROOT_CA
+#define BACKEND_ROOT_CA ""
+#endif
 
 namespace Config {
 constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 19;
@@ -41,6 +57,8 @@ constexpr unsigned long MIN_OPEN_MS = 1200;
 constexpr unsigned long CLEAR_BEFORE_CLOSE_MS = 1500;
 constexpr unsigned long AUTO_CLOSE_NO_VEHICLE_MS = 15000;
 constexpr unsigned long WIFI_RECONNECT_MS = 10000;
+constexpr unsigned long COMMAND_POLL_MS = 750;
+constexpr unsigned long HEARTBEAT_MS = 5000;
 constexpr char HOSTNAME[] = "luxewash-barrier";
 }  // namespace Config
 
@@ -219,6 +237,8 @@ BarrierGate exitGate(
     Config::EXIT_SENSOR_ACTIVE_DEBOUNCE_MS,
     Config::EXIT_SENSOR_CLEAR_DEBOUNCE_MS);
 unsigned long lastWifiReconnectAt = 0;
+unsigned long lastCommandPollAt = 0;
+unsigned long lastHeartbeatAt = 0;
 
 void addCorsHeaders() {
   server.sendHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
@@ -394,6 +414,144 @@ void maintainWifi() {
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
+void configureSecureClient(WiFiClientSecure& client) {
+#if BACKEND_TLS_INSECURE
+  // Development fallback. Configure a root CA in production when possible.
+  client.setInsecure();
+#else
+  client.setCACert(BACKEND_ROOT_CA);
+#endif
+}
+
+void addDeviceHeaders(HTTPClient& http) {
+  http.addHeader("Accept", "application/json");
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-Device-Id", DEVICE_ID);
+  http.addHeader("X-Device-Key", DEVICE_API_KEY);
+}
+
+BarrierGate* gateFromBarrierId(const String& barrierId) {
+  if (barrierId == "ENTRY_REGULAR_GATE" || barrierId == "ENTRY_GATE") {
+    return &entryRegularGate;
+  }
+  if (barrierId == "ENTRY_VIP_GATE") return &entryVipGate;
+  if (barrierId == "EXIT_GATE") return &exitGate;
+  return nullptr;
+}
+
+bool postCommandAck(const String& commandId, const char* status,
+                    const String& details) {
+  WiFiClientSecure client;
+  configureSecureClient(client);
+  HTTPClient http;
+  const String url = String(BACKEND_BASE_URL) +
+                     "/api/v1/barrier/device/commands/" + commandId + "/ack";
+  if (!http.begin(client, url)) return false;
+  http.setTimeout(5000);
+  addDeviceHeaders(http);
+
+  StaticJsonDocument<384> body;
+  body["status"] = status;
+  body["details"] = details;
+  String payload;
+  serializeJson(body, payload);
+  const int statusCode = http.POST(payload);
+  http.end();
+  return statusCode >= 200 && statusCode < 300;
+}
+
+void pollBackendCommand() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  const unsigned long now = millis();
+  if (now - lastCommandPollAt < Config::COMMAND_POLL_MS) return;
+  lastCommandPollAt = now;
+
+  WiFiClientSecure client;
+  configureSecureClient(client);
+  HTTPClient http;
+  const String url =
+      String(BACKEND_BASE_URL) + "/api/v1/barrier/device/commands/next";
+  if (!http.begin(client, url)) return;
+  http.setTimeout(5000);
+  addDeviceHeaders(http);
+  const int statusCode = http.GET();
+  if (statusCode == 204) {
+    http.end();
+    return;
+  }
+  if (statusCode != 200) {
+    Serial.printf("Command poll failed: HTTP %d\n", statusCode);
+    http.end();
+    return;
+  }
+
+  const String payload = http.getString();
+  http.end();
+  StaticJsonDocument<768> command;
+  if (deserializeJson(command, payload)) {
+    Serial.println("Invalid command JSON from backend.");
+    return;
+  }
+
+  const String commandId = command["commandId"] | "";
+  const String barrierId = command["barrierId"] | "";
+  String action = command["action"] | "OPEN";
+  action.toUpperCase();
+  if (commandId.isEmpty()) return;
+
+  BarrierGate* gate = gateFromBarrierId(barrierId);
+  bool completed = false;
+  String details;
+  if (gate == nullptr) {
+    details = "Unsupported barrierId: " + barrierId;
+  } else if (action == "OPEN") {
+    bool duplicate = false;
+    completed = gate->open(commandId, duplicate);
+    details = duplicate ? "Duplicate command already applied." : "Barrier opened.";
+  } else if (action == "CLOSE") {
+    completed = gate->close(false);
+    details = completed ? "Barrier closed." : "Sensor blocked; close refused.";
+  } else {
+    details = "Unsupported action: " + action;
+  }
+
+  if (!postCommandAck(commandId, completed ? "Completed" : "Failed", details)) {
+    Serial.printf("ACK failed for command %s\n", commandId.c_str());
+  }
+}
+
+void sendBackendHeartbeat() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  const unsigned long now = millis();
+  if (now - lastHeartbeatAt < Config::HEARTBEAT_MS) return;
+  lastHeartbeatAt = now;
+
+  StaticJsonDocument<1536> body;
+  body["ipAddress"] = WiFi.localIP().toString();
+  body["wifiRssi"] = WiFi.RSSI();
+  body["uptimeMs"] = millis();
+  JsonObject gates = body.createNestedObject("gates");
+  fillGateStatus(gates.createNestedObject("entryRegular"), entryRegularGate);
+  fillGateStatus(gates.createNestedObject("entryVip"), entryVipGate);
+  fillGateStatus(gates.createNestedObject("exit"), exitGate);
+  String payload;
+  serializeJson(body, payload);
+
+  WiFiClientSecure client;
+  configureSecureClient(client);
+  HTTPClient http;
+  const String url =
+      String(BACKEND_BASE_URL) + "/api/v1/barrier/device/heartbeat";
+  if (!http.begin(client, url)) return;
+  http.setTimeout(5000);
+  addDeviceHeaders(http);
+  const int statusCode = http.POST(payload);
+  if (statusCode < 200 || statusCode >= 300) {
+    Serial.printf("Heartbeat failed: HTTP %d\n", statusCode);
+  }
+  http.end();
+}
+
 void setup() {
   Serial.begin(115200);
   ESP32PWM::allocateTimer(0);
@@ -414,5 +572,7 @@ void loop() {
   entryVipGate.update();
   exitGate.update();
   maintainWifi();
+  pollBackendCommand();
+  sendBackendHeartbeat();
   delay(2);
 }

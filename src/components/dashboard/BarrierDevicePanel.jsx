@@ -1,10 +1,7 @@
 import { useState } from 'react'
-import {
-  BARRIER_GATES,
-  getBarrierGateLabel,
-} from '../../services/barrierDevice'
+import { BARRIER_GATES, getBarrierGateLabel } from '../../services/barrierDevice'
 
-function GateStatus({ label, gate, onOpen, onClose, busy }) {
+function GateStatus({ label, gate, onOpen, onClose, busy, online }) {
   const hasStatus = gate && typeof gate === 'object'
   const isOpen = gate?.isOpen === true || String(gate?.state ?? '').toLowerCase().includes('open')
   const sensorBlocked = gate?.sensorBlocked === true
@@ -13,16 +10,18 @@ function GateStatus({ label, gate, onOpen, onClose, busy }) {
       <div className="min-w-0">
         <p className="text-xs font-bold uppercase text-on-surface">{label}</p>
         <p className={`truncate text-xs ${sensorBlocked ? 'text-amber-700' : 'text-on-surface-variant'}`}>
-          {!hasStatus
-            ? 'Chưa có dữ liệu từ thiết bị'
-            : `${isOpen ? 'Đang mở' : 'Đã đóng'} · ${sensorBlocked ? 'Có xe tại cảm biến' : 'Cảm biến trống'}`}
+          {!online
+            ? 'Thiết bị đang offline'
+            : !hasStatus
+              ? 'Chưa có dữ liệu từ thiết bị'
+              : `${isOpen ? 'Đang mở' : 'Đã đóng'} · ${sensorBlocked ? 'Có xe tại cảm biến' : 'Cảm biến trống'}`}
         </p>
       </div>
       <div className="flex shrink-0 gap-1.5">
         <button
           type="button"
           className="rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-50"
-          disabled={busy}
+          disabled={busy || !online}
           onClick={onOpen}
         >
           Mở
@@ -30,7 +29,7 @@ function GateStatus({ label, gate, onOpen, onClose, busy }) {
         <button
           type="button"
           className="rounded-lg border border-outline-variant px-2.5 py-1.5 text-xs font-semibold text-on-surface hover:bg-surface-container disabled:opacity-50"
-          disabled={busy || sensorBlocked || !hasStatus}
+          disabled={busy || !online || sensorBlocked || !hasStatus}
           onClick={onClose}
           title={sensorBlocked ? 'Không thể đóng khi cảm biến đang phát hiện xe' : undefined}
         >
@@ -43,49 +42,37 @@ function GateStatus({ label, gate, onOpen, onClose, busy }) {
 
 export default function BarrierDevicePanel({ controller }) {
   const {
-    settings,
-    updateSettings,
     deviceStatus,
     connectionState,
     refreshStatus,
     executeCommand,
     closeGate,
   } = controller
-  const [draft, setDraft] = useState(settings)
   const [busyGate, setBusyGate] = useState(null)
 
-  const gates = deviceStatus?.gates ?? deviceStatus?.status?.gates ?? {}
-  const entryRegularGate =
-    gates.entryRegular ?? gates.entry_regular ?? gates['entry-regular'] ?? gates.entry
+  const gates = deviceStatus?.gates ?? {}
+  const online = deviceStatus?.online === true
+  const entryRegularGate = gates.entryRegular ?? gates.entry_regular ?? gates['entry-regular'] ?? gates.entry
   const entryVipGate = gates.entryVip ?? gates.entry_vip ?? gates['entry-vip']
   const stateLabel = {
     connected: 'ESP32 đã kết nối',
-    connecting: 'Đang kết nối ESP32',
-    error: 'Mất kết nối ESP32',
-    disabled: 'Điều khiển tự động đang tắt',
+    connecting: 'Đang kiểm tra ESP32',
+    error: 'ESP32 đang offline',
     idle: 'Chưa kiểm tra ESP32',
   }[connectionState]
 
   const runManual = async (gate, action) => {
-    if (action === 'open') {
-      const gateLabel = getBarrierGateLabel(gate)
-      if (!window.confirm(`Mở barie ${gateLabel} bằng tay?`)) return
-    }
+    const gateLabel = getBarrierGateLabel(gate)
+    if (!window.confirm(`${action === 'open' ? 'Mở' : 'Đóng'} barie ${gateLabel} bằng tay?`)) return
     setBusyGate(gate)
     try {
       if (action === 'open') {
-        await executeCommand({
-          gate,
-          commandId: `manual-${gate}-${Date.now()}`,
-          source: 'staff-manual',
-          acknowledgeBackend: false,
-        })
+        await executeCommand({ gate, source: 'staff-manual' })
       } else {
         await closeGate(gate)
       }
-      await refreshStatus({ silent: true })
     } catch {
-      // The controller already reports the actionable error to the Staff toast.
+      // The controller reports the actionable error using the Staff toast.
     } finally {
       setBusyGate(null)
     }
@@ -98,31 +85,34 @@ export default function BarrierDevicePanel({ controller }) {
           <span className="material-symbols-outlined text-[20px]">garage_door</span>
           Điều khiển barie ESP32
         </span>
-        <span className={`flex items-center gap-2 text-xs font-semibold ${connectionState === 'connected' ? 'text-emerald-700' : connectionState === 'error' ? 'text-error' : 'text-on-surface-variant'}`}>
-          <span className={`h-2 w-2 rounded-full ${connectionState === 'connected' ? 'bg-emerald-500' : connectionState === 'error' ? 'bg-error' : 'bg-outline'}`} />
+        <span className={`flex items-center gap-2 text-xs font-semibold ${online ? 'text-emerald-700' : connectionState === 'error' ? 'text-error' : 'text-on-surface-variant'}`}>
+          <span className={`h-2 w-2 rounded-full ${online ? 'bg-emerald-500' : connectionState === 'error' ? 'bg-error' : 'bg-outline'}`} />
           {stateLabel}
         </span>
       </summary>
 
       <div className="grid gap-3 border-t border-outline-variant p-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
         <GateStatus
-          label="Cổng vào thường · GPIO 18/26"
+          label="Cổng vào thường · GPIO 19/26"
           gate={entryRegularGate}
-          busy={busyGate === BARRIER_GATES.ENTRY_REGULAR || !settings.enabled}
+          online={online}
+          busy={busyGate === BARRIER_GATES.ENTRY_REGULAR}
           onOpen={() => void runManual(BARRIER_GATES.ENTRY_REGULAR, 'open')}
           onClose={() => void runManual(BARRIER_GATES.ENTRY_REGULAR, 'close')}
         />
         <GateStatus
           label="Cổng vào VIP · GPIO 25/32"
           gate={entryVipGate}
-          busy={busyGate === BARRIER_GATES.ENTRY_VIP || !settings.enabled}
+          online={online}
+          busy={busyGate === BARRIER_GATES.ENTRY_VIP}
           onOpen={() => void runManual(BARRIER_GATES.ENTRY_VIP, 'open')}
           onClose={() => void runManual(BARRIER_GATES.ENTRY_VIP, 'close')}
         />
         <GateStatus
           label="Cổng ra · GPIO 23/27"
           gate={gates.exit}
-          busy={busyGate === BARRIER_GATES.EXIT || !settings.enabled}
+          online={online}
+          busy={busyGate === BARRIER_GATES.EXIT}
           onOpen={() => void runManual(BARRIER_GATES.EXIT, 'open')}
           onClose={() => void runManual(BARRIER_GATES.EXIT, 'close')}
         />
@@ -135,41 +125,11 @@ export default function BarrierDevicePanel({ controller }) {
         </button>
       </div>
 
-      <div className="grid gap-3 border-t border-outline-variant px-4 py-3 md:grid-cols-[auto_minmax(220px,1fr)_minmax(160px,.6fr)_auto] md:items-end">
-        <label className="flex items-center gap-2 pb-2 text-xs font-semibold text-on-surface">
-          <input
-            type="checkbox"
-            checked={draft.enabled}
-            onChange={(event) => setDraft((value) => ({ ...value, enabled: event.target.checked }))}
-          />
-          Tự động mở
-        </label>
-        <label className="text-xs font-semibold text-on-surface-variant">
-          Địa chỉ ESP32
-          <input
-            className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"
-            value={draft.baseUrl}
-            onChange={(event) => setDraft((value) => ({ ...value, baseUrl: event.target.value }))}
-            placeholder="http://luxewash-barrier.local"
-          />
-        </label>
-        <label className="text-xs font-semibold text-on-surface-variant">
-          Device key
-          <input
-            type="password"
-            className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"
-            value={draft.deviceKey}
-            onChange={(event) => setDraft((value) => ({ ...value, deviceKey: event.target.value }))}
-            placeholder="Khóa nội bộ LAN"
-          />
-        </label>
-        <button
-          type="button"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary"
-          onClick={() => updateSettings(draft)}
-        >
-          Lưu cấu hình
-        </button>
+      <div className="border-t border-outline-variant px-4 py-3 text-xs text-on-surface-variant">
+        Lệnh được chuyển qua backend HTTPS. Cập nhật gần nhất:{' '}
+        {deviceStatus?.lastSeenAt
+          ? new Date(deviceStatus.lastSeenAt).toLocaleString('vi-VN')
+          : 'chưa có heartbeat'}.
       </div>
     </details>
   )
