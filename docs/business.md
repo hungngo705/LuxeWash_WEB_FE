@@ -222,7 +222,7 @@ export default function BusinessLayout() {
 }
 File: src/components/layout/BusinessSidebar.jsx
 
-Logo: "LuxeWash Pro" (giữ nguyên style StaffSidebar)
+Logo: "Luxewash" (giữ nguyên style StaffSidebar)
 Subtitle: "Business Portal"
 Nav items:
 /business/dashboard → Dashboard (dashboard icon)

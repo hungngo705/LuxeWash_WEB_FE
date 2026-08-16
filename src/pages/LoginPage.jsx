@@ -146,7 +146,7 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined text-3xl text-on-primary">local_car_wash</span>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">LuxeWash Pro</p>
+                  <p className="text-xs font-semibold tracking-[0.2em] text-primary uppercase">Luxewash</p>
                   <h1 className="font-sora text-3xl font-bold tracking-tight text-on-surface">Hệ thống vận hành</h1>
                 </div>
               </div>
@@ -184,7 +184,7 @@ export default function LoginPage() {
           </div>
 
           <p className="px-12 pb-8 text-xs text-on-surface-variant/70 xl:px-16">
-            © {new Date().getFullYear()} LuxeWash Pro · SmartWash Platform
+            © {new Date().getFullYear()} Luxewash · SmartWash Platform
           </p>
         </section>
 
@@ -197,7 +197,7 @@ export default function LoginPage() {
                   <span className="material-symbols-outlined text-2xl text-on-primary">local_car_wash</span>
                 </div>
                 <div>
-                  <p className="font-sora text-xl font-bold text-on-surface">LuxeWash Pro</p>
+                  <p className="font-sora text-xl font-bold text-on-surface">Luxewash</p>
                   <p className="text-xs text-on-surface-variant">Đăng nhập portal</p>
                 </div>
               </div>
