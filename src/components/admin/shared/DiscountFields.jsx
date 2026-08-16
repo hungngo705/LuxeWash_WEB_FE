@@ -25,7 +25,7 @@ export default function DiscountFields({ form, setForm, saving }) {
           onChange={(e) => setForm((f) => ({ ...f, discountKind: e.target.value }))}
         >
           <option value={DISCOUNT_KIND.Fixed}>Giảm cố định (VND)</option>
-          <option value={DISCOUNT_KIND.Percent}>Giảm theo % (có trần tối đa)</option>
+          <option value={DISCOUNT_KIND.Percent}>Giảm theo %</option>
         </select>
       </label>
 
@@ -45,7 +45,7 @@ export default function DiscountFields({ form, setForm, saving }) {
             />
           </label>
           <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Trần tối đa (VND)</span>
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Tối đa (VND)</span>
             <input
               type="number"
               min={1}

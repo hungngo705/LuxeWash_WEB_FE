@@ -201,7 +201,7 @@ function BaseFields({ form, setForm, saving, tiers }) {
         </label>
         <label className="block space-y-1">
           <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Lượt/user <span className="text-error">*</span>
+            Lượt/người <span className="text-error">*</span>
           </span>
           <input
             type="number"
@@ -464,6 +464,8 @@ export default function AdminVoucherCampaignsPage() {
     setTimeout(() => setToast(''), 3000)
   }
 
+  const campaignsRef = useRef([])
+
   const loadData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
@@ -472,9 +474,29 @@ export default function AdminVoucherCampaignsPage() {
         fetchVouchers(),
       ])
       const all = (Array.isArray(vouchersData) ? vouchersData : [])
-      const filtered = all
-        .map(normalizeCampaignVoucher)
-        .filter((v) => v.campaignType !== CAMPAIGN_TYPE.Manual)
+
+      // Giữ lại campaignType đã biết cho mỗi voucherId — phòng khi backend
+      // trả về campaignType = 0 (Manual) sau khi PUT toggle IsActive.
+      const knownTypes = new Map(
+        campaignsRef.current
+          .filter((c) => c && c.campaignType !== undefined)
+          .map((c) => [c.voucherId, c.campaignType]),
+      )
+      const normalized = all.map(normalizeCampaignVoucher).map((v) => {
+        if (v.campaignType === CAMPAIGN_TYPE.Manual) {
+          const remembered = knownTypes.get(v.voucherId)
+          if (remembered && remembered !== CAMPAIGN_TYPE.Manual) {
+            return { ...v, campaignType: remembered }
+          }
+        }
+        return v
+      })
+
+      const filtered = normalized.filter(
+        (v) => v.campaignType !== CAMPAIGN_TYPE.Manual,
+      )
+
+      campaignsRef.current = filtered
       setCampaigns(filtered)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được dữ liệu')
@@ -531,11 +553,25 @@ export default function AdminVoucherCampaignsPage() {
   const handleToggle = async (voucher) => {
     if (toggling !== null) return
     setToggling(voucher.voucherId)
+
+    // Optimistic update: giữ nguyên campaignType và chỉ đổi isActive trên FE
+    // để tránh trường hợp backend trả về campaignType = Manual sai sau update.
+    const previousList = campaignsRef.current
+    const optimistic = previousList.map((v) =>
+      v.voucherId === voucher.voucherId
+        ? { ...v, isActive: !voucher.isActive }
+        : v,
+    )
+    campaignsRef.current = optimistic
+    setCampaigns(optimistic)
+
     try {
       await updateCampaignActive(voucher, !voucher.isActive)
       showToast(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
       await loadData()
     } catch (err) {
+      campaignsRef.current = previousList
+      setCampaigns(previousList)
       showToast(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
     } finally {
       setToggling(null)
