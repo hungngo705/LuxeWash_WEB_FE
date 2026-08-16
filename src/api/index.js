@@ -33,7 +33,11 @@ export {
 
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
-export { ackBarrierCommand } from './barrier.api'
+export {
+  createBarrierCommand,
+  fetchBarrierCommand,
+  fetchBarrierDeviceStatus,
+} from './barrier.api'
 
 export {
   fetchVehicleTypes,

@@ -38,14 +38,6 @@ export const AI_API_BASE_URL = requireUrl(
   import.meta.env.VITE_AI_API_BASE_URL,
 )
 
-export const ESP32_BARRIER_BASE_URL = requireUrl(
-  'VITE_ESP32_BARRIER_BASE_URL',
-  import.meta.env.VITE_ESP32_BARRIER_BASE_URL,
-)
-
-export const ESP32_BARRIER_DEVICE_KEY =
-  import.meta.env.VITE_ESP32_BARRIER_DEVICE_KEY ?? ''
-
 export const SESSION_STORAGE_KEY = 'luxewash_session'
 export const LEGACY_SESSION_STORAGE_KEY = 'luxewash_staff_session'
 

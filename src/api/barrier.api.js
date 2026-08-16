@@ -1,15 +1,19 @@
 import { apiRequest } from './client'
 
-export function ackBarrierCommand(commandId, status = 'Completed', details = '') {
-  const normalizedId = String(commandId ?? '').trim()
-  if (!normalizedId) return Promise.resolve(null)
-
-  return apiRequest('/barrier/ack', {
+export function createBarrierCommand(barrierId, action = 'OPEN') {
+  return apiRequest('/barrier/commands', {
     method: 'POST',
     body: JSON.stringify({
-      commandId: normalizedId,
-      status,
-      details: String(details ?? '').trim() || undefined,
+      barrierId: String(barrierId ?? '').trim(),
+      action: String(action ?? 'OPEN').trim().toUpperCase(),
     }),
   })
+}
+
+export function fetchBarrierCommand(commandId) {
+  return apiRequest(`/barrier/commands/${encodeURIComponent(commandId)}`)
+}
+
+export function fetchBarrierDeviceStatus() {
+  return apiRequest('/barrier/device/status')
 }
