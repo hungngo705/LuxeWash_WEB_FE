@@ -15,7 +15,7 @@ export default function StaffSidebar({ station }) {
       <div className="flex h-full flex-col py-6">
         <div className="mb-8 px-4">
           <h1 className="font-sora text-[32px] leading-10 font-semibold tracking-tight text-primary">
-            LuxeWash Pro
+            Luxewash
           </h1>
           <p className="mt-1 text-xs font-semibold tracking-wider text-tertiary">
             Staff Console
