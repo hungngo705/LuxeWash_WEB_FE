@@ -10,18 +10,14 @@ import {
 export const CAMPAIGN_TYPE = {
   Manual: 0,
   Birthday: 1,
-  Age: 2,
   Winback: 3,
   Vip: 4,
-  Milestone: 5,
 }
 
 export const CAMPAIGN_TYPE_LABEL = {
   [CAMPAIGN_TYPE.Birthday]: 'Sinh Nhật',
-  [CAMPAIGN_TYPE.Age]: 'Theo Tuổi',
   [CAMPAIGN_TYPE.Winback]: 'Winback',
   [CAMPAIGN_TYPE.Vip]: 'VIP',
-  [CAMPAIGN_TYPE.Milestone]: 'Kỷ Niệm',
   [CAMPAIGN_TYPE.Manual]: 'Thủ Công',
 }
 
@@ -46,10 +42,7 @@ export const CAMPAIGN_TYPE_LABEL = {
  *   isActive: boolean
  *   campaignType: number
  *   voucherType: number
- *   targetAge: number | null
- *   inactiveDays: number | null
  *   resendAfterDays: number | null
- *   milestoneUsageCount: number | null
  * }} CampaignVoucher
  */
 
@@ -76,10 +69,8 @@ export function normalizeCampaignVoucher(v) {
     isActive: v.isActive ?? v.IsActive ?? true,
     campaignType: Number(v.campaignType ?? v.CampaignType ?? 0),
     voucherType: Number(v.voucherType ?? v.VoucherType ?? 0),
-    targetAge: v.targetAge ?? v.TargetAge ?? null,
     inactiveDays: v.inactiveDays ?? v.InactiveDays ?? null,
     resendAfterDays: v.resendAfterDays ?? v.ResendAfterDays ?? null,
-    milestoneUsageCount: v.milestoneUsageCount ?? v.MilestoneUsageCount ?? null,
     discountPercent: v.discountPercent != null ? Number(v.discountPercent) : null,
     maxDiscountAmount: v.maxDiscountAmount != null ? Number(v.maxDiscountAmount) : null,
   }
@@ -137,23 +128,6 @@ export function createBirthdayCampaign(form) {
   })
 }
 
-// ─── Age ─────────────────────────────────────────────────────────────────────
-
-/**
- * @param {Record<string,any>} form
- * @returns {Promise<CampaignVoucher>}
- */
-export function createAgeCampaign(form) {
-  const payload = {
-    ...buildBasePayload(form),
-    targetAge: Number(form.targetAge),
-  }
-  return apiRequest('/admin/vouchers/age', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
 // ─── Winback ─────────────────────────────────────────────────────────────────
 
 /**
@@ -184,23 +158,6 @@ export function createVipCampaign(form) {
     requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
   }
   return apiRequest('/admin/vouchers/vip', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
-}
-
-// ─── Milestone ────────────────────────────────────────────────────────────────
-
-/**
- * @param {Record<string,any>} form
- * @returns {Promise<CampaignVoucher>}
- */
-export function createMilestoneCampaign(form) {
-  const payload = {
-    ...buildBasePayload(form),
-    milestoneUsageCount: Number(form.milestoneUsageCount),
-  }
-  return apiRequest('/admin/vouchers/milestone', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

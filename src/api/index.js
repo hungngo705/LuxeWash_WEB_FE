@@ -82,10 +82,8 @@ export {
 
 export {
   createBirthdayCampaign,
-  createAgeCampaign,
   createWinbackCampaign,
   createVipCampaign,
-  createMilestoneCampaign,
   updateCampaignActive,
   deleteCampaign,
   normalizeCampaignVoucher,

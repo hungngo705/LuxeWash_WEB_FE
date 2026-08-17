@@ -3,9 +3,7 @@ import {
   ApiError,
   CAMPAIGN_TYPE,
   CAMPAIGN_TYPE_LABEL,
-  createAgeCampaign,
   createBirthdayCampaign,
-  createMilestoneCampaign,
   createVipCampaign,
   createWinbackCampaign,
   deleteCampaign,
@@ -53,34 +51,26 @@ const emptyBase = {
 }
 
 const emptyBirthdayForm = { ...emptyBase }
-const emptyAgeForm = { ...emptyBase, targetAge: '' }
 const emptyWinbackForm = { ...emptyBase, inactiveDays: '', resendAfterDays: '' }
 const emptyVipForm = { ...emptyBase, requiredTierId: '' }
-const emptyMilestoneForm = { ...emptyBase, milestoneUsageCount: '' }
 
-const TAB_KEYS = ['birthday', 'age', 'winback', 'vip', 'milestone']
+const TAB_KEYS = ['birthday', 'winback', 'vip']
 const TAB_LABELS = {
   birthday: 'Sinh Nhật',
-  age: 'Theo Tuổi',
   winback: 'Winback',
   vip: 'VIP',
-  milestone: 'Kỷ Niệm',
 }
 const TAB_ICONS = {
   birthday: 'cake',
-  age: 'elderly',
   winback: 'replay',
   vip: 'workspace_premium',
-  milestone: 'flag',
 }
 
 function getCreateFn(tab) {
   switch (tab) {
     case 'birthday': return createBirthdayCampaign
-    case 'age': return createAgeCampaign
     case 'winback': return createWinbackCampaign
     case 'vip': return createVipCampaign
-    case 'milestone': return createMilestoneCampaign
     default: return createBirthdayCampaign
   }
 }
@@ -112,10 +102,6 @@ function validateTab(tab, form) {
   const base = validateBase(form)
   if (base) return base
 
-  if (tab === 'age') {
-    if (!form.targetAge || Number(form.targetAge) < 1) return 'Tuổi mục tiêu phải lớn hơn 0'
-    if (Number(form.targetAge) > 150) return 'Tuổi mục tiêu không hợp lệ'
-  }
   if (tab === 'winback') {
     if (!form.inactiveDays || Number(form.inactiveDays) < 1) return 'Số ngày không hoạt động phải lớn hơn 0'
     if (!form.resendAfterDays || Number(form.resendAfterDays) < 1) return 'Số ngày gửi lại phải lớn hơn 0'
@@ -123,9 +109,6 @@ function validateTab(tab, form) {
   }
   if (tab === 'vip') {
     if (!form.requiredTierId) return 'Vui lòng chọn hạng thành viên tối thiểu'
-  }
-  if (tab === 'milestone') {
-    if (!form.milestoneUsageCount || Number(form.milestoneUsageCount) < 1) return 'Số lần sử dụng mục tiêu phải lớn hơn 0'
   }
   return null
 }
@@ -303,66 +286,12 @@ function BaseFields({ form, setForm, saving, tiers }) {
 }
 
 function TabSpecificFields({ tab, form, setForm, saving, tiers }) {
-  if (tab === 'age') {
-    return (
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          Tuổi mục tiêu <span className="text-error">*</span>
-        </span>
-        <input
-          type="number"
-          min={1}
-          max={150}
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-          value={form.targetAge}
-          disabled={saving}
-          placeholder="VD: 20"
-          onChange={(e) => num(setForm, 'targetAge', e.target.value)}
-        />
-        <p className="mt-1 text-xs text-on-surface-variant">
-          Voucher sẽ được cấp khi khách đủ tuổi này (tính từ ngày sinh).
-        </p>
-      </label>
-    )
-  }
-
   if (tab === 'winback') {
     return (
-      <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Ngày không hoạt động <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.inactiveDays}
-            disabled={saving}
-            placeholder="60"
-            onChange={(e) => num(setForm, 'inactiveDays', e.target.value)}
-          />
-          <p className="mt-1 text-xs text-on-surface-variant">
-            Cấp voucher khi khách không quay lại sau N ngày.
-          </p>
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Gửi lại sau (ngày) <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.resendAfterDays}
-            disabled={saving}
-            placeholder="30"
-            onChange={(e) => num(setForm, 'resendAfterDays', e.target.value)}
-          />
-          <p className="mt-1 text-xs text-on-surface-variant">
-            Sau bao lâu mới gửi lại cho cùng khách.
-          </p>
-        </label>
+      <div className="grid grid-cols-1 gap-4">
+        <p className="text-sm text-on-surface-variant italic">
+          Ghi chú: Thuật toán AI sẽ tự động tính toán nguy cơ rời bỏ (Churn Rate) của từng khách hàng và phát voucher này để kéo họ quay lại gara. Bạn chỉ cần thiết lập giá trị giảm giá và thời hạn ở bên trên.
+        </p>
       </div>
     )
   }
@@ -393,28 +322,6 @@ function TabSpecificFields({ tab, form, setForm, saving, tiers }) {
     )
   }
 
-  if (tab === 'milestone') {
-    return (
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          Số lần sử dụng dịch vụ <span className="text-error">*</span>
-        </span>
-        <input
-          type="number"
-          min={1}
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-          value={form.milestoneUsageCount}
-          disabled={saving}
-          placeholder="VD: 10"
-          onChange={(e) => num(setForm, 'milestoneUsageCount', e.target.value)}
-        />
-        <p className="mt-1 text-xs text-on-surface-variant">
-          Cấp voucher khi khách hoàn thành đủ N lần booking.
-        </p>
-      </label>
-    )
-  }
-
   return null
 }
 
@@ -433,15 +340,18 @@ export default function AdminVoucherCampaignsPage() {
   const [toast, setToast] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
   const formRefs = useRef({})
+  
+  // Pagination & Filtering state
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 15
+  const [filterDate, setFilterDate] = useState('')
 
   const getForm = (tab) => {
     if (!formRefs.current[tab]) {
       switch (tab) {
         case 'birthday': formRefs.current[tab] = { ...emptyBirthdayForm }; break
-        case 'age': formRefs.current[tab] = { ...emptyAgeForm }; break
         case 'winback': formRefs.current[tab] = { ...emptyWinbackForm }; break
         case 'vip': formRefs.current[tab] = { ...emptyVipForm }; break
-        case 'milestone': formRefs.current[tab] = { ...emptyMilestoneForm }; break
         default: formRefs.current[tab] = { ...emptyBirthdayForm }
       }
     }
@@ -534,10 +444,8 @@ export default function AdminVoucherCampaignsPage() {
       formRefs.current[tab] = (() => {
         switch (tab) {
           case 'birthday': return { ...emptyBirthdayForm }
-          case 'age': return { ...emptyAgeForm }
           case 'winback': return { ...emptyWinbackForm }
           case 'vip': return { ...emptyVipForm }
-          case 'milestone': return { ...emptyMilestoneForm }
           default: return { ...emptyBirthdayForm }
         }
       })()
@@ -615,11 +523,26 @@ export default function AdminVoucherCampaignsPage() {
 
   const tabDescriptions = {
     birthday: 'Tự động cấp voucher cho khách hàng có ngày sinh trùng hôm nay. Mỗi khách chỉ nhận được một lần mỗi năm.',
-    age: 'Tự động cấp voucher khi khách đủ tuổi mục tiêu (tính theo ngày sinh).',
     winback: 'Tự động cấp voucher để thu hút khách hàng lâu ngày không quay lại sử dụng dịch vụ.',
     vip: 'Tự động cấp voucher cho khách thuộc hạng thành viên bằng hoặc cao hơn hạng được chọn.',
-    milestone: 'Tự động cấp voucher khi khách hoàn thành đủ N lần sử dụng dịch vụ.',
   }
+
+  // Derived state for Filtering & Pagination
+  const filteredCampaigns = campaigns
+    .filter(c => {
+      if (!filterDate) return true;
+      if (!c.createdAt && !c.startDate) return true; // fallback
+      const target = c.createdAt ? c.createdAt.substring(0, 10) : c.startDate.substring(0, 10);
+      return target === filterDate;
+    })
+    .sort((a, b) => b.voucherId - a.voucherId);
+  
+  const totalPages = Math.ceil(filteredCampaigns.length / pageSize);
+  const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterDate, campaigns.length]);
 
   return (
     <div className="w-full">
@@ -662,7 +585,9 @@ export default function AdminVoucherCampaignsPage() {
         </div>
       )}
 
-      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        {/* Left Column: Form */}
+        <div className="xl:col-span-4 space-y-6">
       <div className="mb-6 flex flex-wrap gap-2">
         {TAB_KEYS.map((key) => (
           <button
@@ -737,13 +662,33 @@ export default function AdminVoucherCampaignsPage() {
           </div>
         </div>
       </div>
+      </div>
 
+      {/* Right Column: List & Filters */}
+      <div className="xl:col-span-8 h-full flex flex-col">
       {/* ── Existing Campaigns ────────────────────────────────────────────── */}
-      <div className="glass-panel soft-shadow overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
-        <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
+      <div className="glass-panel soft-shadow overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest flex-1 flex flex-col">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-outline-variant bg-surface-container-low px-6 py-4 gap-4">
           <h3 className="text-sm font-semibold text-on-surface">
-            Chiến dịch đã tạo ({campaigns.length})
+            Chiến dịch đã tạo ({filteredCampaigns.length})
           </h3>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Lọc ngày tạo:</span>
+            <input 
+              type="date"
+              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+            />
+            {filterDate && (
+              <button 
+                className="text-xs text-primary hover:underline"
+                onClick={() => setFilterDate('')}
+              >
+                Xóa lọc
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -755,7 +700,7 @@ export default function AdminVoucherCampaignsPage() {
             description="Tạo chiến dịch mới bằng form bên trên"
           />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto flex-1">
             <table className="w-full min-w-[900px] text-left text-sm">
               <thead>
                 <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -771,7 +716,7 @@ export default function AdminVoucherCampaignsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/60">
-                {campaigns.map((c) => (
+                {paginatedCampaigns.map((c) => (
                   <tr key={c.voucherId} className="hover:bg-surface-container-low/50">
                     <td className="px-4 py-3 font-mono font-medium text-on-surface">{c.code}</td>
                     <td className="px-4 py-3">
@@ -812,6 +757,33 @@ export default function AdminVoucherCampaignsPage() {
             </table>
           </div>
         )}
+        
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-outline-variant bg-surface-container-low px-6 py-3">
+            <p className="text-xs text-on-surface-variant">
+              Trang {currentPage} / {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-outline-variant px-3 py-1.5 text-sm hover:bg-surface-container-lowest disabled:opacity-50"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(p => p - 1)}
+              >
+                Trước
+              </button>
+              <button
+                className="rounded-md border border-outline-variant px-3 py-1.5 text-sm hover:bg-surface-container-lowest disabled:opacity-50"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(p => p + 1)}
+              >
+                Sau
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      
+      </div>
       </div>
 
       <ConfirmDialog
