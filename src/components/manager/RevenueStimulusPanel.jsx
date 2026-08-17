@@ -171,7 +171,7 @@ export default function RevenueStimulusPanel() {
         if (res?.message && !res.message.toLowerCase().includes('clear')) {
           setWeatherStatus(res.message)
         } else {
-          setWeatherStatus('Trời không mưa (Chưa kích hoạt)')
+          setWeatherStatus('Trời không mưa')
         }
       })
       .catch(() => setWeatherStatus('Không thể kiểm tra thời tiết'))
@@ -250,7 +250,7 @@ export default function RevenueStimulusPanel() {
             <div className="mt-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
               <span className="material-symbols-outlined text-[20px]">cloud</span>
               <div>
-                <strong>AI Thời Tiết (Chạy ngầm):</strong> {weatherStatus}
+                <strong>AI Thời Tiết:</strong> {weatherStatus}
               </div>
             </div>
           )}
