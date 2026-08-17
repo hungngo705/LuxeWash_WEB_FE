@@ -130,6 +130,7 @@ export {
 export {
   fetchUsers,
   fetchUserById,
+  fetchUserPointsHistory,
   updateUserStatus,
   syncUserPoints,
   normalizeListUser,

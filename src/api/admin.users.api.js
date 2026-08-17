@@ -98,6 +98,11 @@ export function syncUserPoints() {
   return apiRequest('/admin/users/sync-points', { method: 'POST' })
 }
 
+/** @param {number} id @returns {Promise<unknown[]>} */
+export function fetchUserPointsHistory(id) {
+  return apiRequest(`/admin/users/${id}/points-history`)
+}
+
 /** @param {UserListItem} item */
 export function normalizeListUser(item) {
   return {

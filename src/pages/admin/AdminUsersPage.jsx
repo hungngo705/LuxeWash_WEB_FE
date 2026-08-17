@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   fetchUserById,
+  fetchUserPointsHistory,
   fetchUsers,
   normalizeListUser,
   syncUserPoints,
@@ -35,6 +36,10 @@ export default function AdminUsersPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [syncingPoints, setSyncingPoints] = useState(false)
   const [toast, setToast] = useState('')
+  
+  const [pointsHistoryOpen, setPointsHistoryOpen] = useState(false)
+  const [pointsHistory, setPointsHistory] = useState([])
+  const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
 
   const showToast = (msg) => {
     setToast(msg)
@@ -118,9 +123,23 @@ export default function AdminUsersPage() {
         tierName: detail.tierName ?? user.tierName,
       }))
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không tải được chi tiết người dùng')
+      showToast(err instanceof ApiError ? err.message : 'Không tải được chi tiết')
+      setSelectedUser(null)
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  const handleOpenPointsHistory = async (userId) => {
+    setPointsHistoryOpen(true)
+    setLoadingPointsHistory(true)
+    try {
+      const data = await fetchUserPointsHistory(userId)
+      setPointsHistory(Array.isArray(data) ? data : [])
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử điểm')
+    } finally {
+      setLoadingPointsHistory(false)
     }
   }
 
@@ -361,6 +380,17 @@ export default function AdminUsersPage() {
                       </dd>
                     </div>
                   )}
+                  {selectedUser.totalPoint != null && (
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPointsHistory(selectedUser.userId)}
+                        className="text-sm font-semibold text-primary hover:underline"
+                      >
+                        Xem lịch sử giao dịch điểm
+                      </button>
+                    </div>
+                  )}
                   {selectedUser.churnScore != null && (
                     <div>
                       <dt className="text-xs font-semibold text-on-surface-variant uppercase">
@@ -442,6 +472,59 @@ export default function AdminUsersPage() {
         onConfirm={handleStatusChange}
         onCancel={() => !updatingStatus && setStatusTarget(null)}
       />
+
+      {pointsHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-surface p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-sora text-xl font-bold text-on-surface">Lịch sử điểm</h3>
+              <button
+                type="button"
+                onClick={() => setPointsHistoryOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {loadingPointsHistory ? (
+                <p className="py-8 text-center text-on-surface-variant">Đang tải...</p>
+              ) : pointsHistory.length === 0 ? (
+                <p className="py-8 text-center text-on-surface-variant">Không có giao dịch nào.</p>
+              ) : (
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead className="sticky top-0 bg-surface text-xs text-on-surface-variant uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Thời gian</th>
+                      <th className="px-4 py-3 font-semibold">Biến động</th>
+                      <th className="px-4 py-3 font-semibold">Lý do</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant">
+                    {pointsHistory.map((pt) => {
+                      const net = (pt.pointsAdded || 0) - (pt.pointsDeducted || 0)
+                      return (
+                        <tr key={pt.ledgerId} className="hover:bg-surface-container-lowest">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {pt.transactionDate ? new Date(pt.transactionDate).toLocaleString('vi-VN') : '—'}
+                          </td>
+                          <td className="px-4 py-3 font-medium">
+                            <span className={net > 0 ? 'text-primary' : net < 0 ? 'text-error' : ''}>
+                              {net > 0 ? '+' : ''}{net}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{pt.reason || '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

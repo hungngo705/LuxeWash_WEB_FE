@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchBusinessProfile, fetchMonthlyStatement } from '../../api/business.api'
+import { fetchPointsHistory } from '../../api/admin.transactions.api'
 import { createWalletTopUp, fetchMyWallet } from '../../api/wallet.api'
 import { formatVnd } from '../../utils/format'
 
@@ -13,6 +14,10 @@ export default function BusinessCreditPage() {
   const [wallet, setWallet] = useState(null)
   const [topUpAmount, setTopUpAmount] = useState('')
   const [topUpLoading, setTopUpLoading] = useState(false)
+  
+  const [pointHistory, setPointHistory] = useState([])
+  const [pointHistoryOpen, setPointHistoryOpen] = useState(false)
+  const [loadingPoints, setLoadingPoints] = useState(false)
 
   useEffect(() => {
     fetchBusinessProfile()
@@ -95,6 +100,19 @@ export default function BusinessCreditPage() {
     }
   }
 
+  const handleLoadPoints = async () => {
+    setPointHistoryOpen(true)
+    setLoadingPoints(true)
+    try {
+      const data = await fetchPointsHistory()
+      setPointHistory(Array.isArray(data) ? data : [])
+    } catch {
+      setError('Không tải được lịch sử điểm.')
+    } finally {
+      setLoadingPoints(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -137,8 +155,24 @@ export default function BusinessCreditPage() {
           <div className="lg:col-span-3 bg-surface-container-lowest rounded-2xl border border-outline-variant p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <h3 className="font-medium text-on-surface text-sm">Ví điện tử</h3>
-                <p className="text-2xl font-bold text-primary mt-1">{formatVnd(wallet.balance)}</p>
+                <h3 className="font-medium text-on-surface text-sm">Ví điện tử & Điểm</h3>
+                <div className="mt-1 flex items-baseline gap-4">
+                  <p className="text-2xl font-bold text-primary">{formatVnd(wallet.balance)}</p>
+                  {(wallet.totalPoints > 0 || wallet.promotionPoints > 0) && (
+                    <div className="flex flex-col">
+                      <span className="text-sm text-on-surface-variant font-medium">
+                        Điểm thưởng: <span className="text-primary">{wallet.totalPoints.toLocaleString('vi-VN')}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleLoadPoints}
+                        className="text-xs text-primary hover:underline self-start"
+                      >
+                        Xem lịch sử
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex items-end gap-2">
                 <label className="block">
@@ -310,6 +344,58 @@ export default function BusinessCreditPage() {
           )}
         </div>
       </div>
+      {pointHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-surface p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-sora text-xl font-bold text-on-surface">Lịch sử điểm</h3>
+              <button
+                type="button"
+                onClick={() => setPointHistoryOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined text-xl">close</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {loadingPoints ? (
+                <p className="py-8 text-center text-on-surface-variant">Đang tải...</p>
+              ) : pointHistory.length === 0 ? (
+                <p className="py-8 text-center text-on-surface-variant">Không có giao dịch nào.</p>
+              ) : (
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead className="sticky top-0 bg-surface text-xs text-on-surface-variant uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Thời gian</th>
+                      <th className="px-4 py-3 font-semibold">Biến động</th>
+                      <th className="px-4 py-3 font-semibold">Lý do</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant">
+                    {pointHistory.map((pt) => {
+                      const net = (pt.pointsAdded || 0) - (pt.pointsDeducted || 0)
+                      return (
+                        <tr key={pt.ledgerId} className="hover:bg-surface-container-lowest">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {pt.transactionDate ? new Date(pt.transactionDate).toLocaleString('vi-VN') : '—'}
+                          </td>
+                          <td className="px-4 py-3 font-medium">
+                            <span className={net > 0 ? 'text-primary' : net < 0 ? 'text-error' : ''}>
+                              {net > 0 ? '+' : ''}{net}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{pt.reason || '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
