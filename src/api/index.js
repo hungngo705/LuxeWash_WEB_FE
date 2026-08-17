@@ -84,6 +84,7 @@ export {
   createBirthdayCampaign,
   createWinbackCampaign,
   createVipCampaign,
+  createWelcomeCampaign,
   updateCampaignActive,
   deleteCampaign,
   normalizeCampaignVoucher,
@@ -190,7 +191,6 @@ export {
 export {
   fetchManagerBookings,
   fetchManagerStaffs,
-  assignStaffToLane,
   checkinAssignBooking,
   markManagerBookingNoShow,
   normalizeManagerBooking,
@@ -199,10 +199,6 @@ export {
 export {
   fetchManagerLanes,
   createManagerLane,
-  fetchLaneAssignedStaff,
-  fetchAllLaneStaffAssignments,
-  unassignStaffFromLane,
-  normalizeLaneAssignedStaff,
   asManagerCollection,
 } from './manager.lanes.api'
 

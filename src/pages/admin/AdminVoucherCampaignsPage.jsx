@@ -53,14 +53,17 @@ const emptyBase = {
 const emptyBirthdayForm = { ...emptyBase }
 const emptyWinbackForm = { ...emptyBase, inactiveDays: '', resendAfterDays: '' }
 const emptyVipForm = { ...emptyBase, requiredTierId: '' }
+const emptyWelcomeForm = { ...emptyBase }
 
-const TAB_KEYS = ['birthday', 'winback', 'vip']
+const TAB_KEYS = ['welcome', 'birthday', 'winback', 'vip']
 const TAB_LABELS = {
+  welcome: 'Chào mừng',
   birthday: 'Sinh Nhật',
   winback: 'Winback',
   vip: 'VIP',
 }
 const TAB_ICONS = {
+  welcome: 'waving_hand',
   birthday: 'cake',
   winback: 'replay',
   vip: 'workspace_premium',
@@ -68,6 +71,7 @@ const TAB_ICONS = {
 
 function getCreateFn(tab) {
   switch (tab) {
+    case 'welcome': return createWelcomeCampaign
     case 'birthday': return createBirthdayCampaign
     case 'winback': return createWinbackCampaign
     case 'vip': return createVipCampaign
@@ -523,13 +527,29 @@ export default function AdminVoucherCampaignsPage() {
   }
 
   const tabDescriptions = {
+    welcome: 'Tự động cấp voucher cho khách hàng mới đăng ký tài khoản.',
     birthday: 'Tự động cấp voucher cho khách hàng có ngày sinh trùng hôm nay. Mỗi khách chỉ nhận được một lần mỗi năm.',
     winback: 'Tự động cấp voucher để thu hút khách hàng lâu ngày không quay lại sử dụng dịch vụ.',
     vip: 'Tự động cấp voucher cho khách thuộc hạng thành viên bằng hoặc cao hơn hạng được chọn.',
   }
 
+  const activeCounts = {
+    welcome: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Welcome).length,
+    birthday: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Birthday).length,
+    winback: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Winback).length,
+    vip: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Vip).length,
+  }
+
+  const TAB_CAMPAIGN_TYPE_MAP = {
+    welcome: CAMPAIGN_TYPE.Welcome,
+    birthday: CAMPAIGN_TYPE.Birthday,
+    winback: CAMPAIGN_TYPE.Winback,
+    vip: CAMPAIGN_TYPE.Vip,
+  }
+
   // Derived state for Filtering & Pagination
   const tabToCampaignType = {
+    welcome: CAMPAIGN_TYPE.Welcome,
     birthday: CAMPAIGN_TYPE.Birthday,
     winback: CAMPAIGN_TYPE.Winback,
     vip: CAMPAIGN_TYPE.Vip,
@@ -689,6 +709,7 @@ export default function AdminVoucherCampaignsPage() {
                 onChange={(e) => setFilterType(e.target.value)}
               >
                 <option value="all">Tất cả</option>
+                <option value={CAMPAIGN_TYPE.Welcome}>Chào mừng</option>
                 <option value={CAMPAIGN_TYPE.Birthday}>Sinh Nhật</option>
                 <option value={CAMPAIGN_TYPE.Winback}>Winback</option>
                 <option value={CAMPAIGN_TYPE.Vip}>VIP</option>

@@ -27,6 +27,23 @@ function asVoucherCollection(data) {
   return []
 }
 
+function parseCampaignType(val) {
+  if (val == null) return 0
+  if (typeof val === 'number') return val
+  if (typeof val === 'string') {
+    const lower = val.toLowerCase()
+    if (lower === 'manual') return 0
+    if (lower === 'birthday') return 1
+    if (lower === 'winback') return 3
+    if (lower === 'vip') return 4
+    if (lower === 'welcome') return 6
+    if (lower === 'weather') return 7
+    const parsed = parseInt(val, 10)
+    return isNaN(parsed) ? 0 : parsed
+  }
+  return 0
+}
+
 /** @param {Record<string, unknown>} item */
 export function normalizeVoucher(item) {
   const used = Number(item.currentUsageCount ?? item.redeemedCount ?? 0)
@@ -43,7 +60,7 @@ export function normalizeVoucher(item) {
     currentUsageCount: used,
     minOrderAmount: Number(item.minOrderAmount ?? 0),
     isActive: item.isActive !== false,
-    campaignType: Number(item.campaignType ?? 0),
+    campaignType: parseCampaignType(item.campaignType),
     voucherType: Number(item.voucherType ?? 0),
     expiryDays: item.expiryDays != null ? Number(item.expiryDays) : null,
     imageUrl: item.imageUrl != null ? String(item.imageUrl) : null,

@@ -3,7 +3,6 @@ import {
   ApiError,
   createManagerLane,
   fetchManagerLanes,
-  unassignStaffFromLane,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
 import EmptyState from '../../components/admin/shared/EmptyState'
@@ -11,27 +10,6 @@ import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
 const emptyForm = { name: '', isBusinessLane: false }
-
-function todayDateValue() {
-  const now = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-}
-
-function getInitials(name) {
-  const parts = String(name ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  if (!parts.length) return 'NV'
-
-  return parts
-    .slice(-2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-}
 
 export default function ManagerLanesPage() {
   const [lanes, setLanes] = useState([])
@@ -41,24 +19,16 @@ export default function ManagerLanesPage() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState('')
-  const [selectedDate, setSelectedDate] = useState(todayDateValue)
-  const [expandedLaneId, setExpandedLaneId] = useState(null)
-  const [unassigning, setUnassigning] = useState(false)
 
   const laneStats = useMemo(() => {
     const active = lanes.filter((lane) => lane.isActive !== false).length
     const business = lanes.filter((lane) => lane.isBusinessLane).length
-    const assignedStaff = lanes.reduce((total, lane) => {
-      const staff = Array.isArray(lane.assignedStaff) ? lane.assignedStaff : []
-      return total + staff.length
-    }, 0)
 
     return {
       total: lanes.length,
       active,
       consumer: Math.max(lanes.length - business, 0),
       business,
-      assignedStaff,
     }
   }, [lanes])
 
@@ -71,13 +41,13 @@ export default function ManagerLanesPage() {
     setLoading(true)
     setLoadError('')
     try {
-      setLanes(await fetchManagerLanes({ date: selectedDate }))
+      setLanes(await fetchManagerLanes())
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách làn rửa')
     } finally {
       setLoading(false)
     }
-  }, [selectedDate])
+  }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async manager lanes load
@@ -111,28 +81,6 @@ export default function ManagerLanesPage() {
     }
   }
 
-  const toggleLane = (laneId) => {
-    if (expandedLaneId === laneId) {
-      setExpandedLaneId(null)
-      return
-    }
-    setExpandedLaneId(laneId)
-  }
-
-  const handleUnassign = async (laneId, staffId) => {
-    if (unassigning) return
-    setUnassigning(true)
-    try {
-      await unassignStaffFromLane(laneId, staffId, { date: selectedDate })
-      showToast('Đã hủy phân công')
-      await loadLanes()
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không hủy được phân công')
-    } finally {
-      setUnassigning(false)
-    }
-  }
-
   return (
     <div className="w-full">
       <PageHeader
@@ -151,33 +99,21 @@ export default function ManagerLanesPage() {
             </span>
             <div>
               <h2 className="font-sora text-base font-semibold text-on-surface">
-                Bảng phân công làn
+                Thống kê làn
               </h2>
               <p className="mt-1 text-sm text-on-surface-variant">
-                Theo dõi loại làn, trạng thái hoạt động và nhân viên phụ trách theo ngày.
+                Theo dõi loại làn và trạng thái hoạt động.
               </p>
             </div>
           </div>
-          <label className="flex min-w-[220px] flex-col gap-1 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-              Ngày xem phân công
-            </span>
-            <input
-              type="date"
-              className="h-11 rounded-lg border border-outline-variant bg-surface-container-low px-3 text-on-surface outline-none transition-colors focus:border-secondary focus:ring-2 focus:ring-secondary/15"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-            />
-          </label>
         </div>
 
-        <div className="grid grid-cols-2 divide-x divide-y divide-outline-variant/50 md:grid-cols-5 md:divide-y-0">
+        <div className="grid grid-cols-2 divide-x divide-y divide-outline-variant/50 md:grid-cols-4 md:divide-y-0">
           {[
             { label: 'Tổng làn', value: laneStats.total, icon: 'view_stream' },
             { label: 'Đang hoạt động', value: laneStats.active, icon: 'check_circle' },
             { label: 'Tiêu dùng', value: laneStats.consumer, icon: 'directions_car' },
             { label: 'Doanh nghiệp', value: laneStats.business, icon: 'business_center' },
-            { label: 'Nhân viên', value: laneStats.assignedStaff, icon: 'badge' },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-3 px-4 py-3">
               <span className="material-symbols-outlined text-[20px] text-on-surface-variant">
@@ -210,26 +146,16 @@ export default function ManagerLanesPage() {
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải...</p>
       ) : lanes.length === 0 && !loadError ? (
-        <EmptyState icon="garage" title="Chưa có làn rửa" description="Tạo làn rửa để bắt đầu phân công nhân viên." />
+        <EmptyState icon="garage" title="Chưa có làn rửa" description="Tạo làn rửa." />
       ) : (
         <div className="space-y-3">
           {lanes.map((lane) => {
-            const isExpanded = expandedLaneId === lane.laneId
-            const staff = Array.isArray(lane.assignedStaff) ? lane.assignedStaff : []
             return (
               <div
                 key={lane.laneId}
-                className={`soft-shadow overflow-hidden rounded-xl border bg-surface-container-lowest transition-colors ${
-                  isExpanded
-                    ? 'border-secondary/40'
-                    : 'border-outline-variant hover:border-secondary/25'
-                }`}
+                className="soft-shadow overflow-hidden rounded-xl border bg-surface-container-lowest border-outline-variant"
               >
-                <button
-                  type="button"
-                  className="flex w-full flex-col gap-4 px-5 py-4 text-left transition-colors hover:bg-surface-container-low/45 md:flex-row md:items-center md:justify-between"
-                  onClick={() => toggleLane(lane.laneId)}
-                >
+                <div className="flex w-full flex-col gap-4 px-5 py-4 text-left md:flex-row md:items-center md:justify-between">
                   <div className="flex min-w-0 flex-1 items-center gap-4">
                     <span
                       className={`h-12 w-1.5 shrink-0 rounded-full ${
@@ -261,68 +187,7 @@ export default function ManagerLanesPage() {
                       </div>
                     </div>
                   </div>
-
-                  <div className="flex w-full items-center justify-between gap-3 md:w-auto md:justify-end">
-                    <span className="inline-flex min-w-[104px] items-center justify-center rounded-full border border-outline-variant bg-surface-container-low px-3 py-2 text-sm font-semibold text-on-surface">
-                      {staff.length} nhân viên
-                    </span>
-                    <span
-                      className={`inline-flex min-w-[82px] items-center justify-center rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold text-on-surface-variant transition-colors ${
-                        isExpanded ? 'bg-surface-container-low text-on-surface' : 'bg-surface-container-lowest'
-                      }`}
-                    >
-                      {isExpanded ? 'Thu gọn' : 'Chi tiết'}
-                    </span>
-                  </div>
-                </button>
-                {isExpanded && (
-                  <div className="border-t border-outline-variant/60 bg-surface-container-low/35 px-5 py-4">
-                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-                        Nhân viên phân công — {selectedDate}
-                      </p>
-                      <span className="rounded-full bg-surface-container-lowest px-2.5 py-1 text-xs font-medium text-on-surface-variant">
-                        {staff.length} người phụ trách
-                      </span>
-                    </div>
-                    {staff.length === 0 ? (
-                      <div className="flex items-center gap-3 rounded-lg border border-dashed border-outline-variant bg-surface-container-lowest px-4 py-4 text-sm text-on-surface-variant">
-                        <span className="h-2.5 w-2.5 rounded-full bg-outline" />
-                        <span>Chưa có nhân viên nào được phân công cho làn này vào ngày đã chọn.</span>
-                      </div>
-                    ) : (
-                      <ul className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                        {staff.map((member, index) => (
-                          <li
-                            key={`${lane.laneId}-${member.userId}-${index}`}
-                            className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-3 text-sm"
-                          >
-                            <div className="flex min-w-0 items-center gap-3">
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary-container/40 text-xs font-semibold text-secondary">
-                                {getInitials(member.fullName)}
-                              </span>
-                              <div className="min-w-0">
-                                <p className="truncate font-medium text-on-surface">{member.fullName}</p>
-                                <p className="truncate text-xs text-on-surface-variant">{member.phoneNumber}</p>
-                                {member.shiftName && (
-                                  <p className="truncate text-xs font-medium text-secondary">{member.shiftName}</p>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="shrink-0 rounded-lg border border-error/30 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error-container/20 disabled:opacity-50"
-                              disabled={unassigning}
-                              onClick={() => handleUnassign(lane.laneId, member.userId)}
-                            >
-                              Hủy phân công
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
+                </div>
               </div>
             )
           })}
@@ -332,7 +197,7 @@ export default function ManagerLanesPage() {
       <FormModal
         open={modalOpen}
         title="Thêm làn rửa"
-        submitLabel={saving ? 'Đang lưu...' : 'Lưu'}
+        submitLabel={saving ? 'Đang lưu...' : 'Thêm làn'}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
@@ -340,25 +205,24 @@ export default function ManagerLanesPage() {
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase text-on-surface-variant">Tên làn</span>
             <input
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              type="text"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 outline-none transition-colors focus:border-secondary"
+              placeholder="VD: Làn 1..."
               value={form.name}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="VD: Làn bọt tuyết 1"
+              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+              required
             />
           </label>
-          <label className="flex items-center justify-between gap-4 rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2">
-            <span>
-              <span className="block text-sm font-medium text-on-surface">Làn doanh nghiệp</span>
-              <span className="block text-xs text-on-surface-variant">Dùng cho xe fleet/doanh nghiệp.</span>
-            </span>
+          <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
-              className="h-5 w-5 accent-primary"
+              className="h-4 w-4 rounded border-outline-variant text-secondary focus:ring-secondary"
               checked={form.isBusinessLane}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, isBusinessLane: e.target.checked }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, isBusinessLane: e.target.checked }))}
             />
+            <span className="text-sm font-medium text-on-surface">Dành cho doanh nghiệp</span>
           </label>
         </div>
       </FormModal>

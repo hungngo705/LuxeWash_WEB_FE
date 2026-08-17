@@ -12,6 +12,7 @@ export const CAMPAIGN_TYPE = {
   Birthday: 1,
   Winback: 3,
   Vip: 4,
+  Welcome: 6,
   Weather: 7,
 }
 
@@ -19,6 +20,7 @@ export const CAMPAIGN_TYPE_LABEL = {
   [CAMPAIGN_TYPE.Birthday]: 'Sinh Nhật',
   [CAMPAIGN_TYPE.Winback]: 'Winback',
   [CAMPAIGN_TYPE.Vip]: 'VIP',
+  [CAMPAIGN_TYPE.Welcome]: 'Chào mừng',
   [CAMPAIGN_TYPE.Manual]: 'Thủ Công',
   [CAMPAIGN_TYPE.Weather]: 'Thời Tiết',
 }
@@ -160,6 +162,16 @@ export function createVipCampaign(form) {
     requiredTierId: form.requiredTierId ? Number(form.requiredTierId) : null,
   }
   return apiRequest('/admin/vouchers/vip', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createWelcomeCampaign(form) {
+  const payload = {
+    ...buildBasePayload(form),
+  }
+  return apiRequest('/admin/vouchers/welcome', {
     method: 'POST',
     body: JSON.stringify(payload),
   })

@@ -247,10 +247,12 @@ export default function RevenueStimulusPanel() {
             Phân tích chạy trên backend AI local; voucher luôn ở trạng thái chờ duyệt trước khi phát hành.
           </p>
           {weatherStatus && (
-            <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
-              <span className="material-symbols-outlined text-sm">routine</span>
-              AI Thời tiết: {weatherStatus}
-            </p>
+            <div className="mt-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+              <span className="material-symbols-outlined text-[20px]">cloud</span>
+              <div>
+                <strong>AI Thời Tiết (Chạy ngầm):</strong> {weatherStatus}
+              </div>
+            </div>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">

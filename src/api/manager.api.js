@@ -175,26 +175,6 @@ export function fetchManagerStaffs() {
 }
 
 /**
- * POST /api/v1/manager/lanes/assign-staff
- * Assigns a Staff member to a Lane for a specific date and work shift.
- * @param {{ staffId: number; laneId: number; assignedDate: string; workShiftId: number }} payload `assignedDate`: yyyy-MM-dd or ISO
- */
-export function assignStaffToLane({ staffId, laneId, assignedDate, workShiftId }) {
-  const isoDate = String(assignedDate).includes('T')
-    ? assignedDate
-    : toApiTargetDate(String(assignedDate).slice(0, 10))
-  return apiRequest('/manager/lanes/assign-staff', {
-    method: 'POST',
-    body: JSON.stringify({
-      staffId: Number(staffId),
-      laneId: Number(laneId),
-      assignedDate: isoDate,
-      workShiftId: Number(workShiftId),
-    }),
-  })
-}
-
-/**
  * POST /api/v1/manager/bookings/{bookingId}/checkin-assign
  * Assigns a booking to a Lane and Staff (vehicle check-in at the station).
  * @param {number} bookingId
