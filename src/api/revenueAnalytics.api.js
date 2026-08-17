@@ -28,6 +28,10 @@ export function fetchRevenueStimulusProposals(options = {}) {
   )
 }
 
+export function triggerWeatherCampaign() {
+  return aiApiRequest('/manager/trigger-weather', { method: 'POST' })
+}
+
 export function modifyRevenueStimulusProposal(voucherId, payload) {
   return aiApiRequest(`/manager/revenue-stimulus/proposals/${Number(voucherId)}`, {
     method: 'PUT',

@@ -184,6 +184,7 @@ export {
   rejectRevenueStimulusProposal,
   triggerAllRevenueCampaigns,
   triggerBranchRevenueCampaign,
+  triggerWeatherCampaign,
 } from './revenueAnalytics.api'
 
 export {

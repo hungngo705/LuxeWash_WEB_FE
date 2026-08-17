@@ -106,7 +106,10 @@ export default function AdminVouchersPage() {
     setLoadError('')
     try {
       const data = await fetchVouchers()
-      setVouchers(Array.isArray(data) ? data : [])
+      const arr = Array.isArray(data) ? data : []
+      // Chỉ hiển thị voucher thủ công (đổi điểm)
+      const filtered = arr.filter(v => !v.campaignType || v.campaignType === CAMPAIGN_TYPE.Manual)
+      setVouchers(filtered)
     } catch (err) {
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách voucher')
     } finally {

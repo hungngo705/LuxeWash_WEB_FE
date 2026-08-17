@@ -12,6 +12,7 @@ export const CAMPAIGN_TYPE = {
   Birthday: 1,
   Winback: 3,
   Vip: 4,
+  Weather: 7,
 }
 
 export const CAMPAIGN_TYPE_LABEL = {
@@ -19,6 +20,7 @@ export const CAMPAIGN_TYPE_LABEL = {
   [CAMPAIGN_TYPE.Winback]: 'Winback',
   [CAMPAIGN_TYPE.Vip]: 'VIP',
   [CAMPAIGN_TYPE.Manual]: 'Thủ Công',
+  [CAMPAIGN_TYPE.Weather]: 'Thời Tiết',
 }
 
 /**

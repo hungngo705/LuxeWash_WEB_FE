@@ -345,6 +345,7 @@ export default function AdminVoucherCampaignsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 15
   const [filterDate, setFilterDate] = useState('')
+  const [filterType, setFilterType] = useState('all')
 
   const getForm = (tab) => {
     if (!formRefs.current[tab]) {
@@ -528,8 +529,15 @@ export default function AdminVoucherCampaignsPage() {
   }
 
   // Derived state for Filtering & Pagination
+  const tabToCampaignType = {
+    birthday: CAMPAIGN_TYPE.Birthday,
+    winback: CAMPAIGN_TYPE.Winback,
+    vip: CAMPAIGN_TYPE.Vip,
+  }
+
   const filteredCampaigns = campaigns
     .filter(c => {
+      if (filterType !== 'all' && c.campaignType !== Number(filterType)) return false;
       if (!filterDate) return true;
       if (!c.createdAt && !c.startDate) return true; // fallback
       const target = c.createdAt ? c.createdAt.substring(0, 10) : c.startDate.substring(0, 10);
@@ -672,22 +680,38 @@ export default function AdminVoucherCampaignsPage() {
           <h3 className="text-sm font-semibold text-on-surface">
             Chiến dịch đã tạo ({filteredCampaigns.length})
           </h3>
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Lọc ngày tạo:</span>
-            <input 
-              type="date"
-              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-            />
-            {filterDate && (
-              <button 
-                className="text-xs text-primary hover:underline"
-                onClick={() => setFilterDate('')}
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Loại campaign:</span>
+              <select
+                className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
               >
-                Xóa lọc
-              </button>
-            )}
+                <option value="all">Tất cả</option>
+                <option value={CAMPAIGN_TYPE.Birthday}>Sinh Nhật</option>
+                <option value={CAMPAIGN_TYPE.Winback}>Winback</option>
+                <option value={CAMPAIGN_TYPE.Vip}>VIP</option>
+                <option value={CAMPAIGN_TYPE.Weather}>Thời Tiết</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Ngày tạo:</span>
+              <input 
+                type="date"
+                className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-sm"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+              />
+              {filterDate && (
+                <button 
+                  className="text-xs text-primary hover:underline"
+                  onClick={() => setFilterDate('')}
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

@@ -7,6 +7,7 @@ import {
   generateComprehensiveRevenueProposals,
   modifyRevenueStimulusProposal,
   rejectRevenueStimulusProposal,
+  triggerWeatherCampaign,
 } from '../../api'
 import { formatVnd } from '../../utils/format'
 
@@ -142,6 +143,7 @@ export default function RevenueStimulusPanel() {
   const [actionId, setActionId] = useState(null)
   const [modal, setModal] = useState(null)
   const [message, setMessage] = useState(null)
+  const [weatherStatus, setWeatherStatus] = useState('')
 
   const loadProposals = useCallback(async () => {
     setLoading(true)
@@ -162,6 +164,17 @@ export default function RevenueStimulusPanel() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial AI proposal load
     loadProposals()
+    
+    // Kích hoạt/Kiểm tra ngầm AI thời tiết khi mở panel
+    triggerWeatherCampaign()
+      .then(res => {
+        if (res?.message && !res.message.toLowerCase().includes('clear')) {
+          setWeatherStatus(res.message)
+        } else {
+          setWeatherStatus('Trời không mưa (Chưa kích hoạt)')
+        }
+      })
+      .catch(() => setWeatherStatus('Không thể kiểm tra thời tiết'))
   }, [loadProposals])
 
   const runAnalysis = async (comprehensive) => {
@@ -233,6 +246,12 @@ export default function RevenueStimulusPanel() {
           <p className="mt-1 text-sm text-on-surface-variant">
             Phân tích chạy trên backend AI local; voucher luôn ở trạng thái chờ duyệt trước khi phát hành.
           </p>
+          {weatherStatus && (
+            <p className="mt-2 flex items-center gap-1 text-xs font-semibold text-primary">
+              <span className="material-symbols-outlined text-sm">routine</span>
+              AI Thời tiết: {weatherStatus}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
