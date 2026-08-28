@@ -9,6 +9,7 @@ import FormModal from '../../components/admin/shared/FormModal'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import { isValidPhoneNumber, isValidPassword, PHONE_ERROR_MESSAGE, PASSWORD_ERROR_MESSAGE } from '../../utils/validation'
 
 const emptyForm = { fullName: '', phoneNumber: '', password: '' }
 
@@ -58,12 +59,12 @@ export default function ManagerEmployeesPage() {
       showToast('Vui lòng nhập số điện thoại')
       return
     }
-    if (phoneNumber.length < 9) {
-      showToast('Số điện thoại không hợp lệ')
+    if (!isValidPhoneNumber(phoneNumber)) {
+      showToast(PHONE_ERROR_MESSAGE)
       return
     }
-    if (!password || password.length < 6) {
-      showToast('Mật khẩu phải có ít nhất 6 ký tự')
+    if (!isValidPassword(password)) {
+      showToast(PASSWORD_ERROR_MESSAGE)
       return
     }
 

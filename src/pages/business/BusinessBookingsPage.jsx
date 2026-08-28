@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchBusinessBookings, cancelBooking } from '../../api/business.api'
+import { fetchAllBusinessBookings, cancelBooking } from '../../api/business.api'
 import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatDateTime } from '../../utils/format'
 
@@ -28,7 +28,7 @@ export default function BusinessBookingsPage() {
   const [cancellingId, setCancellingId] = useState(null)
 
   useEffect(() => {
-    fetchBusinessBookings()
+    fetchAllBusinessBookings()
       .then((data) => setBookings(Array.isArray(data) ? data : []))
       .catch(() => setError('Không thể tải danh sách đặt lịch.'))
       .finally(() => setLoading(false))

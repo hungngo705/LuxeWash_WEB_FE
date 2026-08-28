@@ -2,8 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, API_BASE_URL, changePassword, fetchCurrentUser, updateCurrentUserProfile } from '../../api'
 import { useAuth } from '../../context/AuthContext'
-
-const PASSWORD_PATTERN = /^(?=.*[A-Z])(?=.*\d).{8,}$/
+import { PASSWORD_REGEX as PASSWORD_PATTERN, isValidPhoneNumber, isValidEmail, PHONE_ERROR_MESSAGE, EMAIL_ERROR_MESSAGE } from '../../utils/validation'
 
 function normalizeProfile(profile, user) {
   return {
@@ -67,6 +66,14 @@ export default function AdminSettingsPage() {
 
     if (!profileForm.fullName.trim()) {
       showToast('Họ tên không được để trống')
+      return
+    }
+    if (profileForm.phoneNumber.trim() && !isValidPhoneNumber(profileForm.phoneNumber)) {
+      showToast(PHONE_ERROR_MESSAGE)
+      return
+    }
+    if (profileForm.email.trim() && !isValidEmail(profileForm.email)) {
+      showToast(EMAIL_ERROR_MESSAGE)
       return
     }
 

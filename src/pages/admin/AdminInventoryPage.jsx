@@ -9,6 +9,7 @@ import {
   fetchAdminInventoryStocks,
   fetchAdminMaterialUnits,
   fetchAdminMaterials,
+  fetchAllServiceMaterials,
   fetchConditionMultipliers,
   fetchServiceMaterials,
   fetchServices,
@@ -190,6 +191,8 @@ export default function AdminInventoryPage() {
   const [serviceUsages, setServiceUsages] = useState([])
   const [report, setReport] = useState(null)
   const [branchSetting, setBranchSetting] = useState(null)
+  const [allStocks, setAllStocks] = useState([])
+  const [allServiceUsageCount, setAllServiceUsageCount] = useState(0)
   const [filters, setFilters] = useState({
     includeInactive: true,
     branchId: '',
@@ -288,6 +291,24 @@ export default function AdminInventoryPage() {
     loadActive()
   }, [loadActive])
 
+  const loadMetrics = useCallback(async () => {
+    try {
+      const [stockData, usageData] = await Promise.all([
+        fetchAdminInventoryStocks({}),
+        fetchAllServiceMaterials(),
+      ])
+      setAllStocks(Array.isArray(stockData) ? stockData : [])
+      setAllServiceUsageCount(Array.isArray(usageData) ? usageData.length : 0)
+    } catch {
+      // metric cards fall back to their previous values; page-level error is shown by loadActive
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- summary metrics are independent of the active tab
+    loadMetrics()
+  }, [loadMetrics])
+
   const visibleMaterials = useMemo(
     () => materials.filter((m) => filters.includeInactive || m.isActive !== false),
     [materials, filters.includeInactive],
@@ -304,8 +325,8 @@ export default function AdminInventoryPage() {
   )
 
   const lowStockCount = useMemo(
-    () => stocks.filter((stock) => stock.isLowStock).length,
-    [stocks],
+    () => allStocks.filter((stock) => stock.isLowStock).length,
+    [allStocks],
   )
 
   const selectedUsageMaterial = useMemo(
@@ -441,6 +462,7 @@ export default function AdminInventoryPage() {
       setUsageForm({ materialId: '', baseQuantity: '' })
       setServiceUsages(await fetchServiceMaterials(targetServiceId))
       showToast('Đã lưu định mức vật tư.')
+      loadMetrics()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không lưu được định mức.')
     } finally {
@@ -523,7 +545,7 @@ export default function AdminInventoryPage() {
           ['Vật tư đang dùng', num(activeMaterialCount), 'inventory_2'],
           ['Đơn vị đo', num(materialUnits.length), 'straighten'],
           ['Tồn kho thấp', num(lowStockCount), 'warning'],
-          ['Định mức dịch vụ', num(serviceUsages.length), 'rule_settings'],
+          ['Định mức dịch vụ', num(allServiceUsageCount), 'rule_settings'],
         ].map(([label, value, icon]) => (
           <MetricCard key={label} label={label} value={value} icon={icon} />
         ))}

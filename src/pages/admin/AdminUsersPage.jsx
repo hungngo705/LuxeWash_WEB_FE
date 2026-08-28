@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchUserById,
   fetchUserPointsHistory,
+  fetchUserRoleStats,
   fetchUsers,
   normalizeListUser,
   syncUserPoints,
@@ -13,7 +14,7 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 
-const ROLE_TABS = ['All', 'Customer', 'Staff', 'Admin']
+const ROLE_TABS = ['All', 'Customer', 'Staff', 'Manager', 'Business']
 const PAGE_SIZE = 10
 
 export default function AdminUsersPage() {
@@ -23,7 +24,7 @@ export default function AdminUsersPage() {
     totalPages: 1,
     currentPage: 1,
   })
-  const [stats, setStats] = useState({ total: 0, customers: 0, staff: 0, blocked: 0 })
+  const [stats, setStats] = useState({ total: 0, customers: 0, staff: 0, managers: 0, businesses: 0, blocked: 0 })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
@@ -57,17 +58,14 @@ export default function AdminUsersPage() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [allResult, blockedResult] = await Promise.all([
-        fetchUsers({ page: 1, pageSize: 1 }),
-        fetchUsers({ page: 1, pageSize: 1, status: 'Blocked' }),
-      ])
-      const total = allResult?.totalItems ?? 0
-      const blocked = blockedResult?.totalItems ?? 0
+      const data = await fetchUserRoleStats()
       setStats({
-        total,
-        customers: total,
-        staff: 0,
-        blocked,
+        total: data?.total ?? 0,
+        customers: data?.customer ?? 0,
+        staff: data?.staff ?? 0,
+        managers: data?.manager ?? 0,
+        businesses: data?.business ?? 0,
+        blocked: data?.blocked ?? 0,
       })
     } catch {
       // Stats are non-critical — list error is shown separately
@@ -82,6 +80,7 @@ export default function AdminUsersPage() {
         page,
         pageSize: PAGE_SIZE,
         keyword: debouncedSearch || undefined,
+        role: roleFilter !== 'All' ? roleFilter : undefined,
       })
       const items = Array.isArray(data?.items) ? data.items.map(normalizeListUser) : []
       setUsers(items)
@@ -95,7 +94,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, roleFilter])
 
   useEffect(() => {
     loadStats()
@@ -104,11 +103,6 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers()
   }, [loadUsers])
-
-  const filtered = useMemo(() => {
-    if (roleFilter === 'All') return users
-    return users.filter((u) => u.role === roleFilter)
-  }, [users, roleFilter])
 
   const selectUser = async (user) => {
     setSelectedUser({ ...user })
@@ -194,11 +188,13 @@ export default function AdminUsersPage() {
         </p>
       )}
 
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
           { label: 'Tổng', value: stats.total, icon: 'group' },
           { label: 'Khách hàng', value: stats.customers, icon: 'person' },
           { label: 'Staff', value: stats.staff, icon: 'badge' },
+          { label: 'Quản lý', value: stats.managers, icon: 'supervisor_account' },
+          { label: 'Doanh nghiệp', value: stats.businesses, icon: 'apartment' },
           { label: 'Bị khóa', value: stats.blocked, icon: 'block' },
         ].map((stat) => (
           <div
@@ -263,7 +259,7 @@ export default function AdminUsersPage() {
         <div className="xl:col-span-7">
           {loading ? (
             <p className="text-sm text-on-surface-variant">Đang tải người dùng…</p>
-          ) : filtered.length === 0 && !loadError ? (
+          ) : users.length === 0 && !loadError ? (
             <EmptyState icon="person_search" title="Không tìm thấy người dùng" />
           ) : (
             <>
@@ -279,7 +275,7 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant/60">
-                    {filtered.map((user) => (
+                    {users.map((user) => (
                       <tr
                         key={user.userId}
                         className={`cursor-pointer hover:bg-surface-container-low/50 ${

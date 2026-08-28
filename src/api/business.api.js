@@ -517,10 +517,26 @@ export const fetchImportBatchDetail = (batchId) =>
 
 // === Bookings ===
 
-export async function fetchBusinessBookings() {
-  const data = await apiRequest('/business')
+export async function fetchBusinessBookings({ page = 1, pageSize = 50 } = {}) {
+  const data = await apiRequest(`/business?page=${page}&pageSize=${pageSize}`)
   const bookings = asBusinessCollection(data).map(normalizeBusinessBooking)
   return enrichBusinessBookingsWithBranches(bookings)
+}
+
+/**
+ * GET /business trả một mảng thô không kèm tổng số trang/bản ghi, nên cách
+ * duy nhất để biết đã lấy hết dữ liệu là lặp cho tới khi 1 trang trả về ít
+ * hơn pageSize. Dùng cho các màn cần đầy đủ dữ liệu (lịch sử, báo cáo) thay
+ * vì gọi 1 trang lớn cố định rồi âm thầm bỏ sót các bản ghi cũ hơn.
+ */
+export async function fetchAllBusinessBookings({ pageSize = 200, maxPages = 25 } = {}) {
+  const all = []
+  for (let page = 1; page <= maxPages; page += 1) {
+    const chunk = await fetchBusinessBookings({ page, pageSize })
+    all.push(...chunk)
+    if (chunk.length < pageSize) break
+  }
+  return all
 }
 
 export async function fetchBookingDetail(id) {
@@ -786,7 +802,7 @@ function paginateBusinessHistory(items, filter) {
  */
 async function fetchBusinessHistoryFromBookings(filter = {}) {
   const [bookings, vehicles, branches] = await Promise.all([
-    fetchBusinessBookings(),
+    fetchAllBusinessBookings(),
     fetchFleetVehicles().catch(() => []),
     fetchBranches().catch(() => []),
   ])

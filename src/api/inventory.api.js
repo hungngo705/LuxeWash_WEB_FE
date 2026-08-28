@@ -93,6 +93,10 @@ export function fetchServiceMaterials(serviceId) {
   return apiRequest(`/admin/services/${Number(serviceId)}/materials`)
 }
 
+export function fetchAllServiceMaterials() {
+  return apiRequest('/admin/inventory/service-materials')
+}
+
 export function upsertServiceMaterials(serviceId, payload) {
   return apiRequest(`/admin/services/${Number(serviceId)}/materials`, {
     method: 'POST',

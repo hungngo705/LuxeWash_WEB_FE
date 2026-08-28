@@ -130,6 +130,7 @@ export {
   fetchUsers,
   fetchUserById,
   fetchUserPointsHistory,
+  fetchUserRoleStats,
   updateUserStatus,
   syncUserPoints,
   normalizeListUser,
@@ -213,6 +214,7 @@ export {
   createManagerStaff,
   normalizeManagerStaff,
   fetchBranchEmployeesSummary,
+  fetchAllBranchesEmployeesSummary,
 } from './manager.employees.api'
 
 export {
@@ -280,6 +282,7 @@ export {
   fetchAdminInventoryStocks,
   fetchAdminMaterialUnits,
   fetchAdminMaterials,
+  fetchAllServiceMaterials,
   fetchBranchInventorySetting,
   fetchConditionMultipliers,
   fetchMaterialUnits,
