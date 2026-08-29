@@ -159,10 +159,8 @@ export default function BusinessRescheduleBookingPage() {
     let active = true
     getBusinessAvailableSlots({
       branchId: branch.id,
-      fleetVehicleId: vehicle.fleetVehicleId,
       targetDate: selectedDate,
-      serviceIds,
-      vehicleCount: 1,
+      vehicles: [{ fleetVehicleId: vehicle.fleetVehicleId, serviceIds }],
     })
       .then((data) => {
         if (!active) return

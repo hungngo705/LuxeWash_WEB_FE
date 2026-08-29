@@ -25,7 +25,12 @@ export function normalizeBusinessVehicle(item) {
     brand: String(item.brand ?? ''),
     model: String(item.model ?? item.carModel ?? ''),
     driverName: item.driverName != null ? String(item.driverName) : '',
-    employeeCode: item.employeeCode != null ? String(item.employeeCode) : '',
+    employeeCode:
+      item.employeeCode != null
+        ? String(item.employeeCode)
+        : item.employeeId != null
+          ? String(item.employeeId)
+          : '',
     status: String(item.status ?? 'Unknown'),
   }
 }
@@ -493,27 +498,14 @@ export async function importFleet(formData) {
   })
 }
 
-/**
- * BE chưa expose lịch sử nhập cho role Business (GET /fleet/staff/imports → 403).
- * Giữ hàm để trang không crash; trả lỗi rõ ràng khi gọi.
- */
+/** GET /fleet/my-imports — lịch sử nhập xe của chính doanh nghiệp đang đăng nhập. */
 export async function fetchImportHistory() {
-  try {
-    const data = await apiRequest('/fleet/staff/imports')
-    return asBusinessCollection(data)
-  } catch (err) {
-    if (err instanceof ApiError && err.isForbidden) {
-      throw new ApiError(
-        'Lịch sử nhập xe chưa khả dụng cho tài khoản doanh nghiệp trên API hiện tại.',
-        403,
-      )
-    }
-    throw err
-  }
+  const data = await apiRequest('/fleet/my-imports')
+  return asBusinessCollection(data)
 }
 
 export const fetchImportBatchDetail = (batchId) =>
-  apiRequest(`/fleet/staff/imports/${batchId}`)
+  apiRequest(`/fleet/my-imports/${batchId}`)
 
 // === Bookings ===
 

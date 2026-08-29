@@ -122,8 +122,13 @@ export default function AdminEmployeesPage() {
   const handleCreate = async (e) => {
     e.preventDefault()
     if (creating) return
-    if (!createForm.phoneNumber.trim() || !createForm.password || !createForm.fullName.trim()) {
-      showToast('Vui lòng điền SĐT, mật khẩu và họ tên')
+    if (
+      !createForm.phoneNumber.trim() ||
+      !createForm.password ||
+      !createForm.fullName.trim() ||
+      !createForm.branchId
+    ) {
+      showToast('Vui lòng điền họ tên, SĐT, mật khẩu và chi nhánh')
       return
     }
     if (!isValidPhoneNumber(createForm.phoneNumber)) {
@@ -142,7 +147,7 @@ export default function AdminEmployeesPage() {
         password: createForm.password,
         fullName: createForm.fullName.trim(),
         role: createForm.role,
-        branchId: createForm.branchId ? Number(createForm.branchId) : null,
+        branchId: Number(createForm.branchId),
       })
       showToast('Đã tạo tài khoản nhân viên')
       setCreateForm(emptyCreate)
@@ -251,14 +256,14 @@ export default function AdminEmployeesPage() {
           </select>
         </label>
         <label className="block space-y-1">
-          <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh (tùy chọn)</span>
+          <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh</span>
           <select
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
             value={createForm.branchId}
             disabled={creating}
             onChange={(e) => setCreateForm((f) => ({ ...f, branchId: e.target.value }))}
           >
-            <option value="">— Không gán —</option>
+            <option value="">— Chọn chi nhánh —</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

@@ -27,16 +27,35 @@ export default function BusinessVehicleDetailPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([
-      fetchFleetVehicleDetail(id),
-      fetchBusinessHistory({ fleetVehicleId: id, pageSize: 10 }),
-    ])
-      .then(([v, h]) => {
+    let active = true
+
+    fetchFleetVehicleDetail(id)
+      .then(async (v) => {
+        if (!active) return
         setVehicle(v)
-        setHistory(h.items ?? [])
+        // Lịch sử rửa là phụ — lỗi ở đây không được che mất chi tiết xe.
+        try {
+          const h = await fetchBusinessHistory({ fleetVehicleId: id, pageSize: 10 })
+          if (active) setHistory(h.items ?? [])
+        } catch {
+          if (active) setHistory([])
+        }
       })
-      .catch(() => setError('Không thể tải chi tiết xe.'))
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (!active) return
+        setError(
+          err?.statusCode === 404
+            ? 'Không tìm thấy xe này trong đội xe của bạn.'
+            : 'Không thể tải chi tiết xe.',
+        )
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [id])
 
   if (loading) {

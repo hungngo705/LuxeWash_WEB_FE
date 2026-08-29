@@ -65,6 +65,11 @@ export default function AdminVehicleTypesPage() {
   const handleSave = async () => {
     if (!form.name.trim() || saving) return
 
+    if (form.name.trim().length > 50) {
+      showToast('Tên loại xe không được vượt quá 50 ký tự')
+      return
+    }
+
     const payload = {
       name: form.name.trim(),
       description: form.description.trim(),
@@ -203,6 +208,7 @@ export default function AdminVehicleTypesPage() {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               required
+              maxLength={50}
               disabled={saving}
             />
           </label>

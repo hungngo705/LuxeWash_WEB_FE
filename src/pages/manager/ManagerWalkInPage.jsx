@@ -3,6 +3,7 @@ import {
   ApiError,
   createWalkInBooking,
   fetchVehicleTypes,
+  getLaneDisplayBranchId,
 } from '../../api'
 import { apiRequest } from '../../api/client'
 import PageHeader from '../../components/admin/shared/PageHeader'
@@ -28,9 +29,23 @@ function isFallbackVehicleType(type) {
     .toLowerCase() === 'khác'
 }
 
-function getServicePriceForVehicleType(service, vehicleTypeId) {
-  if (!vehicleTypeId || !Array.isArray(service?.prices)) return null
-  return service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
+function pricesForBranch(service, branchId) {
+  const prices = Array.isArray(service?.prices) ? service.prices : []
+  if (!branchId) return prices
+  const scoped = prices.filter(
+    (price) => price.branchId == null || Number(price.branchId) === Number(branchId),
+  )
+  // Nếu BE không gắn branchId cho bảng giá thì giữ nguyên toàn bộ.
+  return scoped.length ? scoped : prices
+}
+
+function getServicePriceForVehicleType(service, vehicleTypeId, branchId) {
+  if (!vehicleTypeId) return null
+  return (
+    pricesForBranch(service, branchId).find(
+      (price) => Number(price.vehicleTypeId) === Number(vehicleTypeId),
+    ) ?? null
+  )
 }
 
 export default function ManagerWalkInPage() {
@@ -42,7 +57,8 @@ export default function ManagerWalkInPage() {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState('')
 
-  const branchId = String(user?.branchId ?? '')
+  // user.branchId không được AuthContext điền — lấy từ claim BranchId trong JWT.
+  const branchId = String(user?.branchId ?? getLaneDisplayBranchId() ?? '')
 
   const [form, setForm] = useState({
     licensePlate: '',
@@ -111,6 +127,11 @@ export default function ManagerWalkInPage() {
 
     if (!Number(form.vehicleTypeId)) {
       showToast('Vui lòng chọn loại xe.')
+      return
+    }
+
+    if (!Number(branchId)) {
+      showToast('Không xác định được chi nhánh của bạn. Vui lòng đăng nhập lại.')
       return
     }
 
@@ -212,10 +233,11 @@ export default function ManagerWalkInPage() {
               {services.map((service) => {
                 const serviceId = service.serviceId ?? service.id
                 const selected = form.serviceIds.includes(serviceId)
-                const selectedPrice = getServicePriceForVehicleType(service, Number(form.vehicleTypeId))
+                const selectedPrice = getServicePriceForVehicleType(service, Number(form.vehicleTypeId), branchId)
                 const disabledByVehicleType = Number(form.vehicleTypeId) > 0 && !selectedPrice
-                const minPrice = service.prices?.length > 0
-                  ? Math.min(...service.prices.map((p) => p.price))
+                const branchPrices = pricesForBranch(service, branchId)
+                const minPrice = branchPrices.length > 0
+                  ? Math.min(...branchPrices.map((p) => p.price))
                   : 0
                 const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice
                 return (

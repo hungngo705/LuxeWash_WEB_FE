@@ -38,7 +38,7 @@ export default function AdminCarModelsPage() {
     setLoadError('')
     try {
       const [fetchedModels, fetchedTypes] = await Promise.all([
-        fetchCarModels(),
+        fetchCarModels({ includeInactive: true }),
         fetchVehicleTypes(),
       ])
       setModels(fetchedModels)
@@ -86,6 +86,15 @@ export default function AdminCarModelsPage() {
     if (!trimmedName) {
       showToast('Vui lòng nhập tên dòng xe')
       return
+    }
+
+    if (form.productionYear) {
+      const year = Number(form.productionYear)
+      const maxYear = new Date().getFullYear() + 1
+      if (!Number.isInteger(year) || year < 1980 || year > maxYear) {
+        showToast(`Năm sản xuất phải từ 1980 đến ${maxYear}`)
+        return
+      }
     }
 
     setSaving(true)
@@ -242,7 +251,7 @@ export default function AdminCarModelsPage() {
               <input
                 type="number"
                 min={1980}
-                max={2100}
+                max={new Date().getFullYear() + 1}
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.productionYear}
                 disabled={saving}
