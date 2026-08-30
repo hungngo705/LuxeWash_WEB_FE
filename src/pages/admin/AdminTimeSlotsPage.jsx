@@ -283,7 +283,7 @@ export default function AdminTimeSlotsPage() {
                   formError && !selectedBranchId ? 'border-error' : 'border-outline-variant'
                 }`}
                 value={selectedBranchId}
-                disabled={saving || Boolean(editingId)}
+                disabled={saving}
                 onChange={(e) => {
                   setSelectedBranchId(e.target.value)
                   if (e.target.value) setFormError('')
