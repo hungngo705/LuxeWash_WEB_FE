@@ -14,6 +14,7 @@ import {
 } from '../api'
 import StatusBadge from '../components/admin/shared/StatusBadge'
 import WashTelemetry, { WashDurationBadge } from '../components/shared/WashTelemetry'
+import { useToast } from '../components/ui/Toast'
 import { formatVnd } from '../utils/format'
 
 const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Processing', 'Completed', 'Cancelled', 'No-show']
@@ -99,7 +100,7 @@ export default function StaffBookingsPage() {
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [toast, setToast] = useState('')
+  const toast = useToast()
   const [statusDrafts, setStatusDrafts] = useState({})
   const [actionKey, setActionKey] = useState('')
   const [selectedBookingId, setSelectedBookingId] = useState(null)
@@ -115,11 +116,6 @@ export default function StaffBookingsPage() {
     condition: 2,
     actualTypeId: '',
   })
-
-  const showToast = (message) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
 
   const loadBookings = useCallback(async () => {
     const targetDate = toApiTargetDate(dateFilter)
@@ -183,10 +179,10 @@ export default function StaffBookingsPage() {
     setActionKey(key)
     try {
       await action()
-      showToast(successMessage)
+      toast.success(successMessage)
       await loadBookings()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không thực hiện được thao tác')
+      toast.error(err instanceof ApiError ? err.message : 'Không thực hiện được thao tác')
     } finally {
       setActionKey('')
     }
@@ -195,7 +191,7 @@ export default function StaffBookingsPage() {
   const handleStatusUpdate = (booking) => {
     const nextStatus = statusDrafts[booking.bookingId] ?? booking.status
     if (nextStatus === booking.status) {
-      showToast('Trạng thái chưa thay đổi')
+      toast.warning('Trạng thái chưa thay đổi')
       return
     }
 
@@ -217,7 +213,7 @@ export default function StaffBookingsPage() {
   const handlePlateSearch = async () => {
     const plate = normalizePlateQuery(plateQuery)
     if (!plate) {
-      showToast('Nhập biển số cần tra cứu')
+      toast.warning('Nhập biển số cần tra cứu')
       return
     }
 
@@ -225,9 +221,9 @@ export default function StaffBookingsPage() {
     try {
       const results = await searchBookingsByLicensePlate(plate)
       setPlateResults(results.map(normalizeAdminBooking))
-      if (!results.length) showToast('Không tìm thấy booking cho biển số này')
+      if (!results.length) toast.warning('Không tìm thấy booking cho biển số này')
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không tra cứu được biển số')
+      toast.error(err instanceof ApiError ? err.message : 'Không tra cứu được biển số')
       setPlateResults([])
     } finally {
       setPlateLoading(false)
@@ -237,7 +233,7 @@ export default function StaffBookingsPage() {
   const handlePlateStatusUpdate = async () => {
     const plate = normalizePlateQuery(plateQuery)
     if (!plate) {
-      showToast('Nhập biển số cần cập nhật')
+      toast.warning('Nhập biển số cần cập nhật')
       return
     }
 
@@ -251,7 +247,7 @@ export default function StaffBookingsPage() {
 
   const handleReportMismatch = async () => {
     if (!mismatchForm.detailId) {
-      showToast('Chọn chi tiết xe cần báo sai')
+      toast.warning('Chọn chi tiết xe cần báo sai')
       return
     }
 
@@ -269,12 +265,6 @@ export default function StaffBookingsPage() {
 
   return (
     <div className="space-y-6">
-      {toast && (
-        <div className="fixed top-20 right-6 z-50 rounded-lg bg-inverse-surface px-4 py-2 text-sm font-medium text-inverse-on-surface shadow-lg">
-          {toast}
-        </div>
-      )}
-
       <section className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>

@@ -7,6 +7,7 @@ import {
   transferEmployee,
 } from '../../api'
 import PageHeader from '../../components/admin/shared/PageHeader'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyCreate = {
   phoneNumber: '',
@@ -40,12 +41,7 @@ export default function AdminEmployeesPage() {
   const [employeeLoadError, setEmployeeLoadError] = useState('')
   const [creating, setCreating] = useState(false)
   const [transferring, setTransferring] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadBranchesAndEmployees = useCallback(async () => {
     try {
@@ -127,7 +123,7 @@ export default function AdminEmployeesPage() {
     e.preventDefault()
     if (creating) return
     if (!createForm.phoneNumber.trim() || !createForm.password || !createForm.fullName.trim()) {
-      showToast('Vui lòng điền SĐT, mật khẩu và họ tên')
+      toast.warning('Vui lòng điền SĐT, mật khẩu và họ tên')
       return
     }
 
@@ -140,10 +136,10 @@ export default function AdminEmployeesPage() {
         role: createForm.role,
         branchId: createForm.branchId ? Number(createForm.branchId) : null,
       })
-      showToast('Đã tạo tài khoản nhân viên')
+      toast.success('Đã tạo tài khoản nhân viên')
       setCreateForm(emptyCreate)
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không tạo được nhân viên')
+      toast.error(err instanceof ApiError ? err.message : 'Không tạo được nhân viên')
     } finally {
       setCreating(false)
     }
@@ -155,18 +151,18 @@ export default function AdminEmployeesPage() {
     const employeeId = Number(transferForm.employeeId)
     const branchId = Number(transferForm.branchId)
     if (!employeeId || !branchId) {
-      showToast('Chọn nhân viên và chi nhánh đích')
+      toast.warning('Chọn nhân viên và chi nhánh đích')
       return
     }
     if (selectedEmployee?.branchId === branchId) {
-      showToast('Nhân viên đã thuộc chi nhánh này')
+      toast.warning('Nhân viên đã thuộc chi nhánh này')
       return
     }
 
     setTransferring(true)
     try {
       await transferEmployee(employeeId, { branchId })
-      showToast('Đã chuyển nhân viên sang chi nhánh mới')
+      toast.success('Đã chuyển nhân viên sang chi nhánh mới')
       setEmployees((items) => items.map((employee) =>
         employee.employeeId === employeeId
           ? {
@@ -182,7 +178,7 @@ export default function AdminEmployeesPage() {
       setSourceBranchId('')
       setEmployeePickerOpen(false)
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không chuyển được nhân viên')
+      toast.error(err instanceof ApiError ? err.message : 'Không chuyển được nhân viên')
     } finally {
       setTransferring(false)
     }
@@ -191,15 +187,10 @@ export default function AdminEmployeesPage() {
   return (
     <div className="w-full max-w-2xl">
       <PageHeader
+        eyebrow="Nhân sự"
         title="Nhân viên"
         description="Tạo Manager/Staff và chuyển chi nhánh"
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       <form
         onSubmit={handleCreate}

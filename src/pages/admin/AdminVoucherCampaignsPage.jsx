@@ -17,10 +17,12 @@ import {
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import DiscountFields from '../../components/admin/shared/DiscountFields'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import TimeRangeField from '../../components/admin/shared/TimeRangeField'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import {
   describeVoucherUsability,
   formatVoucherDailyWindow,
@@ -156,110 +158,78 @@ function BaseFields({ form, setForm, saving, tiers }) {
         <strong className="ml-1 text-on-surface">Mã voucher</strong> bên dưới là mã sẽ cấp cho khách (khác trang Voucher thủ công).
       </div>
 
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          Mã voucher cấp cho khách <span className="text-error">*</span>
-        </span>
-        <input
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono uppercase placeholder:normal-case"
-          value={form.code}
-          disabled={saving}
-          placeholder="VD: BIRTHDAY20"
-          onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-        />
-      </label>
+      <Input
+        label="Mã voucher cấp cho khách"
+        required
+        placeholder="VD: BIRTHDAY20"
+        value={form.code}
+        disabled={saving}
+        onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+        className="font-mono uppercase placeholder:normal-case"
+      />
 
       <DiscountFields form={form} setForm={setForm} saving={saving} />
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Tổng lượt dùng <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.maxUsages}
-            disabled={saving}
-            placeholder="1000"
-            onChange={(e) => num(setForm, 'maxUsages', e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Lượt/người <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.maxUsagePerUser}
-            disabled={saving}
-            onChange={(e) => num(setForm, 'maxUsagePerUser', e.target.value)}
-          />
-        </label>
+        <Input
+          type="number"
+          min={1}
+          label="Tổng lượt dùng"
+          required
+          placeholder="1000"
+          value={form.maxUsages}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'maxUsages', e.target.value)}
+        />
+        <Input
+          type="number"
+          min={1}
+          label="Lượt/người"
+          required
+          value={form.maxUsagePerUser}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'maxUsagePerUser', e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Thời hạn voucher (ngày) <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={3650}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.expiryDays}
-            disabled={saving}
-            onChange={(e) => num(setForm, 'expiryDays', e.target.value)}
-          />
-          <p className="text-xs text-on-surface-variant">
-            Số ngày voucher có hiệu lực kể từ lúc được cấp cho khách (không phải ngày tạo campaign).
-          </p>
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Giá trị đơn tối thiểu (VND)
-          </span>
-          <input
-            type="number"
-            min={0}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.minOrderAmount}
-            disabled={saving}
-            placeholder="0"
-            onChange={(e) => num(setForm, 'minOrderAmount', e.target.value)}
-          />
-        </label>
+        <Input
+          type="number"
+          min={1}
+          max={3650}
+          label="Thời hạn voucher (ngày)"
+          required
+          value={form.expiryDays}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'expiryDays', e.target.value)}
+          helper="Số ngày voucher có hiệu lực kể từ lúc được cấp cho khách (không phải ngày tạo campaign)."
+        />
+        <Input
+          type="number"
+          min={0}
+          label="Giá trị đơn tối thiểu (VND)"
+          placeholder="0"
+          value={form.minOrderAmount}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'minOrderAmount', e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-              Thời gian bắt đầu
-            </span>
-            <input
-              type="datetime-local"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.startDate}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-              Thời gian kết thúc
-            </span>
-            <input
-              type="datetime-local"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.endDate}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-            />
-          </label>
+        <Input
+          type="datetime-local"
+          label="Thời gian bắt đầu"
+          value={form.startDate}
+          disabled={saving}
+          onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+        />
+        <Input
+          type="datetime-local"
+          label="Thời gian kết thúc"
+          value={form.endDate}
+          disabled={saving}
+          onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+        />
       </div>
 
       <TimeRangeField
@@ -272,19 +242,14 @@ function BaseFields({ form, setForm, saving, tiers }) {
         onEndChange={(value) => setForm((f) => ({ ...f, validEndTime: value }))}
       />
 
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          URL ảnh
-        </span>
-        <input
-          type="url"
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-          value={form.imageUrl}
-          disabled={saving}
-          placeholder="https://..."
-          onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-        />
-      </label>
+      <Input
+        type="url"
+        label="URL ảnh"
+        placeholder="https://..."
+        value={form.imageUrl}
+        disabled={saving}
+        onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+      />
     </>
   )
 }
@@ -341,7 +306,7 @@ export default function AdminVoucherCampaignsPage() {
   const [deleting, setDeleting] = useState(null)
   const [toggling, setToggling] = useState(null)
   const [processing, setProcessing] = useState(false)
-  const [toast, setToast] = useState('')
+  const toast = useToast()
   const [deleteTarget, setDeleteTarget] = useState(null)
   const formRefs = useRef({})
   
@@ -373,11 +338,6 @@ export default function AdminVoucherCampaignsPage() {
   }
 
   const [, setForceUpdate] = useState(0)
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
 
   const campaignsRef = useRef([])
 
@@ -437,7 +397,7 @@ export default function AdminVoucherCampaignsPage() {
     if (saving) return
     const err = validateTab(tab, form)
     if (err) {
-      showToast(err)
+      toast.error(err)
       return
     }
 
@@ -445,7 +405,7 @@ export default function AdminVoucherCampaignsPage() {
     try {
       const createFn = getCreateFn(tab)
       await createFn(form)
-      showToast('Tạo chiến dịch thành công!')
+      toast.success('Tạo chiến dịch thành công!')
       formRefs.current[tab] = (() => {
         switch (tab) {
           case 'birthday': return { ...emptyBirthdayForm }
@@ -457,7 +417,7 @@ export default function AdminVoucherCampaignsPage() {
       setForceUpdate((n) => n + 1)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Tạo chiến dịch thất bại')
+      toast.error(err instanceof ApiError ? err.message : 'Tạo chiến dịch thất bại')
     } finally {
       setSaving(false)
     }
@@ -480,12 +440,12 @@ export default function AdminVoucherCampaignsPage() {
 
     try {
       await updateCampaignActive(voucher, !voucher.isActive)
-      showToast(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
+      toast.success(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
       await loadData()
     } catch (err) {
       campaignsRef.current = previousList
       setCampaigns(previousList)
-      showToast(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
+      toast.error(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
     } finally {
       setToggling(null)
     }
@@ -498,14 +458,14 @@ export default function AdminVoucherCampaignsPage() {
       const result = await processVoucherCampaigns()
       const rows = Array.isArray(result) ? result : []
       const granted = rows.reduce((sum, row) => sum + Number(row.grantedCount ?? 0), 0)
-      showToast(
+      toast.success(
         rows.length
           ? `Đã chạy campaign — cấp ${granted} voucher cho khách đủ điều kiện.`
           : 'Đã chạy campaign — không có khách đủ điều kiện hôm nay.',
       )
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không chạy được campaign')
+      toast.error(err instanceof ApiError ? err.message : 'Không chạy được campaign')
     } finally {
       setProcessing(false)
     }
@@ -517,10 +477,10 @@ export default function AdminVoucherCampaignsPage() {
     try {
       await deleteCampaign(deleteTarget)
       setDeleteTarget(null)
-      showToast('Đã xóa chiến dịch')
+      toast.success('Đã xóa chiến dịch')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được chiến dịch')
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được chiến dịch')
     } finally {
       setDeleting(null)
     }
@@ -572,9 +532,72 @@ export default function AdminVoucherCampaignsPage() {
     setCurrentPage(1);
   }, [filterDate, campaigns.length]);
 
+  const columns = [
+    { key: 'code', label: 'Mã voucher', render: (c) => <span className="font-mono font-medium">{c.code}</span> },
+    {
+      key: 'campaignType',
+      label: 'Loại campaign',
+      render: (c) => <StatusBadge status={CAMPAIGN_TYPE_LABEL[c.campaignType] ?? '—'} />,
+    },
+    { key: 'discount', label: 'Giảm giá', render: (c) => formatVoucherDiscount(c) },
+    {
+      key: 'validity',
+      label: 'Thời gian hiệu lực',
+      tdClassName: 'text-xs text-on-surface-variant',
+      render: (c) => formatVoucherValidityWindow(c),
+    },
+    {
+      key: 'daily',
+      label: 'Thời gian',
+      tdClassName: 'text-xs text-on-surface-variant',
+      render: (c) => formatVoucherDailyWindow(c),
+    },
+    {
+      key: 'expiryDays',
+      label: 'Hạn (ngày)',
+      tdClassName: 'text-on-surface-variant',
+      render: (c) => `${c.expiryDays ?? '—'} (từ lúc cấp)`,
+    },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      render: (c) => <StatusBadge status={describeVoucherUsability(c)} />,
+    },
+    {
+      key: 'isActive',
+      label: 'Hoạt động',
+      width: '120px',
+      render: (c) => (
+        <Toggle
+          checked={c.isActive}
+          onChange={() => handleToggle(c)}
+          disabled={toggling === c.voucherId}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      width: '100px',
+      renderActions: (c) => (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
+          onClick={() => setDeleteTarget(c.voucherId)}
+        >
+          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 0" }}>
+            delete
+          </span>
+          Xóa
+        </button>
+      ),
+    },
+  ]
+
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Khuyến mãi"
         title="Chiến dịch Voucher tự động"
         description="Tạo rule tự động cấp voucher cho khách hàng theo điều kiện"
       />
@@ -593,12 +616,6 @@ export default function AdminVoucherCampaignsPage() {
           Quét và cấp voucher tự động cho khách đủ điều kiện hôm nay.
         </p>
       </div>
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -736,72 +753,17 @@ export default function AdminVoucherCampaignsPage() {
           </div>
         </div>
 
-        {loading ? (
-          <p className="p-6 text-sm text-on-surface-variant">Đang tải…</p>
-        ) : campaigns.length === 0 ? (
-          <EmptyState
-            icon="campaign"
-            title="Chưa có chiến dịch nào"
-            description="Tạo chiến dịch mới bằng form bên trên"
+        <div className="flex-1 flex flex-col">
+          <DataTable
+            columns={columns}
+            data={paginatedCampaigns}
+            loading={loading}
+            emptyIcon="campaign"
+            emptyTitle="Chưa có chiến dịch nào"
+            emptyMessage="Tạo chiến dịch mới bằng form bên trên"
+            minWidth="900px"
           />
-        ) : (
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                  <th className="px-4 py-3">Mã voucher</th>
-                  <th className="px-4 py-3">Loại campaign</th>
-                  <th className="px-4 py-3">Giảm giá</th>
-                  <th className="px-4 py-3">Thời gian hiệu lực</th>
-                  <th className="px-4 py-3">Thời gian</th>
-                  <th className="px-4 py-3">Hạn (ngày)</th>
-                  <th className="px-4 py-3">Trạng thái</th>
-                  <th className="px-4 py-3">Hoạt động</th>
-                  <th className="px-4 py-3">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/60">
-                {paginatedCampaigns.map((c) => (
-                  <tr key={c.voucherId} className="hover:bg-surface-container-low/50">
-                    <td className="px-4 py-3 font-mono font-medium text-on-surface">{c.code}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={CAMPAIGN_TYPE_LABEL[c.campaignType] ?? '—'} />
-                    </td>
-                    <td className="px-4 py-3 text-on-surface">{formatVoucherDiscount(c)}</td>
-                    <td className="px-4 py-3 text-xs text-on-surface-variant">
-                      {formatVoucherValidityWindow(c)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-on-surface-variant">
-                      {formatVoucherDailyWindow(c)}
-                    </td>
-                    <td className="px-4 py-3 text-on-surface-variant">
-                      {c.expiryDays ?? '—'} (từ lúc cấp)
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={describeVoucherUsability(c)} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Toggle
-                        checked={c.isActive}
-                        onChange={() => handleToggle(c)}
-                        disabled={toggling === c.voucherId}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                        onClick={() => setDeleteTarget(c.voucherId)}
-                      >
-                        Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
         
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-outline-variant bg-surface-container-low px-6 py-3">
@@ -837,6 +799,7 @@ export default function AdminVoucherCampaignsPage() {
         message="Bạn chắc chắn muốn xóa chiến dịch này? Hành động này không thể hoàn tác."
         confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
         variant="danger"
+        loading={Boolean(deleting)}
         onConfirm={handleDelete}
         onCancel={() => !deleting && setDeleteTarget(null)}
       />

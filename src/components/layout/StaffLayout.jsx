@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { fetchStaffLaneAssignment, formatStaffStationLabel } from '../../api'
 import { useAuth } from '../../context/AuthContext'
+import ErrorBoundary from '../ui/ErrorBoundary'
 import StaffSidebar from './StaffSidebar'
 import StaffTopBar from './StaffTopBar'
 
@@ -44,7 +45,9 @@ export default function StaffLayout() {
       <StaffSidebar station={stationLabel} />
       <StaffTopBar title={title} />
       <main className="ml-64 mt-16 min-h-[calc(100vh-4rem)] p-6">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   )

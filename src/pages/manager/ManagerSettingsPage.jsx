@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { ApiError, changePassword, fetchCurrentUser } from '../../api'
+import { useToast } from '../../components/ui/Toast'
 
 export default function ManagerSettingsPage() {
   const { user, logout, patchUser } = useAuth()
@@ -9,12 +10,7 @@ export default function ManagerSettingsPage() {
   const [passwordForm, setPasswordForm] = useState({ oldPassword: '', newPassword: '', confirmPassword: '' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
+  const toast = useToast()
 
   const loadProfile = useCallback(async () => {
     try {
@@ -43,9 +39,9 @@ export default function ManagerSettingsPage() {
       }
       await fetchCurrentUser()
       patchUser(normalized)
-      showToast('Đã lưu hồ sơ.')
+      toast.success('Đã lưu hồ sơ.')
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi lưu hồ sơ.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi lưu hồ sơ.')
     } finally {
       setSavingProfile(false)
     }
@@ -54,20 +50,20 @@ export default function ManagerSettingsPage() {
   const handleChangePassword = async (e) => {
     e.preventDefault()
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      showToast('Mật khẩu mới không khớp.')
+      toast.warning('Mật khẩu mới không khớp.')
       return
     }
     if (passwordForm.newPassword.length < 6) {
-      showToast('Mật khẩu mới phải có ít nhất 6 ký tự.')
+      toast.warning('Mật khẩu mới phải có ít nhất 6 ký tự.')
       return
     }
     setSavingPassword(true)
     try {
       await changePassword(passwordForm.oldPassword, passwordForm.newPassword)
       setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-      showToast('Đã đổi mật khẩu thành công.')
+      toast.success('Đã đổi mật khẩu thành công.')
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi đổi mật khẩu.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi đổi mật khẩu.')
     } finally {
       setSavingPassword(false)
     }
@@ -81,12 +77,6 @@ export default function ManagerSettingsPage() {
           Quản lý thông tin tài khoản và mật khẩu
         </p>
       </div>
-
-      {toast && (
-        <div className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </div>
-      )}
 
       {/* Profile */}
       <form onSubmit={handleSaveProfile} className="glass-panel mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-6">

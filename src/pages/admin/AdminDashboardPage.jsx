@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchDashboardStats } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
 import RevenueAnalyticsPanel from '../../components/admin/dashboard/RevenueAnalyticsPanel'
+import PageHeader from '../../components/admin/shared/PageHeader'
+import { Skeleton } from '../../components/ui/Skeleton'
 import { formatVnd } from '../../utils/format'
 
 const EMPTY_DASHBOARD = {
@@ -50,30 +52,21 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="w-full">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-sora text-2xl font-semibold text-on-surface">Dashboard</h1>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            
-          </p>
-        </div>
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-variant disabled:opacity-50"
-          disabled={refreshing}
-          onClick={() => loadDashboard(true)}
-        >
-          <span className="material-symbols-outlined text-[20px]">refresh</span>
-          {refreshing ? 'Đang làm mới…' : 'Làm mới'}
-        </button>
-      </div>
+      <PageHeader
+        eyebrow="Tổng quan"
+        title="Dashboard"
+        description="Theo dõi hoạt động kinh doanh tổng quan"
+        actionLabel={refreshing ? 'Đang làm mới…' : 'Làm mới'}
+        actionIcon="refresh"
+        onAction={() => loadDashboard(true)}
+      />
 
       {loadError && (
-        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
           <button
             type="button"
-            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            className="rounded-lg border border-error/40 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error-container/40"
             onClick={() => loadDashboard(true)}
           >
             Thử lại
@@ -82,7 +75,26 @@ export default function AdminDashboardPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải dashboard…</p>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="lw-card p-5">
+                <Skeleton width="60%" height="14px" className="mb-3" />
+                <Skeleton width="40%" height="32px" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <div className="lw-card p-6">
+              <Skeleton width="40%" height="20px" className="mb-4" />
+              <Skeleton height="180px" />
+            </div>
+            <div className="lw-card p-6">
+              <Skeleton width="40%" height="20px" className="mb-4" />
+              <Skeleton height="180px" />
+            </div>
+          </div>
+        </div>
       ) : (
         <>
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -98,7 +110,7 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <section className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
+            <section className="lw-card p-6">
               <h2 className="font-sora mb-4 text-lg font-semibold text-on-surface">
                 Booking 7 ngày gần nhất
               </h2>
@@ -107,10 +119,13 @@ export default function AdminDashboardPage() {
               ) : (
                 <div className="flex h-48 items-end gap-3">
                   {dashboard.bookingsLast7Days.map((day) => (
-                    <div key={day.date} className="flex flex-1 flex-col items-center gap-2">
+                    <div
+                      key={day.date}
+                      className="flex flex-1 flex-col items-center gap-2"
+                    >
                       <span className="text-xs font-medium text-on-surface">{day.count}</span>
                       <div
-                        className="w-full rounded-t-lg bg-primary-container transition-all"
+                        className="w-full rounded-t-lg bg-primary-container transition-all duration-500 ease-out"
                         style={{
                           height: `${(day.count / maxBookingCount) * 100}%`,
                           minHeight: day.count > 0 ? '8px' : '0',
@@ -123,26 +138,29 @@ export default function AdminDashboardPage() {
               )}
             </section>
 
-            <section className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
+            <section className="lw-card p-6">
               <h2 className="font-sora mb-4 text-lg font-semibold text-on-surface">Top dịch vụ</h2>
               {dashboard.topServices.length === 0 ? (
                 <p className="text-sm text-on-surface-variant">Chưa có dữ liệu dịch vụ.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[320px] text-left text-sm">
+                <div className="lw-table-container overflow-hidden">
+                  <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b border-outline-variant text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                        <th className="pb-3 pr-4">Dịch vụ</th>
-                        <th className="pb-3 pr-4">Lượt</th>
-                        <th className="pb-3">Doanh thu</th>
+                      <tr className="lw-table-header">
+                        <th>Dịch vụ</th>
+                        <th>Lượt</th>
+                        <th>Doanh thu</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-outline-variant/60">
+                    <tbody>
                       {dashboard.topServices.map((row) => (
-                        <tr key={row.serviceName}>
-                          <td className="py-3 pr-4 font-medium text-on-surface">{row.serviceName}</td>
-                          <td className="py-3 pr-4 text-on-surface-variant">{row.count}</td>
-                          <td className="py-3 text-on-surface">{formatVnd(row.revenue)}</td>
+                        <tr
+                          key={row.serviceName}
+                          className="lw-table-row border-t border-outline-variant/40"
+                        >
+                          <td className="font-medium text-on-surface">{row.serviceName}</td>
+                          <td className="text-on-surface-variant">{row.count}</td>
+                          <td className="text-on-surface">{formatVnd(row.revenue)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -151,20 +169,23 @@ export default function AdminDashboardPage() {
               )}
             </section>
 
-            <section className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-6 xl:col-span-2">
+            <section className="lw-card p-6 xl:col-span-2">
               <h2 className="font-sora mb-4 text-lg font-semibold text-on-surface">
                 Hoạt động gần đây
               </h2>
               {dashboard.recentActivities.length === 0 ? (
                 <p className="text-sm text-on-surface-variant">Chưa có hoạt động gần đây.</p>
               ) : (
-                <ul className="divide-y divide-outline-variant/60">
+                <ul className="divide-y divide-outline-variant/40">
                   {dashboard.recentActivities.map((activity) => (
                     <li
                       key={activity.id}
                       className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
                     >
-                      <span className="material-symbols-outlined mt-0.5 shrink-0 text-primary">
+                      <span
+                        className="material-symbols-outlined mt-0.5 shrink-0 text-primary"
+                        style={{ fontVariationSettings: "'FILL' 0" }}
+                      >
                         {activity.icon}
                       </span>
                       <div className="min-w-0 flex-1">

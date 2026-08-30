@@ -18,6 +18,9 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import { formatDateTime } from '../../utils/format'
 
 const emptyShiftForm = { shiftName: '', startTime: '07:00', endTime: '15:00' }
@@ -39,7 +42,7 @@ export default function ManagerShiftsPage() {
   const [staffs, setStaffs] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [toast, setToast] = useState('')
+  const toast = useToast()
 
   const [shiftModalOpen, setShiftModalOpen] = useState(false)
   const [shiftForm, setShiftForm] = useState(emptyShiftForm)
@@ -82,9 +85,77 @@ export default function ManagerShiftsPage() {
     }
   })
 
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
+  const handleCreateShift = async () => {
+    if (!shiftForm.shiftName.trim()) {
+      toast.warning('Vui lòng nhập tên ca')
+      return
+    }
+    setSaving(true)
+    try {
+      await createManagerWorkShift(shiftForm)
+      toast.success('Đã tạo ca làm')
+      setShiftModalOpen(false)
+      setShiftForm(emptyShiftForm)
+      await loadAll()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không tạo được ca làm')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCreateAssignment = async () => {
+    if (!assignForm.staffUserId || !assignForm.workShiftId || !assignForm.workDate) {
+      toast.warning('Vui lòng chọn nhân viên, ca và ngày')
+      return
+    }
+    setSaving(true)
+    try {
+      await createManagerShiftAssignment(assignForm)
+      toast.success('Đã phân ca')
+      setAssignModalOpen(false)
+      setAssignForm(emptyAssignForm)
+      await loadAll()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không phân ca được')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteAssignment = async () => {
+    if (!deleteAssignId) return
+    setDeleting(true)
+    try {
+      await deleteManagerShiftAssignment(deleteAssignId)
+      toast.success('Đã xóa phân ca')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được phân ca')
+    } finally {
+      setDeleteAssignId(null)
+      setDeleting(false)
+      await loadAll()
+    }
+  }
+
+  const handleReviewOvertime = async (id, isApproved) => {
+    try {
+      await reviewManagerOvertimeRequest(id, { isApproved })
+      toast.success(isApproved ? 'Đã duyệt tăng ca' : 'Đã từ chối tăng ca')
+      await loadAll()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không xử lý được yêu cầu')
+    }
+  }
+
+  const handleReviewSwap = async (id, isApproved) => {
+    try {
+      await reviewManagerShiftSwapRequest(id, { isApproved })
+      toast.success(isApproved ? 'Đã duyệt đổi ca' : 'Đã từ chối đổi ca')
+      await loadAll()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không xử lý được yêu cầu')
+    }
   }
 
   const loadAll = useCallback(async () => {
@@ -176,85 +247,26 @@ export default function ManagerShiftsPage() {
     return t
   })
 
-  const handleCreateShift = async () => {
-    if (!shiftForm.shiftName.trim()) {
-      showToast('Vui lòng nhập tên ca')
-      return
-    }
-    setSaving(true)
-    try {
-      await createManagerWorkShift(shiftForm)
-      showToast('Đã tạo ca làm')
-      setShiftModalOpen(false)
-      setShiftForm(emptyShiftForm)
-      await loadAll()
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không tạo được ca làm')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleCreateAssignment = async () => {
-    if (!assignForm.staffUserId || !assignForm.workShiftId || !assignForm.workDate) {
-      showToast('Vui lòng chọn nhân viên, ca và ngày')
-      return
-    }
-    setSaving(true)
-    try {
-      await createManagerShiftAssignment(assignForm)
-      showToast('Đã phân ca')
-      setAssignModalOpen(false)
-      setAssignForm(emptyAssignForm)
-      await loadAll()
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không phân ca được')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDeleteAssignment = async () => {
-    if (!deleteAssignId) return
-    setDeleting(true)
-    try {
-      await deleteManagerShiftAssignment(deleteAssignId)
-      showToast('Đã xóa phân ca')
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được phân ca')
-    } finally {
-      setDeleteAssignId(null)
-      setDeleting(false)
-      await loadAll()
-    }
-  }
-
-  const handleReviewOvertime = async (id, isApproved) => {
-    try {
-      await reviewManagerOvertimeRequest(id, { isApproved })
-      showToast(isApproved ? 'Đã duyệt tăng ca' : 'Đã từ chối tăng ca')
-      await loadAll()
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xử lý được yêu cầu')
-    }
-  }
-
-  const handleReviewSwap = async (id, isApproved) => {
-    try {
-      await reviewManagerShiftSwapRequest(id, { isApproved })
-      showToast(isApproved ? 'Đã duyệt đổi ca' : 'Đã từ chối đổi ca')
-      await loadAll()
-    } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xử lý được yêu cầu')
-    }
-  }
-
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Phân công & Ca làm"
         title="Quản lý ca làm"
         description="Ca làm, phân ca, duyệt tăng ca và đổi ca nhân viên"
-        actionLabel={tab === 'assignments' ? 'Phân ca' : tab === 'shifts' ? 'Thêm ca' : undefined}
+        actionLabel={
+          tab === 'assignments'
+            ? 'Phân ca'
+            : tab === 'shifts'
+              ? 'Thêm ca'
+              : undefined
+        }
+        actionIcon={
+          tab === 'assignments'
+            ? 'badge'
+            : tab === 'shifts'
+              ? 'add'
+              : undefined
+        }
         onAction={
           tab === 'assignments'
             ? () => setAssignModalOpen(true)
@@ -263,12 +275,6 @@ export default function ManagerShiftsPage() {
             : undefined
         }
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((item) => (
@@ -326,32 +332,45 @@ export default function ManagerShiftsPage() {
           <p className="text-sm text-on-surface-variant">Đang tải…</p>
         ) : tab === 'shifts' ? (
           workShifts.length === 0 ? (
-            <EmptyState icon="schedule" title="Chưa có ca làm" />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-              <table className="w-full min-w-[520px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                    <th className="px-4 py-3">Tên ca</th>
-                    <th className="px-4 py-3">Bắt đầu</th>
-                    <th className="px-4 py-3">Kết thúc</th>
-                    <th className="px-4 py-3">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60">
-                  {workShifts.map((shift) => (
-                    <tr key={shift.workShiftId}>
-                      <td className="px-4 py-3 font-medium">{shift.shiftName}</td>
-                      <td className="px-4 py-3">{toTimeInputValue(shift.startTime)}</td>
-                      <td className="px-4 py-3">{toTimeInputValue(shift.endTime)}</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={shift.isActive ? 'Active' : 'Cancelled'} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
+              <span className="material-symbols-outlined mb-3 text-5xl text-outline">schedule</span>
+              <p className="font-sora text-lg font-semibold text-on-surface">Chưa có ca làm</p>
             </div>
+          ) : (
+            <DataTable
+              data={workShifts}
+              loading={loading}
+              minWidth="520px"
+              emptyIcon="schedule"
+              emptyTitle="Chưa có ca làm"
+              columns={[
+                {
+                  key: 'shiftName',
+                  label: 'Tên ca',
+                  render: (row) => (
+                    <span className="font-medium text-on-surface">{row.shiftName}</span>
+                  ),
+                },
+                {
+                  key: 'startTime',
+                  label: 'Bắt đầu',
+                  render: (row) => toTimeInputValue(row.startTime),
+                },
+                {
+                  key: 'endTime',
+                  label: 'Kết thúc',
+                  render: (row) => toTimeInputValue(row.endTime),
+                },
+                {
+                  key: 'isActive',
+                  label: 'Trạng thái',
+                  width: '160px',
+                  render: (row) => (
+                    <StatusBadge status={row.isActive ? 'Active' : 'Cancelled'} />
+                  ),
+                },
+              ]}
+            />
           )
         ) : tab === 'assignments' ? (
           <div className="space-y-4">
@@ -378,45 +397,66 @@ export default function ManagerShiftsPage() {
             </div>
 
             {assignments.length === 0 ? (
-              <EmptyState icon="badge" title="Chưa có phân ca" />
-            ) : filteredAssignments.length === 0 ? (
-              <EmptyState
-                icon="calendar_today"
-                title={`Không có phân ca ngày ${assignmentDateFilter}`}
-              />
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                      <th className="px-4 py-3">Ca</th>
-                      <th className="px-4 py-3">Nhân viên</th>
-                      <th className="px-4 py-3">Trạng thái</th>
-                      <th className="px-4 py-3">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/60">
-                    {filteredAssignments.map((row) => (
-                      <tr key={row.shiftAssignmentId}>
-                        <td className="px-4 py-3 font-medium text-on-surface">{row.shiftName}</td>
-                        <td className="px-4 py-3">{row.staffName}</td>
-                        <td className="px-4 py-3">
-                          <StatusBadge status={row.status} />
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            className="text-error hover:underline"
-                            onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
-                          >
-                            Xóa
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
+                <span className="material-symbols-outlined mb-3 text-5xl text-outline">badge</span>
+                <p className="font-sora text-lg font-semibold text-on-surface">Chưa có phân ca</p>
               </div>
+            ) : filteredAssignments.length === 0 ? (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-12 text-center">
+                <span className="material-symbols-outlined mb-3 text-5xl text-outline">calendar_today</span>
+                <p className="font-sora text-lg font-semibold text-on-surface">
+                  Không có phân ca ngày {assignmentDateFilter}
+                </p>
+              </div>
+            ) : (
+              <DataTable
+                data={filteredAssignments}
+                loading={loading}
+                minWidth="640px"
+                emptyIcon="badge"
+                emptyTitle="Chưa có phân ca"
+                columns={[
+                  {
+                    key: 'shiftName',
+                    label: 'Ca',
+                    render: (row) => (
+                      <span className="font-medium text-on-surface">{row.shiftName}</span>
+                    ),
+                  },
+                  {
+                    key: 'staffName',
+                    label: 'Nhân viên',
+                    render: (row) => row.staffName,
+                    tdClassName: 'text-on-surface',
+                  },
+                  {
+                    key: 'status',
+                    label: 'Trạng thái',
+                    render: (row) => <StatusBadge status={row.status} />,
+                  },
+                  {
+                    key: 'actions',
+                    label: 'Thao tác',
+                    width: '100px',
+                    align: 'right',
+                    renderActions: (row) => (
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-error transition-colors hover:bg-error-container/20"
+                        onClick={() => setDeleteAssignId(row.shiftAssignmentId)}
+                      >
+                        <span
+                          className="material-symbols-outlined text-[14px]"
+                          style={{ fontVariationSettings: "'FILL' 0" }}
+                        >
+                          delete
+                        </span>
+                        Xóa
+                      </button>
+                    ),
+                  },
+                ]}
+              />
             )}
           </div>
         ) : tab === 'overtime' ? (
@@ -591,33 +631,28 @@ export default function ManagerShiftsPage() {
         onSubmit={handleCreateShift}
       >
         <div className="space-y-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Tên ca</span>
-            <input
-              className="w-full rounded-lg border border-outline-variant px-3 py-2"
-              value={shiftForm.shiftName}
-              onChange={(e) => setShiftForm((f) => ({ ...f, shiftName: e.target.value }))}
-            />
-          </label>
+          <Input
+            label="Tên ca"
+            value={shiftForm.shiftName}
+            disabled={saving}
+            onChange={(e) => setShiftForm((f) => ({ ...f, shiftName: e.target.value }))}
+            iconLeft="schedule"
+          />
           <div className="grid grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Bắt đầu</span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant px-3 py-2"
-                value={shiftForm.startTime}
-                onChange={(e) => setShiftForm((f) => ({ ...f, startTime: e.target.value }))}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Kết thúc</span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant px-3 py-2"
-                value={shiftForm.endTime}
-                onChange={(e) => setShiftForm((f) => ({ ...f, endTime: e.target.value }))}
-              />
-            </label>
+            <Input
+              label="Bắt đầu"
+              type="time"
+              value={shiftForm.startTime}
+              disabled={saving}
+              onChange={(e) => setShiftForm((f) => ({ ...f, startTime: e.target.value }))}
+            />
+            <Input
+              label="Kết thúc"
+              type="time"
+              value={shiftForm.endTime}
+              disabled={saving}
+              onChange={(e) => setShiftForm((f) => ({ ...f, endTime: e.target.value }))}
+            />
           </div>
         </div>
       </FormModal>

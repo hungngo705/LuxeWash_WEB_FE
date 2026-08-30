@@ -6,6 +6,8 @@ import {
 } from '../../api'
 import { apiRequest } from '../../api/client'
 import PageHeader from '../../components/admin/shared/PageHeader'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import { formatVnd } from '../../utils/format'
 import { useAuth } from '../../context/AuthContext'
 
@@ -40,7 +42,7 @@ export default function ManagerWalkInPage() {
   const [lanes, setLanes] = useState([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [toast, setToast] = useState('')
+  const toast = useToast()
 
   const branchId = String(user?.branchId ?? '')
 
@@ -51,11 +53,6 @@ export default function ManagerWalkInPage() {
     laneId: '',
     forceOverrideCapacity: false,
   })
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -101,16 +98,16 @@ export default function ManagerWalkInPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!form.licensePlate.trim()) {
-      showToast('Vui lòng nhập biển số xe.')
+      toast.warning('Vui lòng nhập biển số xe.')
       return
     }
     if (form.serviceIds.length === 0) {
-      showToast('Vui lòng chọn ít nhất một dịch vụ.')
+      toast.warning('Vui lòng chọn ít nhất một dịch vụ.')
       return
     }
 
     if (!Number(form.vehicleTypeId)) {
-      showToast('Vui lòng chọn loại xe.')
+      toast.warning('Vui lòng chọn loại xe.')
       return
     }
 
@@ -128,7 +125,7 @@ export default function ManagerWalkInPage() {
         cancelUrl: returnUrl,
         forceOverrideCapacity: form.forceOverrideCapacity,
       })
-      showToast(`Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`)
+      toast.success(`Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`)
       setForm((f) => ({
         ...f,
         licensePlate: '',
@@ -138,7 +135,7 @@ export default function ManagerWalkInPage() {
         forceOverrideCapacity: false,
       }))
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi tiếp nhận khách vãng lai.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi tiếp nhận khách vãng lai.')
     } finally {
       setSubmitting(false)
     }
@@ -155,15 +152,11 @@ export default function ManagerWalkInPage() {
   return (
     <div className="w-full max-w-3xl">
       <PageHeader
+        eyebrow="Vận hành chi nhánh"
         title="Tiếp nhận khách vãng lai"
         description="Check-in nhanh cho xe đến trạm mà không cần đặt lịch trước"
+        actionIcon="directions_car"
       />
-
-      {toast && (
-        <div className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* License plate */}

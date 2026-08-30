@@ -9,6 +9,7 @@ import {
 import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const TX_STATUS_OPTIONS = ['All', 'Success', 'Failed', 'Refunded']
@@ -61,6 +62,7 @@ export default function AdminTransactionsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Tài chính"
         title="Giao dịch & điểm"
         description="Theo dõi thanh toán và lịch sử điểm loyalty"
       />
@@ -124,40 +126,65 @@ export default function AdminTransactionsPage() {
               {filteredTransactions.length === 0 && !loadError ? (
                 <EmptyState icon="payments" title="Không có giao dịch" />
               ) : (
-                <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-                  <table className="w-full min-w-[720px] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                        <th className="px-4 py-3">ID</th>
-                        <th className="px-4 py-3">Booking</th>
-                        <th className="px-4 py-3">Khách</th>
-                        <th className="px-4 py-3">Số tiền</th>
-                        <th className="px-4 py-3">Phương thức</th>
-                        <th className="px-4 py-3">Trạng thái</th>
-                        <th className="px-4 py-3">Thời gian</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant/60">
-                      {filteredTransactions.map((tx) => (
-                        <tr key={tx.transactionId} className="hover:bg-surface-container-low/50">
-                          <td className="px-4 py-3 text-on-surface-variant">#{tx.transactionId}</td>
-                          <td className="px-4 py-3 text-on-surface">#{tx.bookingId}</td>
-                          <td className="px-4 py-3 text-on-surface">{tx.customerName}</td>
-                          <td className="px-4 py-3 font-medium text-on-surface">
-                            {formatVnd(tx.amount)}
-                          </td>
-                          <td className="px-4 py-3 text-on-surface-variant">{tx.paymentMethod}</td>
-                          <td className="px-4 py-3">
-                            <StatusBadge status={tx.status} />
-                          </td>
-                          <td className="px-4 py-3 text-on-surface-variant">
-                            {formatDateTime(tx.createdAt)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={filteredTransactions}
+                  loading={loading}
+                  minWidth="720px"
+                  emptyIcon="payments"
+                  emptyTitle="Không có giao dịch"
+                  columns={[
+                    {
+                      key: 'transactionId',
+                      label: 'ID',
+                      width: '80px',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">#{row.transactionId}</span>
+                      ),
+                    },
+                    {
+                      key: 'bookingId',
+                      label: 'Booking',
+                      width: '100px',
+                      render: (row) => <span className="text-on-surface">#{row.bookingId}</span>,
+                    },
+                    {
+                      key: 'customerName',
+                      label: 'Khách',
+                      render: (row) => row.customerName,
+                    },
+                    {
+                      key: 'amount',
+                      label: 'Số tiền',
+                      render: (row) => (
+                        <span className="font-medium text-on-surface">
+                          {formatVnd(row.amount)}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'paymentMethod',
+                      label: 'Phương thức',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">{row.paymentMethod}</span>
+                      ),
+                    },
+                    {
+                      key: 'status',
+                      label: 'Trạng thái',
+                      width: '140px',
+                      render: (row) => <StatusBadge status={row.status} />,
+                    },
+                    {
+                      key: 'createdAt',
+                      label: 'Thời gian',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">
+                          {formatDateTime(row.createdAt)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
               )}
             </>
           )}
@@ -167,47 +194,70 @@ export default function AdminTransactionsPage() {
               {pointsHistory.length === 0 && !loadError ? (
                 <EmptyState icon="stars" title="Không có lịch sử điểm" />
               ) : (
-                <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-                  <table className="w-full min-w-[800px] text-left text-sm">
-                    <thead>
-                      <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                        <th className="px-4 py-3">Khách</th>
-                        <th className="px-4 py-3">Điểm</th>
-                        <th className="px-4 py-3">Loại</th>
-                        <th className="px-4 py-3">Lý do</th>
-                        <th className="px-4 py-3">Booking</th>
-                        <th className="px-4 py-3">Hết hạn</th>
-                        <th className="px-4 py-3">Thời gian</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-outline-variant/60">
-                      {pointsHistory.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-surface-container-low/50">
-                          <td className="px-4 py-3 text-on-surface">{entry.customerName}</td>
-                          <td
-                            className={`px-4 py-3 font-medium ${
-                              entry.points >= 0 ? 'text-primary' : 'text-error'
-                            }`}
-                          >
-                            {entry.points >= 0 ? '+' : ''}
-                            {entry.points.toLocaleString('vi-VN')}
-                          </td>
-                          <td className="px-4 py-3">
-                            <StatusBadge status={entry.type} />
-                          </td>
-                          <td className="px-4 py-3 text-on-surface-variant">{entry.reason}</td>
-                          <td className="px-4 py-3 text-on-surface">#{entry.bookingId}</td>
-                          <td className="px-4 py-3 text-on-surface-variant">
-                            {entry.expiryDate ? formatDateTime(entry.expiryDate) : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-on-surface-variant">
-                            {formatDateTime(entry.createdAt)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={pointsHistory}
+                  loading={loading}
+                  minWidth="800px"
+                  emptyIcon="stars"
+                  emptyTitle="Không có lịch sử điểm"
+                  columns={[
+                    {
+                      key: 'customerName',
+                      label: 'Khách',
+                      render: (row) => row.customerName,
+                    },
+                    {
+                      key: 'points',
+                      label: 'Điểm',
+                      render: (row) => (
+                        <span
+                          className={`font-medium ${
+                            row.points >= 0 ? 'text-primary' : 'text-error'
+                          }`}
+                        >
+                          {row.points >= 0 ? '+' : ''}
+                          {row.points.toLocaleString('vi-VN')}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'type',
+                      label: 'Loại',
+                      render: (row) => <StatusBadge status={row.type} />,
+                    },
+                    {
+                      key: 'reason',
+                      label: 'Lý do',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">{row.reason}</span>
+                      ),
+                    },
+                    {
+                      key: 'bookingId',
+                      label: 'Booking',
+                      width: '100px',
+                      render: (row) => <span className="text-on-surface">#{row.bookingId}</span>,
+                    },
+                    {
+                      key: 'expiryDate',
+                      label: 'Hết hạn',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">
+                          {row.expiryDate ? formatDateTime(row.expiryDate) : '—'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'createdAt',
+                      label: 'Thời gian',
+                      render: (row) => (
+                        <span className="text-on-surface-variant">
+                          {formatDateTime(row.createdAt)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
               )}
             </>
           )}

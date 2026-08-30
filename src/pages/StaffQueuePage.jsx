@@ -7,6 +7,8 @@ import {
   formatStaffStationLabel,
   updateStaffBookingStatus,
 } from '../api'
+import DataTable from '../components/ui/DataTable'
+import { useToast } from '../components/ui/Toast'
 import LaneAssignmentBadge from '../components/shared/LaneAssignmentBadge'
 import { WashDurationBadge } from '../components/shared/WashTelemetry'
 import TierBadge from '../components/shared/TierBadge'
@@ -71,13 +73,8 @@ export default function StaffQueuePage() {
   const [laneLabel, setLaneLabel] = useState('')
   const [tab, setTab] = useState('waiting')
   const [search, setSearch] = useState('')
-  const [toast, setToast] = useState(null)
+  const toast = useToast()
   const laneSnapshotRef = useRef(null)
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3500)
-  }
 
   useEffect(() => {
     fetchStaffLaneAssignment()
@@ -166,63 +163,53 @@ export default function StaffQueuePage() {
         (item) => Number(item.bookingId) === Number(bookingId),
       )
       if (!canStartWash(booking)) {
-        showToast(
+        toast.error(
           !hasAssignedLane(booking)
             ? 'Xe đang chờ được phân làn.'
             : 'Booking chưa hoàn tất thanh toán.',
-          'error',
         )
         return
       }
       try {
         await updateStaffBookingStatus(bookingId, 'Processing')
-        showToast(`Xe #${bookingId} bắt đầu rửa.`)
+        toast.success(`Xe #${bookingId} bắt đầu rửa.`)
         await loadBookings({ silent: true })
       } catch (err) {
-        showToast(
+        toast.error(
           err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.',
-          'error',
         )
       }
     },
-    [allBookings, loadBookings],
+    [allBookings, loadBookings, toast],
   )
 
-  const handleComplete = useCallback(async (bookingId) => {
-    try {
-      await updateStaffBookingStatus(bookingId, 'Completed')
-      showToast(`Xe #${bookingId} đã hoàn thành.`)
-      await loadBookings({ silent: true })
-    } catch (err) {
-      showToast(
-        err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.',
-        'error',
-      )
-    }
-  }, [loadBookings])
+  const handleComplete = useCallback(
+    async (bookingId) => {
+      try {
+        await updateStaffBookingStatus(bookingId, 'Completed')
+        toast.success(`Xe #${bookingId} đã hoàn thành.`)
+        await loadBookings({ silent: true })
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.',
+        )
+      }
+    },
+    [loadBookings, toast],
+  )
 
   const displayed = tab === 'waiting' ? waitingBookings : processingBookings
 
   return (
     <div className="w-full">
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3 shadow-xl ${
-            toast.type === 'error'
-              ? 'border-error-container/50 bg-error-container/20 text-error'
-              : 'border-primary-container/50 bg-primary-container/20 text-primary'
-          }`}
-        >
-          <span className="material-symbols-outlined text-xl">
-            {toast.type === 'error' ? 'error' : 'check_circle'}
-          </span>
-          <span className="text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
-
       <div className="mb-6">
-        <h1 className="font-sora text-2xl font-semibold text-on-surface">Quản lý hàng đợi</h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="text-[11px] font-bold tracking-[0.12em] text-tertiary uppercase">
+          Vận hành staff
+        </p>
+        <h1 className="mt-1.5 font-sora text-2xl font-semibold tracking-tight text-on-surface">
+          Quản lý hàng đợi
+        </h1>
+        <p className="mt-1.5 text-sm text-on-surface-variant">
           {laneLabel || 'Đang tải làn…'} — {tab === 'waiting' ? 'Xe đã tiếp nhận, chờ xử lý' : 'Xe đang rửa'}
         </p>
       </div>
@@ -325,122 +312,157 @@ export default function StaffQueuePage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">Biển số</th>
-                <th className="px-4 py-3">Khách hàng</th>
-                <th className="px-4 py-3">Dịch vụ</th>
-                <th className="px-4 py-3">Giờ hẹn</th>
-                <th className="px-4 py-3">Phân làn</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thanh toán</th>
-                {tab === 'processing' && <th className="px-4 py-3">Thời gian rửa</th>}
-                {tab === 'processing' && <th className="px-4 py-3">Giá tiền</th>}
-                <th className="px-4 py-3 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {displayed.map((booking) => (
-                <tr key={booking.bookingId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col items-start gap-1.5">
-                      <span className="font-mono text-base font-bold text-primary">
-                        {booking.licensePlate}
-                      </span>
-                      <TierBadge
-                        tierName={booking.rankName}
-                        tierPoints={booking.customerTierPoints}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-on-surface">{booking.customerName}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">{booking.serviceName}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">
-                    {booking.slotLabel || booking.scheduledTime
-                      ? booking.slotLabel ||
-                        (booking.scheduledTime
-                          ? new Date(booking.scheduledTime).toLocaleTimeString('vi-VN', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : '—')
-                      : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <LaneAssignmentBadge booking={booking} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${
-                        booking.status === 'Pending'
-                          ? 'border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container'
-                          : booking.status === 'Checked-in'
-                            ? 'border-primary-container/40 bg-primary-container/15 text-primary-container'
-                            : 'border-secondary-container/40 bg-secondary-container/15 text-secondary-container'
-                      }`}
+        <DataTable
+          data={displayed}
+          loading={loading}
+          minWidth="1000px"
+          emptyIcon={tab === 'waiting' ? 'hourglass_top' : 'autorenew'}
+          emptyTitle={
+            tab === 'waiting' ? 'Không có xe chờ xử lý' : 'Không có xe đang rửa'
+          }
+          emptyMessage={
+            tab === 'waiting'
+              ? 'Chưa có xe nào đã check-in đang chờ làn hoặc chờ bắt đầu rửa.'
+              : 'Chưa có xe nào đang rửa trong chi nhánh.'
+          }
+          columns={[
+            {
+              key: 'licensePlate',
+              label: 'Biển số',
+              width: '160px',
+              render: (booking) => (
+                <div className="flex flex-col items-start gap-1.5">
+                  <span className="font-mono text-base font-bold text-primary">
+                    {booking.licensePlate}
+                  </span>
+                  <TierBadge
+                    tierName={booking.rankName}
+                    tierPoints={booking.customerTierPoints}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: 'customerName',
+              label: 'Khách hàng',
+              render: (booking) => (
+                <span className="font-medium text-on-surface">{booking.customerName}</span>
+              ),
+              tdClassName: 'text-on-surface',
+            },
+            {
+              key: 'serviceName',
+              label: 'Dịch vụ',
+              render: (booking) => <span className="text-on-surface">{booking.serviceName}</span>,
+              tdClassName: 'text-on-surface',
+            },
+            {
+              key: 'scheduledTime',
+              label: 'Giờ hẹn',
+              render: (booking) =>
+                booking.slotLabel || booking.scheduledTime
+                  ? booking.slotLabel ||
+                      (booking.scheduledTime
+                        ? new Date(booking.scheduledTime).toLocaleTimeString('vi-VN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—')
+                  : '—',
+              tdClassName: 'font-medium text-on-surface',
+            },
+            {
+              key: 'lane',
+              label: 'Phân làn',
+              render: (booking) => <LaneAssignmentBadge booking={booking} />,
+            },
+            {
+              key: 'status',
+              label: 'Trạng thái',
+              render: (booking) => (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase ${
+                    booking.status === 'Pending'
+                      ? 'border-tertiary-container/40 bg-tertiary-container/15 text-tertiary-container'
+                      : booking.status === 'Checked-in'
+                        ? 'border-primary-container/40 bg-primary-container/15 text-primary-container'
+                        : 'border-secondary-container/40 bg-secondary-container/15 text-secondary-container'
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {getBookingStatusLabel(booking.status)}
+                </span>
+              ),
+            },
+            {
+              key: 'paymentStatus',
+              label: 'Thanh toán',
+              render: (booking) => (
+                <>
+                  <PaymentStatusBadge status={booking.paymentStatus} />
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    {formatPaymentMethodLabel(booking.paymentMethod)}
+                  </p>
+                </>
+              ),
+            },
+            ...(tab === 'processing'
+              ? [
+                  {
+                    key: 'duration',
+                    label: 'Thời gian rửa',
+                    render: (booking) => <WashDurationBadge booking={booking} />,
+                  },
+                  {
+                    key: 'finalAmount',
+                    label: 'Giá tiền',
+                    render: (booking) =>
+                      booking.finalAmount
+                        ? `${booking.finalAmount.toLocaleString('vi-VN')} đ`
+                        : '—',
+                    tdClassName: 'font-semibold text-on-surface',
+                  },
+                ]
+              : []),
+            {
+              key: 'actions',
+              label: 'Thao tác',
+              width: '180px',
+              align: 'right',
+              renderActions: (booking) => (
+                <div className="flex items-center justify-end gap-2">
+                  {tab === 'waiting' ? (
+                    <button
+                      onClick={() => handleStartProcessing(booking.bookingId)}
+                      disabled={!canStartWash(booking)}
+                      title={
+                        !hasAssignedLane(booking)
+                          ? 'Xe đang chờ được phân làn'
+                          : 'Booking chưa hoàn tất thanh toán'
+                      }
+                      className="inline-flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium text-on-secondary transition-colors hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      {getBookingStatusLabel(booking.status)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <PaymentStatusBadge status={booking.paymentStatus} />
-                    <p className="mt-1 text-xs text-on-surface-variant">
-                      {formatPaymentMethodLabel(booking.paymentMethod)}
-                    </p>
-                  </td>
-                  {tab === 'processing' && (
-                    <td className="px-4 py-3">
-                      <WashDurationBadge booking={booking} />
-                    </td>
+                      <span className="material-symbols-outlined text-base">
+                        {canStartWash(booking) ? 'autorenew' : 'lock'}
+                      </span>
+                      {canStartWash(booking) ? 'Bắt đầu rửa' : 'Chưa sẵn sàng'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleComplete(booking.bookingId)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-tertiary px-3 py-1.5 text-sm font-medium text-on-tertiary transition-colors hover:bg-tertiary/90"
+                    >
+                      <span className="material-symbols-outlined text-base">
+                        check_circle
+                      </span>
+                      Hoàn thành
+                    </button>
                   )}
-                  {tab === 'processing' && (
-                    <td className="px-4 py-3 font-semibold text-on-surface">
-                      {booking.finalAmount
-                        ? booking.finalAmount.toLocaleString('vi-VN') + ' đ'
-                        : '—'}
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {tab === 'waiting' ? (
-                        <button
-                          onClick={() => handleStartProcessing(booking.bookingId)}
-                          disabled={!canStartWash(booking)}
-                          title={
-                            !hasAssignedLane(booking)
-                              ? 'Xe đang chờ được phân làn'
-                              : 'Booking chưa hoàn tất thanh toán'
-                          }
-                          className="flex items-center gap-1 rounded-lg bg-secondary px-3 py-1.5 text-sm font-medium text-on-secondary transition-colors hover:bg-secondary/90 disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          <span className="material-symbols-outlined text-base">
-                            {canStartWash(booking) ? 'autorenew' : 'lock'}
-                          </span>
-                          {canStartWash(booking) ? 'Bắt đầu rửa' : 'Chưa sẵn sàng'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleComplete(booking.bookingId)}
-                          className="flex items-center gap-1 rounded-lg bg-tertiary px-3 py-1.5 text-sm font-medium text-on-tertiary transition-colors hover:bg-tertiary/90"
-                        >
-                          <span className="material-symbols-outlined text-base">check_circle</span>
-                          Hoàn thành
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
     </div>
   )

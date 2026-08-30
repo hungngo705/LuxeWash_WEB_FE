@@ -7,10 +7,11 @@ import {
   rejectCarModelRequest,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import { useToast } from '../../components/ui/Toast'
 
 export default function AdminPendingCarModelsPage() {
   const [pendingModels, setPendingModels] = useState([])
@@ -26,12 +27,7 @@ export default function AdminPendingCarModelsPage() {
   // Reject confirm state
   const [rejectTarget, setRejectTarget] = useState(null)
 
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
+  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -65,7 +61,7 @@ export default function AdminPendingCarModelsPage() {
   const handleApprove = async () => {
     if (!approveTarget || processingId) return
     if (!selectedVehicleTypeId) {
-      showToast('Vui lòng chọn loại xe trước khi duyệt')
+      toast.warning('Vui lòng chọn loại xe trước khi duyệt')
       return
     }
 
@@ -76,14 +72,14 @@ export default function AdminPendingCarModelsPage() {
       })
       const typeName =
         vehicleTypes.find((t) => t.id === Number(selectedVehicleTypeId))?.name ?? selectedVehicleTypeId
-      showToast(
+      toast.success(
         `Đã duyệt mẫu xe "${approveTarget?.name || approveTarget?.brand || `#${approveTarget?.id}`}" — loại xe: ${typeName}`,
       )
       setApproveTarget(null)
       setSelectedVehicleTypeId('')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không duyệt được mẫu xe')
+      toast.error(err instanceof ApiError ? err.message : 'Không duyệt được mẫu xe')
     } finally {
       setProcessingId(null)
     }
@@ -95,11 +91,13 @@ export default function AdminPendingCarModelsPage() {
     setProcessingId(rejectTarget.id)
     try {
       await rejectCarModelRequest(rejectTarget.id)
-      showToast(`Đã từ chối mẫu xe "${rejectTarget?.name || rejectTarget?.brand || `#${rejectTarget?.id}`}"`)
+      toast.success(
+        `Đã từ chối mẫu xe "${rejectTarget?.name || rejectTarget?.brand || `#${rejectTarget?.id}`}"`,
+      )
       setRejectTarget(null)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không từ chối được mẫu xe')
+      toast.error(err instanceof ApiError ? err.message : 'Không từ chối được mẫu xe')
     } finally {
       setProcessingId(null)
     }
@@ -108,15 +106,10 @@ export default function AdminPendingCarModelsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Dịch vụ & Xe"
         title="Duyệt mẫu xe đóng góp"
         description="Người dùng đóng góp mẫu xe mới sẽ xuất hiện ở đây. Chọn đúng loại xe (Sedan, SUV,…) rồi duyệt để mẫu xe có hiệu lực chính thức."
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -134,10 +127,13 @@ export default function AdminPendingCarModelsPage() {
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải mẫu xe chờ duyệt…</p>
       ) : pendingModels.length === 0 && !loadError ? (
-        <EmptyState
-          icon="fact_check"
-          title="Không có mẫu xe chờ duyệt"
-          message="Khi người dùng đóng góp mẫu xe mới, chúng sẽ xuất hiện ở đây để bạn kiểm tra."
+        <DataTable
+          data={[]}
+          loading={false}
+          emptyIcon="fact_check"
+          emptyTitle="Không có mẫu xe chờ duyệt"
+          emptyMessage="Khi người dùng đóng góp mẫu xe mới, chúng sẽ xuất hiện ở đây để bạn kiểm tra."
+          columns={[]}
         />
       ) : (
         <div className="space-y-4">
@@ -209,18 +205,30 @@ export default function AdminPendingCarModelsPage() {
                   <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
-                      className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary transition-colors hover:bg-primary/90 disabled:opacity-50"
                       disabled={Boolean(processingId)}
                       onClick={() => openApproveModal(model)}
                     >
+                      <span
+                        className="material-symbols-outlined text-[14px]"
+                        style={{ fontVariationSettings: "'FILL' 0" }}
+                      >
+                        check_circle
+                      </span>
                       {isProcessing ? 'Đang xử lý…' : 'Duyệt'}
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-error/30 px-4 py-2 text-xs font-semibold text-error transition-colors hover:bg-error-container/20 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-lg border border-error/30 px-4 py-2 text-xs font-semibold text-error transition-colors hover:bg-error-container/20 disabled:opacity-50"
                       disabled={Boolean(processingId)}
                       onClick={() => setRejectTarget(model)}
                     >
+                      <span
+                        className="material-symbols-outlined text-[14px]"
+                        style={{ fontVariationSettings: "'FILL' 0" }}
+                      >
+                        close
+                      </span>
                       Từ chối
                     </button>
                   </div>
@@ -294,6 +302,7 @@ export default function AdminPendingCarModelsPage() {
       <ConfirmDialog
         open={Boolean(rejectTarget)}
         title="Từ chối mẫu xe"
+        loading={Boolean(processingId)}
         message={
           <p className="text-sm text-on-surface-variant">
             Bạn chắc chắn muốn từ chối mẫu xe{' '}

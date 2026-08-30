@@ -16,6 +16,8 @@ import {
 } from '../../api'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import { useToast } from '../../components/ui/Toast'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const tabs = [
@@ -187,8 +189,8 @@ export default function ManagerInventoryPage() {
     reason: '',
   })
   const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState('')
   const [error, setError] = useState('')
+  const toast = useToast()
   const [savingImport, setSavingImport] = useState(false)
   const [savingAdjustment, setSavingAdjustment] = useState(false)
   const [discardingBatchId, setDiscardingBatchId] = useState(null)
@@ -228,11 +230,6 @@ export default function ManagerInventoryPage() {
       && Number(adjustForm.quantityChange) !== 0
       && adjustForm.reason.trim(),
   )
-
-  const showToast = (message) => {
-    setToast(message)
-    setTimeout(() => setToast(''), 2500)
-  }
 
   const loadBase = useCallback(async () => {
     const [materialData, stockData, batchData] = await Promise.all([
@@ -309,7 +306,7 @@ export default function ManagerInventoryPage() {
         supplierName: importForm.supplierName.trim() || null,
       })
       setImportForm({ materialId: '', batchCode: '', quantity: '', unitCost: '', manufactureDate: '', expiryDate: '', supplierName: '' })
-      showToast('Đã nhập batch vào kho.')
+      toast.success('Đã nhập batch vào kho.')
       await loadActive()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không nhập được batch.')
@@ -329,7 +326,7 @@ export default function ManagerInventoryPage() {
         reason: adjustForm.reason.trim(),
       })
       setAdjustForm({ materialId: '', materialBatchId: '', quantityChange: '', reason: '' })
-      showToast('Đã điều chỉnh tồn kho.')
+      toast.success('Đã điều chỉnh tồn kho.')
       await loadActive()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không điều chỉnh được tồn kho.')
@@ -345,7 +342,7 @@ export default function ManagerInventoryPage() {
     setDiscardingBatchId(batch.materialBatchId)
     try {
       await discardManagerInventoryBatch(batch.materialBatchId, { reason })
-      showToast('Đã hủy batch.')
+      toast.success('Đã hủy batch.')
       await loadActive()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không hủy được batch.')
@@ -365,7 +362,7 @@ export default function ManagerInventoryPage() {
       } else {
         await rejectManagerExtraUsageRequest(request.requestId, { managerNote })
       }
-      showToast('Đã xử lý request phát sinh.')
+      toast.success('Đã xử lý request phát sinh.')
       await loadActive()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không xử lý được request.')
@@ -377,10 +374,11 @@ export default function ManagerInventoryPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Kho vật tư"
         title="Kho chi nhánh"
         description="Nhập kho, theo dõi lô vật tư, điều chỉnh tồn và duyệt vật tư phát sinh"
+        actionIcon="inventory_2"
       />
-      <Notice message={toast} />
       <Notice message={error} type="error" />
 
       <TabBar items={tabs} activeTab={activeTab} onChange={setActiveTab} />
@@ -535,37 +533,77 @@ export default function ManagerInventoryPage() {
                 <Panel><div className="p-4"><p className="mb-2 text-sm font-semibold text-error">Batch sắp hết hạn</p><div className="flex flex-wrap gap-2">{expiring.map((b) => <span key={b.materialBatchId} className="rounded-full border border-error/30 bg-error-container/20 px-3 py-1 text-xs text-error">{b.batchCode} - {dateOnly(b.expiryDate)}</span>)}</div></div></Panel>
               )}
               <Panel>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[960px] text-left text-sm">
-                    <thead className={tableHeadClass}><tr><th className="px-4 py-3">Batch</th><th className="px-4 py-3">Vật tư</th><th className="px-4 py-3">Còn lại</th><th className="px-4 py-3">Giá vốn</th><th className="px-4 py-3">Ngày SX</th><th className="px-4 py-3">Hạn sử dụng</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Thao tác</th></tr></thead>
-                    <tbody className="divide-y divide-outline-variant/60">
-                      {batches.map((b) => (
-                        <tr key={b.materialBatchId} className={tableRowClass}>
-                          <td className="px-4 py-3 font-mono font-semibold">{b.batchCode}</td>
-                          <td className="px-4 py-3">{b.materialName}</td>
-                          <td className="px-4 py-3">{num(b.remainingQuantity)} / {num(b.importedQuantity)}</td>
-                          <td className="px-4 py-3">{formatVnd(b.unitCost)}</td>
-                          <td className="px-4 py-3">{dateOnly(b.manufactureDate) || '—'}</td>
-                          <td className="px-4 py-3">{dateOnly(b.expiryDate) || '—'}</td>
-                          <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
-                          <td className="px-4 py-3">
-                            <button
-                              type="button"
-                              className={dangerButtonClass}
-                              disabled={Number(b.remainingQuantity) <= 0 || Boolean(discardingBatchId)}
-                              onClick={() => discardBatch(b)}
-                            >
-                              {discardingBatchId === b.materialBatchId ? 'Đang hủy...' : 'Hủy batch'}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {batches.length === 0 && (
-                        <TableEmpty colSpan={8} title="Chưa có batch" description="Không có lô vật tư nào khớp bộ lọc hiện tại." />
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  data={batches}
+                  loading={loading}
+                  minWidth="960px"
+                  emptyIcon="inventory"
+                  emptyTitle="Chưa có batch"
+                  emptyMessage="Không có lô vật tư nào khớp bộ lọc hiện tại."
+                  columns={[
+                    {
+                      key: 'batchCode',
+                      label: 'Batch',
+                      render: (b) => (
+                        <span className="font-mono font-semibold">{b.batchCode}</span>
+                      ),
+                    },
+                    {
+                      key: 'materialName',
+                      label: 'Vật tư',
+                      render: (b) => b.materialName,
+                    },
+                    {
+                      key: 'remainingQuantity',
+                      label: 'Còn lại',
+                      render: (b) => (
+                        <span>
+                          {num(b.remainingQuantity)} / {num(b.importedQuantity)}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'unitCost',
+                      label: 'Giá vốn',
+                      render: (b) => formatVnd(b.unitCost),
+                    },
+                    {
+                      key: 'manufactureDate',
+                      label: 'Ngày SX',
+                      render: (b) => dateOnly(b.manufactureDate) || '—',
+                    },
+                    {
+                      key: 'expiryDate',
+                      label: 'Hạn sử dụng',
+                      render: (b) => dateOnly(b.expiryDate) || '—',
+                    },
+                    {
+                      key: 'status',
+                      label: 'Trạng thái',
+                      render: (b) => <StatusBadge status={b.status} />,
+                    },
+                    {
+                      key: 'actions',
+                      label: 'Thao tác',
+                      width: '160px',
+                      align: 'right',
+                      renderActions: (b) => (
+                        <button
+                          type="button"
+                          className={dangerButtonClass}
+                          disabled={
+                            Number(b.remainingQuantity) <= 0 || Boolean(discardingBatchId)
+                          }
+                          onClick={() => discardBatch(b)}
+                        >
+                          {discardingBatchId === b.materialBatchId
+                            ? 'Đang hủy...'
+                            : 'Hủy batch'}
+                        </button>
+                      ),
+                    },
+                  ]}
+                />
               </Panel>
             </div>
           )}
@@ -604,86 +642,137 @@ export default function ManagerInventoryPage() {
 
           {activeTab === 'transactions' && (
             <Panel>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] text-left text-sm">
-                  <thead className={tableHeadClass}>
-                    <tr>
-                      <th className="px-4 py-3">Thời gian</th>
-                      <th className="px-4 py-3">Loại</th>
-                      <th className="px-4 py-3">Vật tư</th>
-                      <th className="px-4 py-3">Batch</th>
-                      <th className="px-4 py-3">SL</th>
-                      <th className="px-4 py-3">Trước/Sau</th>
-                      <th className="px-4 py-3">Chi phí</th>
-                      <th className="px-4 py-3">Ghi chú</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant/60">
-                    {transactions.map((t) => (
-                      <tr key={t.inventoryTransactionId} className={tableRowClass}>
-                        <td className="px-4 py-3">{formatDateTime(t.createdAt)}</td>
-                        <td className="px-4 py-3"><StatusBadge status={t.transactionType} /></td>
-                        <td className="px-4 py-3">{t.materialName}</td>
-                        <td className="px-4 py-3">{t.batchCode || '-'}</td>
-                        <td className="px-4 py-3">{num(t.quantity)} {t.unit}</td>
-                        <td className="px-4 py-3">{num(t.beforeQuantity)} {'->'} {num(t.afterQuantity)}</td>
-                        <td className="px-4 py-3">{formatVnd(t.costAmount)}</td>
-                        <td className="px-4 py-3">{t.note || '-'}</td>
-                      </tr>
-                    ))}
-                    {transactions.length === 0 && (
-                      <TableEmpty colSpan={8} title="Chưa có giao dịch kho" description="Giao dịch nhập, dùng vật tư, hủy batch hoặc điều chỉnh sẽ hiển thị tại đây." icon="history" />
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                data={transactions}
+                loading={loading}
+                minWidth="1080px"
+                emptyIcon="history"
+                emptyTitle="Chưa có giao dịch kho"
+                emptyMessage="Giao dịch nhập, dùng vật tư, hủy batch hoặc điều chỉnh sẽ hiển thị tại đây."
+                columns={[
+                  {
+                    key: 'createdAt',
+                    label: 'Thời gian',
+                    render: (t) => formatDateTime(t.createdAt),
+                  },
+                  {
+                    key: 'transactionType',
+                    label: 'Loại',
+                    render: (t) => <StatusBadge status={t.transactionType} />,
+                  },
+                  {
+                    key: 'materialName',
+                    label: 'Vật tư',
+                    render: (t) => t.materialName,
+                  },
+                  {
+                    key: 'batchCode',
+                    label: 'Batch',
+                    render: (t) => t.batchCode || '-',
+                  },
+                  {
+                    key: 'quantity',
+                    label: 'SL',
+                    render: (t) => `${num(t.quantity)} ${t.unit}`,
+                  },
+                  {
+                    key: 'beforeQuantity',
+                    label: 'Trước/Sau',
+                    render: (t) => `${num(t.beforeQuantity)} -> ${num(t.afterQuantity)}`,
+                  },
+                  {
+                    key: 'costAmount',
+                    label: 'Chi phí',
+                    render: (t) => formatVnd(t.costAmount),
+                  },
+                  {
+                    key: 'note',
+                    label: 'Ghi chú',
+                    render: (t) => t.note || '-',
+                  },
+                ]}
+              />
             </Panel>
           )}
 
           {activeTab === 'extra' && (
             <Panel>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left text-sm">
-                  <thead className={tableHeadClass}><tr><th className="px-4 py-3">Request</th><th className="px-4 py-3">Booking</th><th className="px-4 py-3">Vật tư</th><th className="px-4 py-3">Số lượng</th><th className="px-4 py-3">Lý do</th><th className="px-4 py-3">Trạng thái</th><th className="px-4 py-3">Thao tác</th></tr></thead>
-                  <tbody className="divide-y divide-outline-variant/60">
-                    {extraRequests.map((r) => (
-                      <tr key={r.requestId} className={tableRowClass}>
-                        <td className="px-4 py-3">#{r.requestId}<p className="text-xs text-on-surface-variant">{formatDateTime(r.createdAt)}</p></td>
-                        <td className="px-4 py-3">#{r.bookingId}</td>
-                        <td className="px-4 py-3">{r.materialName}</td>
-                        <td className="px-4 py-3">{num(r.quantity)} {r.unit}</td>
-                        <td className="px-4 py-3">{r.reason || '—'}</td>
-                        <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                        <td className="px-4 py-3">
-                          {r.status === 'Pending' ? (
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                className={subtleButtonClass}
-                                disabled={Boolean(reviewingRequestId)}
-                                onClick={() => reviewExtra(r, 'approve')}
-                              >
-                                {reviewingRequestId === r.requestId ? 'Đang xử lý...' : 'Duyệt'}
-                              </button>
-                              <button
-                                type="button"
-                                className={dangerButtonClass}
-                                disabled={Boolean(reviewingRequestId)}
-                                onClick={() => reviewExtra(r, 'reject')}
-                              >
-                                {reviewingRequestId === r.requestId ? 'Đang xử lý...' : 'Từ chối'}
-                              </button>
-                            </div>
-                          ) : r.managerNote || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                    {extraRequests.length === 0 && (
-                      <TableEmpty colSpan={7} title="Không có request phát sinh" description="Thử đổi bộ lọc trạng thái nếu bạn muốn xem request đã duyệt hoặc đã từ chối." icon="task_alt" />
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                data={extraRequests}
+                loading={loading}
+                minWidth="900px"
+                emptyIcon="task_alt"
+                emptyTitle="Không có request phát sinh"
+                emptyMessage="Thử đổi bộ lọc trạng thái nếu bạn muốn xem request đã duyệt hoặc đã từ chối."
+                columns={[
+                  {
+                    key: 'requestId',
+                    label: 'Request',
+                    width: '140px',
+                    render: (r) => (
+                      <>
+                        <span>#{r.requestId}</span>
+                        <p className="text-xs text-on-surface-variant">{formatDateTime(r.createdAt)}</p>
+                      </>
+                    ),
+                  },
+                  {
+                    key: 'bookingId',
+                    label: 'Booking',
+                    render: (r) => `#${r.bookingId}`,
+                  },
+                  {
+                    key: 'materialName',
+                    label: 'Vật tư',
+                    render: (r) => r.materialName,
+                  },
+                  {
+                    key: 'quantity',
+                    label: 'Số lượng',
+                    render: (r) => `${num(r.quantity)} ${r.unit}`,
+                  },
+                  {
+                    key: 'reason',
+                    label: 'Lý do',
+                    render: (r) => r.reason || '—',
+                  },
+                  {
+                    key: 'status',
+                    label: 'Trạng thái',
+                    render: (r) => <StatusBadge status={r.status} />,
+                  },
+                  {
+                    key: 'actions',
+                    label: 'Thao tác',
+                    width: '220px',
+                    renderActions: (r) =>
+                      r.status === 'Pending' ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className={subtleButtonClass}
+                            disabled={Boolean(reviewingRequestId)}
+                            onClick={() => reviewExtra(r, 'approve')}
+                          >
+                            {reviewingRequestId === r.requestId ? 'Đang xử lý...' : 'Duyệt'}
+                          </button>
+                          <button
+                            type="button"
+                            className={dangerButtonClass}
+                            disabled={Boolean(reviewingRequestId)}
+                            onClick={() => reviewExtra(r, 'reject')}
+                          >
+                            {reviewingRequestId === r.requestId
+                              ? 'Đang xử lý...'
+                              : 'Từ chối'}
+                          </button>
+                        </div>
+                      ) : (
+                        <span>{r.managerNote || '—'}</span>
+                      ),
+                  },
+                ]}
+              />
             </Panel>
           )}
 

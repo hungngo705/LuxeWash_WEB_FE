@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import QueueStats from '../components/queue/QueueStats'
 import QueueTable from '../components/queue/QueueTable'
 import QueueToolbar from '../components/queue/QueueToolbar'
+import { useToast } from '../components/ui/Toast'
 import {
   enrichStaffTasks,
   fetchStaffLaneAssignment,
@@ -18,12 +19,7 @@ export default function QueuePage() {
   const [laneLabel, setLaneLabel] = useState('')
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [toast, setToast] = useState(null)
-
-  const showToast = (message, type = 'success') => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3500)
-  }
+  const toast = useToast()
 
   useEffect(() => {
     fetchStaffLaneAssignment()
@@ -86,51 +82,41 @@ export default function QueuePage() {
   const handleStartProcessing = useCallback(async (bookingId) => {
     try {
       await updateStaffBookingStatus(bookingId, 'Processing')
-      showToast(`Xe #${bookingId} bắt đầu rửa.`)
+      toast.success(`Xe #${bookingId} bắt đầu rửa.`)
       setAllBookings((prev) =>
         prev.map((b) =>
           Number(b.bookingId) === Number(bookingId) ? { ...b, status: 'Processing' } : b,
         ),
       )
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.'
-      showToast(msg, 'error')
+      toast.error(
+        err instanceof ApiError ? err.message : 'Lỗi khi bắt đầu rửa. Vui lòng thử lại.',
+      )
     }
-  }, [])
+  }, [toast])
 
   const handleComplete = useCallback(async (bookingId) => {
     try {
       await updateStaffBookingStatus(bookingId, 'Completed')
-      showToast(`Xe #${bookingId} đã hoàn thành.`)
+      toast.success(`Xe #${bookingId} đã hoàn thành.`)
       setAllBookings((prev) => prev.filter((b) => Number(b.bookingId) !== Number(bookingId)))
     } catch (err) {
-      const msg =
-        err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.'
-      showToast(msg, 'error')
+      toast.error(
+        err instanceof ApiError ? err.message : 'Lỗi khi hoàn thành. Vui lòng thử lại.',
+      )
     }
-  }, [])
+  }, [toast])
 
   return (
     <div className="relative w-full">
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3 shadow-xl ${
-            toast.type === 'error'
-              ? 'border-error-container/50 bg-error-container/20 text-error'
-              : 'border-primary-container/50 bg-primary-container/20 text-primary-container'
-          }`}
-        >
-          <span className="material-symbols-outlined text-xl">
-            {toast.type === 'error' ? 'error' : 'check_circle'}
-          </span>
-          <span className="text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
-
       <div className="mb-6">
-        <h1 className="font-sora text-2xl font-semibold text-on-surface">Quản lý hàng đợi</h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="text-[11px] font-bold tracking-[0.12em] text-tertiary uppercase">
+          Vận hành staff
+        </p>
+        <h1 className="mt-1.5 font-sora text-2xl font-semibold tracking-tight text-on-surface">
+          Quản lý hàng đợi
+        </h1>
+        <p className="mt-1.5 text-sm text-on-surface-variant">
           {laneLabel || 'Đang tải làn…'} — Danh sách xe Checked-in và Processing tại làn của bạn
         </p>
       </div>

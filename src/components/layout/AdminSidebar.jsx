@@ -88,17 +88,17 @@ function NavGroup({ group, isFirst, isOpen, onToggle }) {
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
-        className={`group relative mx-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md border border-primary/20 bg-primary-container/30 px-3 py-1.5 text-primary transition-colors duration-300 hover:border-primary/40 hover:bg-primary-container/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+        className={`group relative mx-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md border border-outline-variant/60 bg-white px-4 py-2.5 text-on-surface transition-colors duration-300 hover:border-outline hover:bg-surface-variant/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
           isOpen ? 'shadow-sm' : ''
         }`}
       >
         <span
-          className="material-symbols-outlined text-[16px] leading-none transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+          className="material-symbols-outlined text-[20px] leading-none transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
           style={{ fontVariationSettings: "'FILL' 1" }}
         >
           {group.icon}
         </span>
-        <span className="text-[10.5px] font-bold uppercase tracking-[0.08em]">
+        <span className="text-[12px] font-bold tracking-[0.08em]">
           {group.title}
         </span>
       </button>

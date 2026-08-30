@@ -5,9 +5,11 @@ import {
   fetchManagerLanes,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = { name: '', isBusinessLane: false }
 
@@ -18,7 +20,7 @@ export default function ManagerLanesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
+  const toast = useToast()
 
   const laneStats = useMemo(() => {
     const active = lanes.filter((lane) => lane.isActive !== false).length
@@ -31,11 +33,6 @@ export default function ManagerLanesPage() {
       business,
     }
   }, [lanes])
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
 
   const loadLanes = useCallback(async () => {
     setLoading(true)
@@ -61,7 +58,7 @@ export default function ManagerLanesPage() {
 
   const handleSave = async () => {
     if (!form.name.trim() || saving) {
-      showToast('Vui lòng nhập tên làn')
+      toast.warning('Vui lòng nhập tên làn')
       return
     }
 
@@ -71,11 +68,11 @@ export default function ManagerLanesPage() {
         name: form.name.trim(),
         isBusinessLane: form.isBusinessLane,
       })
-      showToast('Đã thêm làn rửa')
+      toast.success('Đã thêm làn rửa')
       setModalOpen(false)
       await loadLanes()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được làn rửa')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được làn rửa')
     } finally {
       setSaving(false)
     }
@@ -84,10 +81,11 @@ export default function ManagerLanesPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Cơ sở vật hành"
         title="Làn rửa"
         description="Quản lý các làn rửa tại chi nhánh của bạn"
         actionLabel="Thêm làn"
-        actionIcon="add"
+        actionIcon="add_road"
         onAction={openCreate}
       />
 
@@ -128,12 +126,6 @@ export default function ManagerLanesPage() {
         </div>
       </div>
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
@@ -143,56 +135,49 @@ export default function ManagerLanesPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải...</p>
-      ) : lanes.length === 0 && !loadError ? (
-        <EmptyState icon="garage" title="Chưa có làn rửa" description="Tạo làn rửa." />
-      ) : (
-        <div className="space-y-3">
-          {lanes.map((lane) => {
-            return (
-              <div
-                key={lane.laneId}
-                className="soft-shadow overflow-hidden rounded-xl border bg-surface-container-lowest border-outline-variant"
-              >
-                <div className="flex w-full flex-col gap-4 px-5 py-4 text-left md:flex-row md:items-center md:justify-between">
-                  <div className="flex min-w-0 flex-1 items-center gap-4">
-                    <span
-                      className={`h-12 w-1.5 shrink-0 rounded-full ${
-                        lane.isBusinessLane
-                          ? 'bg-secondary'
-                          : 'bg-primary'
-                      }`}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs font-semibold text-on-surface-variant">
-                          #{lane.laneId}
-                        </span>
-                        <h3 className="truncate font-sora text-base font-semibold text-on-surface">
-                          {lane.name}
-                        </h3>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                            lane.isBusinessLane
-                              ? 'border-secondary/30 bg-secondary-container/40 text-on-secondary-container'
-                              : 'border-outline-variant bg-surface-container-low text-on-surface-variant'
-                          }`}
-                        >
-                          {lane.isBusinessLane ? 'Doanh nghiệp' : 'Tiêu dùng'}
-                        </span>
-                        <StatusBadge status={lane.isActive !== false ? 'Active' : 'Inactive'} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <DataTable
+        data={lanes}
+        loading={loading}
+        minWidth="640px"
+        emptyIcon="garage"
+        emptyTitle="Chưa có làn rửa"
+        emptyMessage="Tạo làn rửa để bắt đầu phân công cho chi nhánh."
+        columns={[
+          {
+            key: 'laneId',
+            label: 'ID',
+            width: '80px',
+            render: (row) => (
+              <span className="font-mono text-on-surface-variant">#{row.laneId}</span>
+            ),
+          },
+          {
+            key: 'name',
+            label: 'Tên làn',
+            render: (row) => <span className="font-medium text-on-surface">{row.name}</span>,
+          },
+          {
+            key: 'isBusinessLane',
+            label: 'Loại làn',
+            render: (row) =>
+              row.isBusinessLane ? (
+                <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary-container/40 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-on-secondary-container uppercase">
+                  Doanh nghiệp
+                </span>
+              ) : (
+                <span className="text-on-surface-variant">Tiêu dùng</span>
+              ),
+          },
+          {
+            key: 'isActive',
+            label: 'Trạng thái',
+            width: '140px',
+            render: (row) => (
+              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
@@ -202,18 +187,16 @@ export default function ManagerLanesPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Tên làn</span>
-            <input
-              type="text"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 outline-none transition-colors focus:border-secondary"
-              placeholder="VD: Làn 1..."
-              value={form.name}
-              disabled={saving}
-              onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-              required
-            />
-          </label>
+          <Input
+            label="Tên làn"
+            required
+            value={form.name}
+            maxLength={50}
+            disabled={saving}
+            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+            placeholder="VD: Làn 1..."
+            iconLeft="garage"
+          />
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"

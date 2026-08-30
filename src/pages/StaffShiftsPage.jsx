@@ -11,11 +11,15 @@ import {
   swapStaffLaneByPhone,
   toTimeInputValue,
 } from '../api'
+import DataTable from '../components/ui/DataTable'
+import ErrorBoundary from '../components/ui/ErrorBoundary'
+import { useToast } from '../components/ui/Toast'
 import EmptyState from '../components/admin/shared/EmptyState'
 import FormModal from '../components/admin/shared/FormModal'
 import PageHeader from '../components/admin/shared/PageHeader'
 import StatusBadge from '../components/admin/shared/StatusBadge'
 import ShiftCalendar from '../components/staff/ShiftCalendar'
+import Input from '../components/ui/Input'
 import { formatDateTime } from '../utils/format'
 
 const TABS = [
@@ -79,15 +83,13 @@ function startOfDay(date) {
   return d
 }
 
-export default function StaffShiftsPage() {
+function StaffShiftsPage() {
   const [tab, setTab] = useState('schedule')
   const [shifts, setShifts] = useState([])
   const [overtimeRequests, setOvertimeRequests] = useState([])
   const [swapRequests, setSwapRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
-  const [toast, setToast] = useState('')
-  const [shiftFilter, setShiftFilter] = useState({ fromDate: '', toDate: '' })
 
   const [overtimeModalOpen, setOvertimeModalOpen] = useState(false)
   const [swapModalOpen, setSwapModalOpen] = useState(false)
@@ -106,11 +108,8 @@ export default function StaffShiftsPage() {
   // Cache assignments của Staff khác theo date — dùng để lookup tên ca
   // khi swap request liên quan tới assignment không thuộc Staff đang login.
   const [otherStaffAssignments, setOtherStaffAssignments] = useState([])
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const [shiftFilter, setShiftFilter] = useState({ fromDate: '', toDate: '' })
+  const toast = useToast()
 
   const loadAll = useCallback(async () => {
     setLoading(true)
@@ -175,22 +174,22 @@ export default function StaffShiftsPage() {
 
   const handleCreateOvertime = async () => {
     if (!overtimeForm.workDate) {
-      showToast('Vui lòng chọn ngày tăng ca')
+      toast.warning('Vui lòng chọn ngày tăng ca')
       return
     }
     if (!isFutureOrToday(overtimeForm.workDate)) {
-      showToast('Ngày tăng ca phải là hôm nay hoặc trong tương lai')
+      toast.warning('Ngày tăng ca phải là hôm nay hoặc trong tương lai')
       return
     }
     setSaving(true)
     try {
       await createStaffOvertimeRequest(overtimeForm)
-      showToast('Đã gửi yêu cầu tăng ca')
+      toast.success('Đã gửi yêu cầu tăng ca')
       setOvertimeModalOpen(false)
       setOvertimeForm(emptyOvertimeForm)
       await loadAll()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không gửi được yêu cầu')
+      toast.error(err instanceof ApiError ? err.message : 'Không gửi được yêu cầu')
     } finally {
       setSaving(false)
     }
@@ -227,7 +226,7 @@ export default function StaffShiftsPage() {
       setSwapTargetShifts(otherFuture)
     } catch {
       setSwapTargetShifts([])
-      showToast('Không tải được ca trong ngày đã chọn')
+      toast.error('Không tải được ca trong ngày đã chọn')
     } finally {
       setSwapTargetLoading(false)
     }
@@ -258,7 +257,7 @@ export default function StaffShiftsPage() {
       return
     }
     if (next.getTime() === swapFromDate.getTime()) {
-      showToast('Ngày ca đích phải khác ngày ca nguồn')
+      toast.warning('Ngày ca đích phải khác ngày ca nguồn')
       return
     }
     if (!swapToDate || next.getTime() !== swapToDate.getTime()) {
@@ -271,22 +270,22 @@ export default function StaffShiftsPage() {
 
   const handleCreateSwap = async () => {
     if (!swapFromShift) {
-      showToast('Vui lòng chọn ca nguồn')
+      toast.warning('Vui lòng chọn ca nguồn')
       return
     }
     if (!swapToShift) {
-      showToast('Vui lòng chọn ca đích')
+      toast.warning('Vui lòng chọn ca đích')
       return
     }
     if (swapFromShift.shiftAssignmentId === swapToShift.shiftAssignmentId) {
-      showToast('Không thể đổi sang cùng một ca')
+      toast.warning('Không thể đổi sang cùng một ca')
       return
     }
     if (
       swapFromShift.workShiftId === swapToShift.workShiftId &&
       toDateInputValue(swapFromShift.workDate) === toDateInputValue(swapToShift.workDate)
     ) {
-      showToast('Ca đích phải khác ngày hoặc khác ca với ca nguồn')
+      toast.warning('Ca đích phải khác ngày hoặc khác ca với ca nguồn')
       return
     }
     setSaving(true)
@@ -296,7 +295,7 @@ export default function StaffShiftsPage() {
         toAssignmentId: swapToShift.shiftAssignmentId,
         reason: swapForm.reason,
       })
-      showToast('Đã gửi yêu cầu đổi ca')
+      toast.success('Đã gửi yêu cầu đổi ca')
       setSwapModalOpen(false)
       setSwapForm(emptySwapForm)
       setSwapFromDate(null)
@@ -306,7 +305,7 @@ export default function StaffShiftsPage() {
       setSwapTargetShifts([])
       await loadAll()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không gửi được yêu cầu')
+      toast.error(err instanceof ApiError ? err.message : 'Không gửi được yêu cầu')
     } finally {
       setSaving(false)
     }
@@ -314,7 +313,7 @@ export default function StaffShiftsPage() {
 
   const handleSwapLaneByPhone = async () => {
     if (!laneSwapForm.targetPhoneNumber.trim()) {
-      showToast('Vui lòng nhập số điện thoại nhân viên muốn đổi làn')
+      toast.warning('Vui lòng nhập số điện thoại nhân viên muốn đổi làn')
       return
     }
     setSaving(true)
@@ -323,12 +322,12 @@ export default function StaffShiftsPage() {
         targetPhoneNumber: laneSwapForm.targetPhoneNumber.trim(),
         date: laneSwapForm.date || undefined,
       })
-      showToast('Đã đổi làn thành công')
+      toast.success('Đã đổi làn thành công')
       setLaneSwapModalOpen(false)
       setLaneSwapForm(emptyLaneSwapForm)
       await loadAll()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không đổi làn được')
+      toast.error(err instanceof ApiError ? err.message : 'Không đổi làn được')
     } finally {
       setSaving(false)
     }
@@ -344,9 +343,17 @@ export default function StaffShiftsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Ca làm & phân công"
         title="Ca làm của tôi"
         description="Xem lịch ca, gửi yêu cầu tăng ca hoặc đổi ca"
         actionLabel={tab === 'overtime' ? 'Xin tăng ca' : tab === 'swap' ? 'Xin đổi ca' : 'Đổi làn'}
+        actionIcon={
+          tab === 'overtime'
+            ? 'more_time'
+            : tab === 'swap'
+              ? 'swap_horiz'
+              : 'swap_horizontal_circle'
+        }
         onAction={
           tab === 'overtime'
             ? () => setOvertimeModalOpen(true)
@@ -355,12 +362,6 @@ export default function StaffShiftsPage() {
             : () => setLaneSwapModalOpen(true)
         }
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((item) => (
@@ -435,36 +436,39 @@ export default function StaffShiftsPage() {
             title="Lịch ca trong 30 ngày tới"
             helperText="Chỉ hiển thị các ngày trong tương lai. Qua ngày, ca sẽ tự động chuyển sang lịch sử."
           />
-          {shifts.length === 0 ? (
-            <EmptyState icon="calendar_month" title="Chưa có ca được phân" />
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-              <table className="w-full min-w-[520px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-outline-variant bg-surface-container-low text-xs uppercase text-on-surface-variant">
-                    <th className="px-4 py-3">Ca</th>
-                    <th className="px-4 py-3">Ngày</th>
-                    <th className="px-4 py-3">Giờ</th>
-                    <th className="px-4 py-3">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60">
-                  {shifts.map((row) => (
-                    <tr key={row.shiftAssignmentId}>
-                      <td className="px-4 py-3 font-medium">{row.shiftName}</td>
-                      <td className="px-4 py-3">{formatDateTime(row.workDate)}</td>
-                      <td className="px-4 py-3">
-                        {toTimeInputValue(row.startTime)} – {toTimeInputValue(row.endTime)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={row.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DataTable
+            data={shifts}
+            loading={loading}
+            minWidth="640px"
+            emptyIcon="calendar_month"
+            emptyTitle="Chưa có ca được phân"
+            columns={[
+              {
+                key: 'shiftName',
+                label: 'Ca',
+                render: (row) => <span className="font-medium text-on-surface">{row.shiftName}</span>,
+              },
+              {
+                key: 'workDate',
+                label: 'Ngày',
+                render: (row) => formatDateTime(row.workDate),
+              },
+              {
+                key: 'time',
+                label: 'Giờ',
+                render: (row) => (
+                  <span className="text-on-surface">
+                    {toTimeInputValue(row.startTime)} – {toTimeInputValue(row.endTime)}
+                  </span>
+                ),
+              },
+              {
+                key: 'status',
+                label: 'Trạng thái',
+                render: (row) => <StatusBadge status={row.status} />,
+              },
+            ]}
+          />
         </div>
       ) : tab === 'overtime' ? (
         overtimeRequests.length === 0 ? (
@@ -828,5 +832,13 @@ export default function StaffShiftsPage() {
         </div>
       </FormModal>
     </div>
+  )
+}
+
+export default function StaffShiftsPageWithBoundary() {
+  return (
+    <ErrorBoundary>
+      <StaffShiftsPage />
+    </ErrorBoundary>
   )
 }

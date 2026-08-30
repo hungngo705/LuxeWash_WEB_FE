@@ -10,6 +10,8 @@ import BusinessLayout from './components/layout/BusinessLayout'
 import ManagerLayout from './components/layout/ManagerLayout'
 import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
+import ErrorBoundary from './components/ui/ErrorBoundary'
+import { ToastProvider } from './components/ui/Toast'
 import AdminBookingsPage from './pages/admin/AdminBookingsPage'
 import AdminBranchesPage from './pages/admin/AdminBranchesPage'
 import AdminCarModelsPage from './pages/admin/AdminCarModelsPage'
@@ -77,8 +79,9 @@ import LaneAssignmentDisplayPage from './pages/display/LaneAssignmentDisplayPage
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/business/register" element={<BusinessRegisterPage />} />
@@ -200,7 +203,8 @@ export default function App() {
 
           <Route path="*" element={<RootRedirect />} />
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

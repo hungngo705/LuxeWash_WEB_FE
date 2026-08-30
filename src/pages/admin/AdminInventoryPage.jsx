@@ -24,6 +24,9 @@ import {
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const tabs = [
@@ -201,8 +204,8 @@ export default function AdminInventoryPage() {
     settingBranchId: '',
   })
   const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState('')
   const [error, setError] = useState('')
+  const toast = useToast()
   const [materialModal, setMaterialModal] = useState(false)
   const [editingMaterialId, setEditingMaterialId] = useState(null)
   const [materialForm, setMaterialForm] = useState(emptyMaterial)
@@ -219,11 +222,6 @@ export default function AdminInventoryPage() {
 
   const selectedBranchId = filters.branchId ? Number(filters.branchId) : undefined
   const selectedServiceId = filters.serviceId ? Number(filters.serviceId) : undefined
-
-  const showToast = (message) => {
-    setToast(message)
-    setTimeout(() => setToast(''), 2500)
-  }
 
   const loadCommon = useCallback(async () => {
     const [materialData, unitData, branchData, serviceData, typeData] = await Promise.all([
@@ -360,10 +358,10 @@ export default function AdminInventoryPage() {
     try {
       if (editingMaterialId) {
         await updateAdminMaterial(editingMaterialId, { ...payload, isActive: materialForm.isActive })
-        showToast('Đã cập nhật vật tư.')
+        toast.success('Đã cập nhật vật tư.')
       } else {
         await createAdminMaterial(payload)
-        showToast('Đã tạo vật tư.')
+        toast.success('Đã tạo vật tư.')
       }
       setMaterialModal(false)
       await loadActive()
@@ -400,14 +398,14 @@ export default function AdminInventoryPage() {
     try {
       if (editingUnitId) {
         await updateAdminMaterialUnit(editingUnitId, payload)
-        showToast('Đã cập nhật đơn vị.')
+        toast.success('Đã cập nhật đơn vị.')
       } else {
         await createAdminMaterialUnit({
           code: unitForm.code.trim(),
           displayName: payload.displayName,
           measurementType: payload.measurementType,
         })
-        showToast('Đã tạo đơn vị.')
+        toast.success('Đã tạo đơn vị.')
       }
       resetUnitForm()
       await loadActive()
@@ -440,7 +438,7 @@ export default function AdminInventoryPage() {
       setEditingUsage(null)
       setUsageForm({ materialId: '', baseQuantity: '' })
       setServiceUsages(await fetchServiceMaterials(targetServiceId))
-      showToast('Đã lưu định mức vật tư.')
+      toast.success('Đã lưu định mức vật tư.')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không lưu được định mức.')
     } finally {
@@ -476,7 +474,7 @@ export default function AdminInventoryPage() {
         isActive: row.isActive !== false,
       })
       setMultipliers(await fetchConditionMultipliers())
-      showToast('Đã cập nhật hệ số.')
+      toast.success('Đã cập nhật hệ số.')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không cập nhật được hệ số.')
     } finally {
@@ -495,7 +493,7 @@ export default function AdminInventoryPage() {
             ? Number(settingForm.negativeStockLimit)
             : null,
       })
-      showToast('Đã cập nhật cấu hình branch.')
+      toast.success('Đã cập nhật cấu hình branch.')
       const setting = await fetchBranchInventorySetting(filters.settingBranchId)
       setBranchSetting(setting)
     } catch (err) {
@@ -508,6 +506,7 @@ export default function AdminInventoryPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Vận hành"
         title="Quản lý vật tư"
         description="Danh mục, tồn kho, lô vật tư, định mức service và báo cáo lợi nhuận gộp"
         actionLabel={activeTab === 'materials' ? 'Thêm vật tư' : undefined}
@@ -515,7 +514,6 @@ export default function AdminInventoryPage() {
         onAction={activeTab === 'materials' ? () => openMaterial(null) : undefined}
       />
 
-      <Notice message={toast} />
       <Notice message={error} type="error" />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

@@ -3,6 +3,7 @@ import { ApiError, createTier, fetchTiers, updateTier } from '../../api'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
+import { useToast } from '../../components/ui/Toast'
 
 const TIER_COLORS = {
   Standard: 'border-outline-variant bg-surface-container-low',
@@ -54,12 +55,7 @@ export default function AdminTiersPage() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadTiers = useCallback(async () => {
     setLoading(true)
@@ -100,7 +96,7 @@ export default function AdminTiersPage() {
 
     const validationError = validateForm(form)
     if (validationError) {
-      showToast(validationError)
+      toast.error(validationError)
       return
     }
 
@@ -110,16 +106,16 @@ export default function AdminTiersPage() {
     try {
       if (editingId) {
         await updateTier(editingId, payload)
-        showToast('Đã cập nhật cấu hình hạng')
+        toast.success('Đã cập nhật cấu hình hạng')
       } else {
         await createTier(payload)
-        showToast('Đã thêm hạng thành viên mới')
+        toast.success('Đã thêm hạng thành viên mới')
       }
 
       setModalOpen(false)
       await loadTiers()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được cấu hình hạng')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được cấu hình hạng')
     } finally {
       setSaving(false)
     }
@@ -128,9 +124,11 @@ export default function AdminTiersPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Khách hàng"
         title="Hạng thành viên"
         description=""
         actionLabel="Thêm hạng"
+        actionIcon="add"
         onAction={openCreate}
       />
 
@@ -140,12 +138,6 @@ export default function AdminTiersPage() {
         </span>
         Đánh giá thăng/hạng tự động ngày 1 hàng tháng (BR-05)
       </p>
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -181,9 +173,15 @@ export default function AdminTiersPage() {
                 </span>
                 <button
                   type="button"
-                  className="text-sm text-primary hover:underline"
+                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                   onClick={() => openEdit(tier)}
                 >
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    style={{ fontVariationSettings: "'FILL' 0" }}
+                  >
+                    edit
+                  </span>
                   Sửa
                 </button>
               </div>

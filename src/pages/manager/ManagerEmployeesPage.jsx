@@ -6,9 +6,10 @@ import {
   normalizeManagerStaff,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = { fullName: '', phoneNumber: '', password: '' }
 
@@ -19,12 +20,7 @@ export default function ManagerEmployeesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadStaffs = useCallback(async () => {
     setLoading(true)
@@ -51,31 +47,31 @@ export default function ManagerEmployeesPage() {
     const password = form.password
 
     if (!fullName) {
-      showToast('Vui lòng nhập họ tên')
+      toast.warning('Vui lòng nhập họ tên')
       return
     }
     if (!phoneNumber) {
-      showToast('Vui lòng nhập số điện thoại')
+      toast.warning('Vui lòng nhập số điện thoại')
       return
     }
     if (phoneNumber.length < 9) {
-      showToast('Số điện thoại không hợp lệ')
+      toast.warning('Số điện thoại không hợp lệ')
       return
     }
     if (!password || password.length < 6) {
-      showToast('Mật khẩu phải có ít nhất 6 ký tự')
+      toast.warning('Mật khẩu phải có ít nhất 6 ký tự')
       return
     }
 
     setSaving(true)
     try {
       await createManagerStaff({ fullName, phoneNumber, password, role: 'Staff' })
-      showToast('Đã thêm nhân viên mới')
+      toast.success('Đã thêm nhân viên mới')
       setModalOpen(false)
       setForm(emptyForm)
       await loadStaffs()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được nhân viên')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được nhân viên')
     } finally {
       setSaving(false)
     }
@@ -84,6 +80,7 @@ export default function ManagerEmployeesPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Nhân sự"
         title="Nhân viên"
         description="Quản lý tài khoản nhân viên tại chi nhánh của bạn"
         actionLabel="Thêm nhân viên"
@@ -94,12 +91,6 @@ export default function ManagerEmployeesPage() {
         }}
       />
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
@@ -109,40 +100,45 @@ export default function ManagerEmployeesPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải...</p>
-      ) : staffs.length === 0 && !loadError ? (
-        <EmptyState
-          icon="badge"
-          title="Chưa có nhân viên"
-          description="Thêm nhân viên để bắt đầu phân công làn rửa."
-        />
-      ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[560px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Họ tên</th>
-                <th className="px-4 py-3">Số điện thoại</th>
-                <th className="px-4 py-3">Trạng thái</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {staffs.map((staff) => (
-                <tr key={staff.userId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{staff.userId}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{staff.fullName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{staff.phoneNumber}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={staff.status === 'Active' ? 'Active' : 'Inactive'} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={staffs}
+        loading={loading}
+        minWidth="640px"
+        emptyIcon="badge"
+        emptyTitle="Chưa có nhân viên"
+        emptyMessage="Thêm nhân viên để bắt đầu phân công làn rửa."
+        columns={[
+          {
+            key: 'userId',
+            label: 'ID',
+            width: '80px',
+            render: (staff) => (
+              <span className="font-mono text-on-surface-variant">#{staff.userId}</span>
+            ),
+          },
+          {
+            key: 'fullName',
+            label: 'Họ tên',
+            render: (staff) => <span className="font-medium text-on-surface">{staff.fullName}</span>,
+          },
+          {
+            key: 'phoneNumber',
+            label: 'Số điện thoại',
+            render: (staff) => (
+              <span className="text-on-surface-variant">{staff.phoneNumber}</span>
+            ),
+            tdClassName: 'text-on-surface-variant',
+          },
+          {
+            key: 'status',
+            label: 'Trạng thái',
+            width: '140px',
+            render: (staff) => (
+              <StatusBadge status={staff.status === 'Active' ? 'Active' : 'Inactive'} />
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
