@@ -159,10 +159,18 @@ export default function HistoryPage() {
     setLoading(true)
     setFetchError('')
     try {
+      // Lane assignment is best-effort — used only for the header label, so a
+      // failure here (e.g. endpoint returns 404) must not break the page.
+      const assignmentPromise = fetchStaffLaneAssignment().catch(() => null)
+
+      // Bookings là dữ liệu chính của trang; chỉ lỗi khi cái này fail.
+      const tasksPromise = fetchStaffServiceHistory(toApiTargetDate(dateFilter), {})
+
       const [assignment, tasks] = await Promise.all([
-        fetchStaffLaneAssignment(),
-        fetchStaffServiceHistory(toApiTargetDate(dateFilter), {}),
+        assignmentPromise,
+        tasksPromise,
       ])
+
       setLaneLabel(formatStaffStationLabel(assignment))
       setAllRecords(tasks.map(mapHistoryRecord))
     } catch (err) {
