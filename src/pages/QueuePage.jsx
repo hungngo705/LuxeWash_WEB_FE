@@ -5,14 +5,15 @@ import QueueToolbar from '../components/queue/QueueToolbar'
 import { useToast } from '../components/ui/Toast'
 import {
   enrichStaffTasks,
-  fetchStaffLaneAssignment,
   fetchStaffTasks,
   formatStaffStationLabel,
   updateStaffBookingStatus,
 } from '../api'
 import { ApiError } from '../api/client'
+import { useAuth } from '../context/AuthContext'
 
 export default function QueuePage() {
+  const { laneAssignment } = useAuth()
   const [allBookings, setAllBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -22,10 +23,8 @@ export default function QueuePage() {
   const toast = useToast()
 
   useEffect(() => {
-    fetchStaffLaneAssignment()
-      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
-      .catch(() => setLaneLabel('Chưa phân công làn'))
-  }, [])
+    setLaneLabel(laneAssignment ? formatStaffStationLabel(laneAssignment) : 'Chưa phân công làn')
+  }, [laneAssignment])
 
   const loadBookings = useCallback(async () => {
     setLoading(true)

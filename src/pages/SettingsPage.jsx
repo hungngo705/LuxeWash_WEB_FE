@@ -4,14 +4,13 @@ import {
   ApiError,
   changePassword,
   consumeStaffVoucher,
-  fetchStaffLaneAssignment,
   formatStaffStationLabel,
 } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { isValidPassword, PASSWORD_ERROR_MESSAGE } from '../utils/validation'
 
 export default function SettingsPage() {
-  const { staff, logout, refreshProfile } = useAuth()
+  const { staff, logout, refreshProfile, laneAssignment } = useAuth()
   const navigate = useNavigate()
   const [notifySound, setNotifySound] = useState(true)
   const [autoRefreshLpr, setAutoRefreshLpr] = useState(true)
@@ -30,18 +29,18 @@ export default function SettingsPage() {
   const [voucherSaving, setVoucherSaving] = useState(false)
   const [voucherMessage, setVoucherMessage] = useState('')
 
+  // laneAssignment is read from AuthContext (set once on login)
   const loadMeta = useCallback(async () => {
     setProfileLoading(true)
     try {
       await refreshProfile()
-      const assignment = await fetchStaffLaneAssignment()
-      setLaneLabel(formatStaffStationLabel(assignment))
+      setLaneLabel(laneAssignment ? formatStaffStationLabel(laneAssignment) : 'Chưa phân công làn')
     } catch {
       setLaneLabel('Chưa phân công làn')
     } finally {
       setProfileLoading(false)
     }
-  }, [refreshProfile])
+  }, [refreshProfile, laneAssignment])
 
   useEffect(() => {
     loadMeta()

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
-  fetchStaffLaneAssignment,
   fetchStaffTasks,
   formatPaymentMethodLabel,
   formatStaffStationLabel,
@@ -14,6 +13,7 @@ import { WashDurationBadge } from '../components/shared/WashTelemetry'
 import TierBadge from '../components/shared/TierBadge'
 import { publishLaneDisplayEvent } from '../services/laneDisplayChannel'
 import { canStartWash, getLaneDisplayName, hasAssignedLane } from '../utils/laneAssignment'
+import { useAuth } from '../context/AuthContext'
 
 function publishAssignedLane(booking) {
   if (!booking?.licensePlate || !hasAssignedLane(booking)) return
@@ -67,6 +67,7 @@ function getBookingStatusLabel(status) {
 }
 
 export default function StaffQueuePage() {
+  const { laneAssignment } = useAuth()
   const [allBookings, setAllBookings] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -77,10 +78,8 @@ export default function StaffQueuePage() {
   const laneSnapshotRef = useRef(null)
 
   useEffect(() => {
-    fetchStaffLaneAssignment()
-      .then((a) => setLaneLabel(formatStaffStationLabel(a)))
-      .catch(() => setLaneLabel('Chưa phân công làn'))
-  }, [])
+    setLaneLabel(laneAssignment ? formatStaffStationLabel(laneAssignment) : 'Chưa phân công làn')
+  }, [laneAssignment])
 
   const loadBookings = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -346,7 +345,11 @@ export default function StaffQueuePage() {
               key: 'customerName',
               label: 'Khách hàng',
               render: (booking) => (
-                <span className="font-medium text-on-surface">{booking.customerName}</span>
+                <span className="font-medium text-on-surface">
+                  {booking.customerName && booking.customerName !== '—'
+                    ? booking.customerName
+                    : 'Khách vãng lai'}
+                </span>
               ),
               tdClassName: 'text-on-surface',
             },

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { fetchCurrentUser, loginWithCredentials, refreshAccessToken } from '../api/auth.api'
 import { ApiError, setSessionRefreshedHandler, setUnauthorizedHandler } from '../api/client'
 import { clearSession, getStoredSession, saveSession } from '../api/session'
+import { fetchStaffLaneAssignment } from '../api/operationStaff.api'
 
 const AuthContext = createContext(null)
 
@@ -110,6 +111,14 @@ export function AuthProvider({ children }) {
       }
 
       setUser(session)
+
+      // Staff: fetch lane assignment once and store in session (localStorage)
+      if (role === 'Staff') {
+        fetchStaffLaneAssignment()
+          .then((assignment) => patchUser({ laneAssignment: assignment }))
+          .catch(() => patchUser({ laneAssignment: null }))
+      }
+
       return session.role
     } catch (err) {
       const message =
@@ -183,6 +192,7 @@ export function AuthProvider({ children }) {
       manager: user,
       business: user,
       isAuthenticated: isPortalSession(user),
+      laneAssignment: user?.laneAssignment ?? null,
       login,
       logout,
       error,

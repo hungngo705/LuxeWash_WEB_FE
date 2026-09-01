@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
-import { fetchStaffLaneAssignment, formatStaffStationLabel } from '../../api'
+import { formatStaffStationLabel } from '../../api'
 import { useAuth } from '../../context/AuthContext'
 import ErrorBoundary from '../ui/ErrorBoundary'
 import StaffSidebar from './StaffSidebar'
@@ -17,28 +17,19 @@ const PAGE_TITLES = {
 }
 
 export default function StaffLayout() {
-  const { staff, patchUser } = useAuth()
+  const { staff, patchUser, laneAssignment } = useAuth()
   const { pathname } = useLocation()
   const title = PAGE_TITLES[pathname] ?? 'LuxeWash Pro'
   const [stationLabel, setStationLabel] = useState(staff?.station ?? 'Đang tải…')
 
   useEffect(() => {
     if (staff?.role !== 'Staff') return
-    let cancelled = false
-    fetchStaffLaneAssignment()
-      .then((assignment) => {
-        if (cancelled) return
-        const label = formatStaffStationLabel(assignment)
-        setStationLabel(label)
-        patchUser({ station: label })
-      })
-      .catch(() => {
-        if (!cancelled) setStationLabel('Chưa phân công làn')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [staff?.role, patchUser])
+    const label = laneAssignment
+      ? formatStaffStationLabel(laneAssignment)
+      : 'Chưa phân công làn'
+    setStationLabel(label)
+    patchUser({ station: label })
+  }, [staff?.role, laneAssignment, patchUser])
 
   return (
     <div className="min-h-screen bg-background">

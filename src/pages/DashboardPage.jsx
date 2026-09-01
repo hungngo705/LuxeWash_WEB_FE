@@ -18,7 +18,6 @@ import {
   enrichStaffBooking,
   enrichStaffTasks,
   fetchBookingPaymentStatus,
-  fetchStaffLaneAssignment,
   fetchStaffLaneOccupancies,
   fetchStaffTasks,
   fetchUserById,
@@ -37,6 +36,7 @@ import {
   submitVehicleVisionFeedback,
   updateStaffBookingStatus,
 } from "../api";
+import { useAuth } from '../context/AuthContext';
 import { formatDateTime, formatVnd } from "../utils/format";
 import {
   isValidVietnameseLicensePlate,
@@ -1589,6 +1589,7 @@ function ProcessingVehiclesPanel({
 }
 
 export default function DashboardPage() {
+  const { laneAssignment } = useAuth()
   const [staffTasks, setStaffTasks] = useState([]);
   const [plateInput, setPlateInput] = useState("");
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -1599,7 +1600,6 @@ export default function DashboardPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [completingId, setCompletingId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [laneAssignment, setLaneAssignment] = useState(null);
   const [laneOccupancies, setLaneOccupancies] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [extraUsageBooking, setExtraUsageBooking] = useState(null);
@@ -1861,15 +1861,6 @@ export default function DashboardPage() {
     const controller = new AbortController()
     const initialLoadId = window.setTimeout(() => {
       loadStaffTasks({ signal: controller.signal })
-      fetchStaffLaneAssignment({ signal: controller.signal })
-        .then((a) => {
-          if (!controller.signal.aborted) {
-            setLaneAssignment(a)
-          }
-        })
-        .catch((err) => {
-          if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
-        })
       loadVehicleTypes()
       loadMaterials()
     }, 0)
