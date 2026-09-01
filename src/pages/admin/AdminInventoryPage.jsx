@@ -9,6 +9,7 @@ import {
   fetchAdminInventoryStocks,
   fetchAdminMaterialUnits,
   fetchAdminMaterials,
+  fetchAllServiceMaterials,
   fetchConditionMultipliers,
   fetchServiceMaterials,
   fetchServices,
@@ -24,9 +25,6 @@ import {
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
 import { formatDateTime, formatVnd } from '../../utils/format'
 
 const tabs = [
@@ -193,6 +191,8 @@ export default function AdminInventoryPage() {
   const [serviceUsages, setServiceUsages] = useState([])
   const [report, setReport] = useState(null)
   const [branchSetting, setBranchSetting] = useState(null)
+  const [allStocks, setAllStocks] = useState([])
+  const [allServiceUsageCount, setAllServiceUsageCount] = useState(0)
   const [filters, setFilters] = useState({
     includeInactive: true,
     branchId: '',
@@ -204,8 +204,8 @@ export default function AdminInventoryPage() {
     settingBranchId: '',
   })
   const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState('')
   const [error, setError] = useState('')
-  const toast = useToast()
   const [materialModal, setMaterialModal] = useState(false)
   const [editingMaterialId, setEditingMaterialId] = useState(null)
   const [materialForm, setMaterialForm] = useState(emptyMaterial)
@@ -222,6 +222,11 @@ export default function AdminInventoryPage() {
 
   const selectedBranchId = filters.branchId ? Number(filters.branchId) : undefined
   const selectedServiceId = filters.serviceId ? Number(filters.serviceId) : undefined
+
+  const showToast = (message) => {
+    setToast(message)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const loadCommon = useCallback(async () => {
     const [materialData, unitData, branchData, serviceData, typeData] = await Promise.all([
@@ -286,6 +291,24 @@ export default function AdminInventoryPage() {
     loadActive()
   }, [loadActive])
 
+  const loadMetrics = useCallback(async () => {
+    try {
+      const [stockData, usageData] = await Promise.all([
+        fetchAdminInventoryStocks({}),
+        fetchAllServiceMaterials(),
+      ])
+      setAllStocks(Array.isArray(stockData) ? stockData : [])
+      setAllServiceUsageCount(Array.isArray(usageData) ? usageData.length : 0)
+    } catch {
+      // metric cards fall back to their previous values; page-level error is shown by loadActive
+    }
+  }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- summary metrics are independent of the active tab
+    loadMetrics()
+  }, [loadMetrics])
+
   const visibleMaterials = useMemo(
     () => materials.filter((m) => filters.includeInactive || m.isActive !== false),
     [materials, filters.includeInactive],
@@ -302,8 +325,8 @@ export default function AdminInventoryPage() {
   )
 
   const lowStockCount = useMemo(
-    () => stocks.filter((stock) => stock.isLowStock).length,
-    [stocks],
+    () => allStocks.filter((stock) => stock.isLowStock).length,
+    [allStocks],
   )
 
   const selectedUsageMaterial = useMemo(
@@ -358,10 +381,10 @@ export default function AdminInventoryPage() {
     try {
       if (editingMaterialId) {
         await updateAdminMaterial(editingMaterialId, { ...payload, isActive: materialForm.isActive })
-        toast.success('Đã cập nhật vật tư.')
+        showToast('Đã cập nhật vật tư.')
       } else {
         await createAdminMaterial(payload)
-        toast.success('Đã tạo vật tư.')
+        showToast('Đã tạo vật tư.')
       }
       setMaterialModal(false)
       await loadActive()
@@ -398,14 +421,14 @@ export default function AdminInventoryPage() {
     try {
       if (editingUnitId) {
         await updateAdminMaterialUnit(editingUnitId, payload)
-        toast.success('Đã cập nhật đơn vị.')
+        showToast('Đã cập nhật đơn vị.')
       } else {
         await createAdminMaterialUnit({
           code: unitForm.code.trim(),
           displayName: payload.displayName,
           measurementType: payload.measurementType,
         })
-        toast.success('Đã tạo đơn vị.')
+        showToast('Đã tạo đơn vị.')
       }
       resetUnitForm()
       await loadActive()
@@ -438,7 +461,8 @@ export default function AdminInventoryPage() {
       setEditingUsage(null)
       setUsageForm({ materialId: '', baseQuantity: '' })
       setServiceUsages(await fetchServiceMaterials(targetServiceId))
-      toast.success('Đã lưu định mức vật tư.')
+      showToast('Đã lưu định mức vật tư.')
+      loadMetrics()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không lưu được định mức.')
     } finally {
@@ -474,7 +498,7 @@ export default function AdminInventoryPage() {
         isActive: row.isActive !== false,
       })
       setMultipliers(await fetchConditionMultipliers())
-      toast.success('Đã cập nhật hệ số.')
+      showToast('Đã cập nhật hệ số.')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Không cập nhật được hệ số.')
     } finally {
@@ -493,7 +517,7 @@ export default function AdminInventoryPage() {
             ? Number(settingForm.negativeStockLimit)
             : null,
       })
-      toast.success('Đã cập nhật cấu hình branch.')
+      showToast('Đã cập nhật cấu hình branch.')
       const setting = await fetchBranchInventorySetting(filters.settingBranchId)
       setBranchSetting(setting)
     } catch (err) {
@@ -506,7 +530,6 @@ export default function AdminInventoryPage() {
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow="Vận hành"
         title="Quản lý vật tư"
         description="Danh mục, tồn kho, lô vật tư, định mức service và báo cáo lợi nhuận gộp"
         actionLabel={activeTab === 'materials' ? 'Thêm vật tư' : undefined}
@@ -514,6 +537,7 @@ export default function AdminInventoryPage() {
         onAction={activeTab === 'materials' ? () => openMaterial(null) : undefined}
       />
 
+      <Notice message={toast} />
       <Notice message={error} type="error" />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -521,7 +545,7 @@ export default function AdminInventoryPage() {
           ['Vật tư đang dùng', num(activeMaterialCount), 'inventory_2'],
           ['Đơn vị đo', num(materialUnits.length), 'straighten'],
           ['Tồn kho thấp', num(lowStockCount), 'warning'],
-          ['Định mức dịch vụ', num(serviceUsages.length), 'rule_settings'],
+          ['Định mức dịch vụ', num(allServiceUsageCount), 'rule_settings'],
         ].map(([label, value, icon]) => (
           <MetricCard key={label} label={label} value={value} icon={icon} />
         ))}

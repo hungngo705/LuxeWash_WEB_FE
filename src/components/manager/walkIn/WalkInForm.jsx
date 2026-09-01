@@ -76,28 +76,12 @@ function shortTime(value) {
 }
 
 /**
- * Kiểm tra slot có vượt sức chứa không (capacity warning threshold: 80%).
- * Trả về { isNearFull, isOverCapacity, capacityPercent }
- */
-function checkSlotCapacity(cell) {
-  const used = Number(cell?.used) || 0
-  const max = Number(cell?.max) || 0
-  if (max <= 0) return { isNearFull: false, isOverCapacity: false, capacityPercent: 0 }
-  const percent = Math.round((used / max) * 100)
-  return {
-    isNearFull: percent >= 80 && percent < 100,
-    isOverCapacity: percent >= 100,
-    capacityPercent: percent,
-  }
-}
-
-/**
  * Badge hiển thị % sức chứa của slot.
  * - <80%: xanh (OK)
  * - 80-99%: vàng (gần đầy)
  * - 100%+: đỏ (đầy)
  */
-function CapacityBadge({ used, max, cellState }) {
+function CapacityBadge({ used, max }) {
   const u = Number(used) || 0
   const m = Number(max) || 0
   if (m <= 0) return null
@@ -358,7 +342,6 @@ export default function WalkInForm({
             <CapacityBadge
               used={activeCell.used}
               max={activeCell.max}
-              cellState={activeCell.cellState}
             />
           </div>
           {/* Capacity warning: hiện khi slot gần đầy hoặc đầy */}

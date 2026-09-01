@@ -8,12 +8,10 @@ import {
   fetchVehicleTypes,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
+import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = { brand: '', name: '', productionYear: '', version: '', isActive: true, vehicleTypeId: '' }
 
@@ -28,14 +26,19 @@ export default function AdminCarModelsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const toast = useToast()
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
       const [fetchedModels, fetchedTypes] = await Promise.all([
-        fetchCarModels(),
+        fetchCarModels({ includeInactive: true }),
         fetchVehicleTypes(),
       ])
       setModels(fetchedModels)
@@ -77,12 +80,21 @@ export default function AdminCarModelsPage() {
     const trimmedName = form.name.trim()
 
     if (!trimmedBrand) {
-      toast.warning('Vui lòng nhập tên hãng xe')
+      showToast('Vui lòng nhập tên hãng xe')
       return
     }
     if (!trimmedName) {
-      toast.warning('Vui lòng nhập tên dòng xe')
+      showToast('Vui lòng nhập tên dòng xe')
       return
+    }
+
+    if (form.productionYear) {
+      const year = Number(form.productionYear)
+      const maxYear = new Date().getFullYear() + 1
+      if (!Number.isInteger(year) || year < 1980 || year > maxYear) {
+        showToast(`Năm sản xuất phải từ 1980 đến ${maxYear}`)
+        return
+      }
     }
 
     setSaving(true)
@@ -96,15 +108,15 @@ export default function AdminCarModelsPage() {
       }
       if (editingId) {
         await updateCarModel(editingId, { ...payload, isActive: form.isActive })
-        toast.success('Đã cập nhật mẫu xe')
+        showToast('Đã cập nhật mẫu xe')
       } else {
         await createCarModel(payload)
-        toast.success('Đã thêm mẫu xe')
+        showToast('Đã thêm mẫu xe')
       }
       setModalOpen(false)
       await loadData()
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không lưu được mẫu xe')
+      showToast(err instanceof ApiError ? err.message : 'Không lưu được mẫu xe')
     } finally {
       setSaving(false)
     }
@@ -116,10 +128,10 @@ export default function AdminCarModelsPage() {
     try {
       await deleteCarModel(deleteTarget)
       setDeleteTarget(null)
-      toast.success('Đã xóa mẫu xe')
+      showToast('Đã xóa mẫu xe')
       await loadData()
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không xóa được mẫu xe')
+      showToast(err instanceof ApiError ? err.message : 'Không xóa được mẫu xe')
     } finally {
       setDeleting(false)
     }
@@ -128,13 +140,17 @@ export default function AdminCarModelsPage() {
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow="Dịch vụ & Xe"
         title="Mẫu xe (hãng / dòng)"
         description="Quản lý CarModels cho khách chọn khi đăng ký xe. Mẫu mới do user gửi cần Staff xác minh tại Duyệt loại xe trước khi dùng chính thức."
         actionLabel="Thêm mẫu xe"
-        actionIcon="add_circle"
         onAction={openCreate}
       />
+
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
 
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
@@ -145,99 +161,63 @@ export default function AdminCarModelsPage() {
         </div>
       )}
 
-      <DataTable
-        data={models}
-        loading={loading}
-        minWidth="560px"
-        emptyIcon="commute"
-        emptyTitle="Chưa có mẫu xe"
-        columns={[
-          {
-            key: 'id',
-            label: 'ID',
-            width: '80px',
-            render: (row) => (
-              <span className="font-mono text-on-surface-variant">#{row.id}</span>
-            ),
-          },
-          {
-            key: 'brand',
-            label: 'Hãng',
-            render: (row) => row.brand || '—',
-          },
-          {
-            key: 'name',
-            label: 'Dòng xe',
-            render: (row) => (
-              <span className="font-medium text-on-surface">{row.name || '—'}</span>
-            ),
-          },
-          {
-            key: 'productionYear',
-            label: 'Năm SX',
-            render: (row) => row.productionYear ?? '—',
-            tdClassName: 'text-on-surface-variant',
-          },
-          {
-            key: 'version',
-            label: 'Phiên bản',
-            render: (row) => row.version || '—',
-            tdClassName: 'text-on-surface-variant',
-          },
-          {
-            key: 'vehicleTypeId',
-            label: 'Loại xe',
-            render: (row) =>
-              row.vehicleTypeId
-                ? vehicleTypes.find((t) => t.id === row.vehicleTypeId)?.name || '—'
-                : '—',
-          },
-          {
-            key: 'isActive',
-            label: 'Trạng thái',
-            width: '140px',
-            render: (row) => (
-              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
-            ),
-          },
-          {
-            key: 'actions',
-            label: 'Thao tác',
-            width: '140px',
-            align: 'right',
-            renderActions: (row) => (
-              <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-container/30"
-                  onClick={() => openEdit(row)}
-                >
-                  <span
-                    className="material-symbols-outlined text-[14px]"
-                    style={{ fontVariationSettings: "'FILL' 0" }}
-                  >
-                    edit
-                  </span>
-                  Sửa
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-error transition-colors hover:bg-error-container/30"
-                  onClick={() => setDeleteTarget(row.id)}
-                >
-                  <span
-                    className="material-symbols-outlined text-[14px]"
-                    style={{ fontVariationSettings: "'FILL' 0" }}
-                  >
-                    delete
-                  </span>
-                  Xóa
-                </button>
-              </div>
-            ),
-          },
-        ]}
-      />
+      {loading ? (
+        <p className="text-sm text-on-surface-variant">Đang tải…</p>
+      ) : models.length === 0 && !loadError ? (
+        <EmptyState icon="commute" title="Chưa có mẫu xe" />
+      ) : (
+        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+          <table className="w-full min-w-[560px] text-left text-sm">
+            <thead>
+              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                <th className="px-4 py-3">ID</th>
+                <th className="px-4 py-3">Hãng</th>
+                <th className="px-4 py-3">Dòng xe</th>
+                <th className="px-4 py-3">Năm SX</th>
+                <th className="px-4 py-3">Phiên bản</th>
+                <th className="px-4 py-3">Loại xe</th>
+                <th className="px-4 py-3">Trạng thái</th>
+                <th className="px-4 py-3">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/60">
+              {models.map((model) => (
+                <tr key={model.id} className="hover:bg-surface-container-low/50">
+                  <td className="px-4 py-3 text-on-surface-variant">#{model.id}</td>
+                  <td className="px-4 py-3 text-on-surface">{model.brand || '—'}</td>
+                  <td className="px-4 py-3 font-medium text-on-surface">{model.name || '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{model.productionYear ?? '—'}</td>
+                  <td className="px-4 py-3 text-on-surface-variant">{model.version || '—'}</td>
+                  <td className="px-4 py-3 text-on-surface">
+                    {model.vehicleTypeId ? vehicleTypes.find(t => t.id === model.vehicleTypeId)?.name || '—' : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={model.isActive !== false ? 'Active' : 'Inactive'} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
+                        onClick={() => openEdit(model)}
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
+                        onClick={() => setDeleteTarget(model.id)}
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <FormModal
         open={modalOpen}
@@ -247,40 +227,48 @@ export default function AdminCarModelsPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          <Input
-            label="Hãng"
-            required
-            value={form.brand}
-            disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
-            iconLeft="directions_car"
-          />
-          <Input
-            label="Dòng xe"
-            required
-            value={form.name}
-            disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            iconLeft="commute"
-          />
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Hãng</span>
+            <input
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.brand}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">Dòng xe</span>
+            <input
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.name}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            />
+          </label>
           <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Năm sản xuất"
-              type="number"
-              min={1980}
-              max={2100}
-              placeholder="2024"
-              value={form.productionYear}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, productionYear: e.target.value }))}
-            />
-            <Input
-              label="Phiên bản"
-              placeholder="VD: 2.5Q, XLE"
-              value={form.version}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
-            />
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Năm sản xuất</span>
+              <input
+                type="number"
+                min={1980}
+                max={new Date().getFullYear() + 1}
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.productionYear}
+                disabled={saving}
+                placeholder="2024"
+                onChange={(e) => setForm((f) => ({ ...f, productionYear: e.target.value }))}
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs font-semibold uppercase text-on-surface-variant">Phiên bản</span>
+              <input
+                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={form.version}
+                disabled={saving}
+                placeholder="VD: 2.5Q, XLE"
+                onChange={(e) => setForm((f) => ({ ...f, version: e.target.value }))}
+              />
+            </label>
           </div>
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase text-on-surface-variant">Loại xe</span>
@@ -317,7 +305,6 @@ export default function AdminCarModelsPage() {
         title="Xóa mẫu xe"
         message="Bạn chắc chắn muốn xóa mẫu xe này?"
         confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
-        loading={deleting}
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => !deleting && setDeleteTarget(null)}

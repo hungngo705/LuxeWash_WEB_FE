@@ -8,6 +8,7 @@ import {
   formatStaffStationLabel,
 } from '../api'
 import { useAuth } from '../context/AuthContext'
+import { isValidPassword, PASSWORD_ERROR_MESSAGE } from '../utils/validation'
 
 export default function SettingsPage() {
   const { staff, logout, refreshProfile } = useAuth()
@@ -56,6 +57,10 @@ export default function SettingsPage() {
     if (passwordSaving) return
     if (newPassword !== confirmPassword) {
       setPasswordMessage('Mật khẩu xác nhận không khớp')
+      return
+    }
+    if (!isValidPassword(newPassword)) {
+      setPasswordMessage(PASSWORD_ERROR_MESSAGE)
       return
     }
     setPasswordSaving(true)

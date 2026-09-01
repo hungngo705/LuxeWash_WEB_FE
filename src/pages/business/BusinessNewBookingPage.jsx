@@ -22,8 +22,9 @@ function formatScheduleTime(value) {
 function VehicleServiceRow({ vehicle, services, selectedServices, onToggleService, resolvedVehicleTypeId, branchId }) {
   const price = (serviceId) => {
     const svc = services.find((s) => s.serviceId === serviceId)
-    if (!svc || !branchId) return null
-    return getServicePriceForContext(svc, { branchId, vehicleTypeId: resolvedVehicleTypeId })
+    if (!svc) return null
+    // branchId chưa có ở bước này → getServicePriceForContext trả giá tạm tính theo loại xe.
+    return getServicePriceForContext(svc, { branchId: branchId ?? null, vehicleTypeId: resolvedVehicleTypeId })
   }
 
   const total = (selectedServices[vehicle.fleetVehicleId] || []).reduce((sum, id) => {
@@ -431,7 +432,10 @@ export default function BusinessNewBookingPage() {
 
             {selectedVehicleIds.length > 0 && (
               <div className="bg-surface-container rounded-xl px-4 py-3 flex items-center justify-between">
-                <span className="text-sm text-on-surface">Tổng cộng ({selectedVehicleIds.length} xe)</span>
+                <div>
+                  <span className="text-sm text-on-surface">Tạm tính ({selectedVehicleIds.length} xe)</span>
+                  <p className="text-[11px] text-on-surface-variant">Giá cuối cùng theo chi nhánh sẽ hiển thị ở bước sau</p>
+                </div>
                 <span className="text-lg font-bold text-primary">{formatVnd(totalPrice)}</span>
               </div>
             )}

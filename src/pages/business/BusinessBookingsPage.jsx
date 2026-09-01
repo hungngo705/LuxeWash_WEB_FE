@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fetchBusinessBookings, cancelBooking } from '../../api/business.api'
+import { fetchAllBusinessBookings, cancelBooking } from '../../api/business.api'
 import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import { formatDateTime } from '../../utils/format'
 
@@ -11,6 +11,7 @@ function StatusBadge({ status }) {
     Processing: { label: 'Đang rửa', className: 'bg-orange-100 text-orange-800' },
     Completed: { label: 'Hoàn tất', className: 'bg-green-100 text-green-800' },
     Cancelled: { label: 'Đã hủy', className: 'bg-gray-100 text-gray-600' },
+    NoShow: { label: 'Vắng mặt', className: 'bg-amber-100 text-amber-800' },
   }
   const style = map[status] || { label: status, className: 'bg-gray-100 text-gray-600' }
   return (
@@ -28,7 +29,7 @@ export default function BusinessBookingsPage() {
   const [cancellingId, setCancellingId] = useState(null)
 
   useEffect(() => {
-    fetchBusinessBookings()
+    fetchAllBusinessBookings()
       .then((data) => setBookings(Array.isArray(data) ? data : []))
       .catch(() => setError('Không thể tải danh sách đặt lịch.'))
       .finally(() => setLoading(false))
@@ -62,6 +63,7 @@ export default function BusinessBookingsPage() {
     { value: 'CheckedIn', label: 'Đã check-in' },
     { value: 'Processing', label: 'Đang rửa' },
     { value: 'Cancelled', label: 'Đã hủy' },
+    { value: 'NoShow', label: 'Vắng mặt' },
   ]
 
   if (loading) {

@@ -47,12 +47,12 @@ export default function BusinessDashboardPage() {
   useEffect(() => {
     Promise.all([
       fetchBusinessDashboard().catch(() => null),
-      fetchBusinessBookings().catch(() => []),
+      fetchBusinessBookings({ page: 1, pageSize: 5 }).catch(() => []),
     ])
       .then(([dash, bkgs]) => {
         setDashboard(dash)
         setFleet(null)
-        setRecentBookings(Array.isArray(bkgs) ? bkgs.slice(0, 5) : [])
+        setRecentBookings(Array.isArray(bkgs) ? bkgs : [])
       })
       .catch(() => setError('Không thể tải dữ liệu dashboard.'))
       .finally(() => setLoading(false))

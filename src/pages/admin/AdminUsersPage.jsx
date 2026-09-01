@@ -1,22 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ApiError,
   fetchUserById,
   fetchUserPointsHistory,
+  fetchUserRoleStats,
   fetchUsers,
   normalizeListUser,
   syncUserPoints,
   updateUserStatus,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
+import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { Skeleton } from '../../components/ui/Skeleton'
-import { useToast } from '../../components/ui/Toast'
 
-const ROLE_TABS = ['All', 'Customer', 'Staff', 'Admin']
+const ROLE_TABS = ['All', 'Customer', 'Staff', 'Manager', 'Business']
 const PAGE_SIZE = 10
 
 export default function AdminUsersPage() {
@@ -26,7 +24,7 @@ export default function AdminUsersPage() {
     totalPages: 1,
     currentPage: 1,
   })
-  const [stats, setStats] = useState({ total: 0, customers: 0, staff: 0, blocked: 0 })
+  const [stats, setStats] = useState({ total: 0, customers: 0, staff: 0, managers: 0, businesses: 0, blocked: 0 })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [search, setSearch] = useState('')
@@ -38,11 +36,16 @@ export default function AdminUsersPage() {
   const [statusTarget, setStatusTarget] = useState(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [syncingPoints, setSyncingPoints] = useState(false)
-  const toast = useToast()
-
+  const [toast, setToast] = useState('')
+  
   const [pointsHistoryOpen, setPointsHistoryOpen] = useState(false)
   const [pointsHistory, setPointsHistory] = useState([])
   const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350)
@@ -55,17 +58,14 @@ export default function AdminUsersPage() {
 
   const loadStats = useCallback(async () => {
     try {
-      const [allResult, blockedResult] = await Promise.all([
-        fetchUsers({ page: 1, pageSize: 1 }),
-        fetchUsers({ page: 1, pageSize: 1, status: 'Blocked' }),
-      ])
-      const total = allResult?.totalItems ?? 0
-      const blocked = blockedResult?.totalItems ?? 0
+      const data = await fetchUserRoleStats()
       setStats({
-        total,
-        customers: total,
-        staff: 0,
-        blocked,
+        total: data?.total ?? 0,
+        customers: data?.customer ?? 0,
+        staff: data?.staff ?? 0,
+        managers: data?.manager ?? 0,
+        businesses: data?.business ?? 0,
+        blocked: data?.blocked ?? 0,
       })
     } catch {
       // Stats are non-critical — list error is shown separately
@@ -80,6 +80,7 @@ export default function AdminUsersPage() {
         page,
         pageSize: PAGE_SIZE,
         keyword: debouncedSearch || undefined,
+        role: roleFilter !== 'All' ? roleFilter : undefined,
       })
       const items = Array.isArray(data?.items) ? data.items.map(normalizeListUser) : []
       setUsers(items)
@@ -93,7 +94,7 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch])
+  }, [page, debouncedSearch, roleFilter])
 
   useEffect(() => {
     loadStats()
@@ -102,11 +103,6 @@ export default function AdminUsersPage() {
   useEffect(() => {
     loadUsers()
   }, [loadUsers])
-
-  const filtered = useMemo(() => {
-    if (roleFilter === 'All') return users
-    return users.filter((u) => u.role === roleFilter)
-  }, [users, roleFilter])
 
   const selectUser = async (user) => {
     setSelectedUser({ ...user })
@@ -121,7 +117,7 @@ export default function AdminUsersPage() {
         tierName: detail.tierName ?? user.tierName,
       }))
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không tải được chi tiết')
+      showToast(err instanceof ApiError ? err.message : 'Không tải được chi tiết')
       setSelectedUser(null)
     } finally {
       setDetailLoading(false)
@@ -135,7 +131,7 @@ export default function AdminUsersPage() {
       const data = await fetchUserPointsHistory(userId)
       setPointsHistory(Array.isArray(data) ? data : [])
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không tải được lịch sử điểm')
+      showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử điểm')
     } finally {
       setLoadingPointsHistory(false)
     }
@@ -150,13 +146,13 @@ export default function AdminUsersPage() {
     try {
       await updateUserStatus(statusTarget.userId, nextStatus)
       setStatusTarget(null)
-      toast.success(nextStatus === 'Blocked' ? 'Đã khóa tài khoản' : 'Đã mở khóa tài khoản')
+      showToast(nextStatus === 'Blocked' ? 'Đã khóa tài khoản' : 'Đã mở khóa tài khoản')
       await Promise.all([loadUsers(), loadStats()])
       if (selectedUser?.userId === statusTarget.userId) {
         setSelectedUser((prev) => (prev ? { ...prev, userStatus: nextStatus } : prev))
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
+      showToast(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
     } finally {
       setUpdatingStatus(false)
     }
@@ -167,10 +163,10 @@ export default function AdminUsersPage() {
     setSyncingPoints(true)
     try {
       await syncUserPoints()
-      toast.success('Đã đồng bộ điểm thành viên')
+      showToast('Đã đồng bộ điểm thành viên')
       await loadUsers()
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không đồng bộ được điểm')
+      showToast(err instanceof ApiError ? err.message : 'Không đồng bộ được điểm')
     } finally {
       setSyncingPoints(false)
     }
@@ -179,7 +175,6 @@ export default function AdminUsersPage() {
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow="Khách hàng"
         title="Người dùng hệ thống"
         description="Quản lý khách hàng — tìm kiếm, xem chi tiết, khóa/mở khóa tài khoản"
         actionLabel={syncingPoints ? 'Đang đồng bộ…' : 'Đồng bộ điểm'}
@@ -187,26 +182,31 @@ export default function AdminUsersPage() {
         onAction={handleSyncPoints}
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
+
+      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {[
           { label: 'Tổng', value: stats.total, icon: 'group' },
           { label: 'Khách hàng', value: stats.customers, icon: 'person' },
           { label: 'Staff', value: stats.staff, icon: 'badge' },
+          { label: 'Quản lý', value: stats.managers, icon: 'supervisor_account' },
+          { label: 'Doanh nghiệp', value: stats.businesses, icon: 'apartment' },
           { label: 'Bị khóa', value: stats.blocked, icon: 'block' },
         ].map((stat) => (
           <div
             key={stat.label}
-            className="lw-card-hover flex items-center gap-3 rounded-xl border border-outline-variant/60 bg-white p-4 shadow-lw-sm"
+            className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
           >
-            <span
-              className="material-symbols-outlined text-primary"
-              style={{ fontVariationSettings: "'FILL' 1" }}
-            >
-              {stat.icon}
-            </span>
-            <div>
-              <p className="text-xs text-on-surface-variant">{stat.label}</p>
-              <p className="font-sora text-xl font-semibold text-on-surface">{stat.value}</p>
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-primary">{stat.icon}</span>
+              <div>
+                <p className="text-xs text-on-surface-variant">{stat.label}</p>
+                <p className="font-sora text-xl font-semibold text-on-surface">{stat.value}</p>
+              </div>
             </div>
           </div>
         ))}
@@ -214,12 +214,14 @@ export default function AdminUsersPage() {
 
       <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-md flex-1">
-          <Input
-            iconLeft="search"
+          <span className="material-symbols-outlined absolute top-1/2 left-3 -translate-y-1/2 text-on-surface-variant">
+            search
+          </span>
+          <input
+            className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest py-2.5 pr-4 pl-10 text-sm"
             placeholder="Tìm theo tên, SĐT, email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
           />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -227,9 +229,9 @@ export default function AdminUsersPage() {
             <button
               key={tab}
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all active:scale-95 ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                 roleFilter === tab
-                  ? 'bg-primary text-on-primary shadow-sm'
+                  ? 'bg-primary text-on-primary'
                   : 'border border-outline-variant text-on-surface-variant hover:bg-surface-variant'
               }`}
               onClick={() => setRoleFilter(tab)}
@@ -241,11 +243,11 @@ export default function AdminUsersPage() {
       </div>
 
       {loadError && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
+        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-error">{loadError}</p>
           <button
             type="button"
-            className="rounded-lg border border-error/40 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error-container/40"
+            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
             onClick={loadUsers}
           >
             Thử lại
@@ -256,63 +258,43 @@ export default function AdminUsersPage() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         <div className="xl:col-span-7">
           {loading ? (
-            <div className="lw-card space-y-3 p-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} height="48px" />
-              ))}
-            </div>
+            <p className="text-sm text-on-surface-variant">Đang tải người dùng…</p>
+          ) : users.length === 0 && !loadError ? (
+            <EmptyState icon="person_search" title="Không tìm thấy người dùng" />
           ) : (
             <>
-              <DataTable
-                data={filtered}
-                loading={loading}
-                minWidth="640px"
-                emptyIcon="person_search"
-                emptyTitle="Không tìm thấy người dùng"
-                emptyMessage="Thử thay đổi từ khóa hoặc bộ lọc vai trò."
-                columns={[
-                  {
-                    key: 'fullName',
-                    label: 'Họ tên',
-                    render: (row) => (
-                      <button
-                        type="button"
-                        className={`text-left font-medium transition-colors ${
-                          selectedUser?.userId === row.userId
-                            ? 'text-primary'
-                            : 'text-on-surface hover:text-primary'
+              <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
+                <table className="w-full min-w-[640px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <th className="px-4 py-3">Họ tên</th>
+                      <th className="px-4 py-3">SĐT</th>
+                      <th className="px-4 py-3">Vai trò</th>
+                      <th className="px-4 py-3">Hạng</th>
+                      <th className="px-4 py-3">Trạng thái</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant/60">
+                    {users.map((user) => (
+                      <tr
+                        key={user.userId}
+                        className={`cursor-pointer hover:bg-surface-container-low/50 ${
+                          selectedUser?.userId === user.userId ? 'bg-primary-container/10' : ''
                         }`}
-                        onClick={() => selectUser(row)}
+                        onClick={() => selectUser(user)}
                       >
-                        {row.fullName}
-                      </button>
-                    ),
-                  },
-                  {
-                    key: 'phoneNumber',
-                    label: 'SĐT',
-                    render: (row) => row.phoneNumber,
-                    tdClassName: 'text-on-surface-variant',
-                  },
-                  {
-                    key: 'role',
-                    label: 'Vai trò',
-                    render: (row) => row.role,
-                  },
-                  {
-                    key: 'tierName',
-                    label: 'Hạng',
-                    render: (row) => row.tierName ?? '—',
-                    tdClassName: 'text-on-surface-variant',
-                  },
-                  {
-                    key: 'userStatus',
-                    label: 'Trạng thái',
-                    width: '140px',
-                    render: (row) => <StatusBadge status={row.userStatus} />,
-                  },
-                ]}
-              />
+                        <td className="px-4 py-3 font-medium text-on-surface">{user.fullName}</td>
+                        <td className="px-4 py-3 text-on-surface-variant">{user.phoneNumber}</td>
+                        <td className="px-4 py-3 text-on-surface">{user.role}</td>
+                        <td className="px-4 py-3 text-on-surface-variant">{user.tierName ?? '—'}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={user.userStatus} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               {pagination.totalPages > 1 && (
                 <div className="mt-4 flex items-center justify-between text-sm">
@@ -323,7 +305,7 @@ export default function AdminUsersPage() {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      className="rounded-lg border border-outline-variant bg-white px-3 py-1.5 transition-colors hover:bg-surface-variant disabled:opacity-50"
+                      className="rounded-lg border border-outline-variant px-3 py-1.5 disabled:opacity-50"
                       disabled={page <= 1}
                       onClick={() => setPage((p) => p - 1)}
                     >
@@ -331,7 +313,7 @@ export default function AdminUsersPage() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg border border-outline-variant bg-white px-3 py-1.5 transition-colors hover:bg-surface-variant disabled:opacity-50"
+                      className="rounded-lg border border-outline-variant px-3 py-1.5 disabled:opacity-50"
                       disabled={page >= pagination.totalPages}
                       onClick={() => setPage((p) => p + 1)}
                     >
@@ -346,52 +328,37 @@ export default function AdminUsersPage() {
 
         <div className="xl:col-span-5">
           {selectedUser ? (
-            <div className="lw-card sticky top-20 rounded-xl p-6">
+            <div className="glass-panel soft-shadow sticky top-20 rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
               <div className="mb-4 flex items-start gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary-container bg-primary-container/30">
-                  <span
-                    className="material-symbols-outlined text-3xl text-primary"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    person
-                  </span>
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary-container bg-surface-container-low">
+                  <span className="material-symbols-outlined text-3xl text-primary">person</span>
                 </div>
-                <div className="flex-1">
+                <div>
                   <h3 className="font-sora text-xl font-semibold text-on-surface">
                     {selectedUser.fullName}
                   </h3>
                   <p className="text-sm text-on-surface-variant">{selectedUser.role}</p>
-                  <div className="mt-1.5">
-                    <StatusBadge status={selectedUser.userStatus} />
-                  </div>
+                  <StatusBadge status={selectedUser.userStatus} />
                 </div>
               </div>
 
               {detailLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} height="20px" />
-                  ))}
-                </div>
+                <p className="text-sm text-on-surface-variant">Đang tải chi tiết…</p>
               ) : (
                 <dl className="space-y-3 text-sm">
                   <div>
-                    <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
-                      SĐT
-                    </dt>
+                    <dt className="text-xs font-semibold text-on-surface-variant uppercase">SĐT</dt>
                     <dd className="text-on-surface">{selectedUser.phoneNumber}</dd>
                   </div>
                   {selectedUser.tierName && (
                     <div>
-                      <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
-                        Hạng
-                      </dt>
+                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">Hạng</dt>
                       <dd className="text-on-surface">{selectedUser.tierName}</dd>
                     </div>
                   )}
                   {selectedUser.totalPoint != null && (
                     <div>
-                      <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
                         Tổng điểm
                       </dt>
                       <dd className="text-on-surface">
@@ -401,7 +368,7 @@ export default function AdminUsersPage() {
                   )}
                   {selectedUser.promotionPoint != null && (
                     <div>
-                      <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
                         Điểm khuyến mãi
                       </dt>
                       <dd className="text-on-surface">
@@ -414,21 +381,15 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         onClick={() => handleOpenPointsHistory(selectedUser.userId)}
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-primary transition-colors hover:text-primary/80"
+                        className="text-sm font-semibold text-primary hover:underline"
                       >
-                        <span
-                          className="material-symbols-outlined text-[16px]"
-                          style={{ fontVariationSettings: "'FILL' 0" }}
-                        >
-                          history
-                        </span>
                         Xem lịch sử giao dịch điểm
                       </button>
                     </div>
                   )}
                   {selectedUser.churnScore != null && (
                     <div>
-                      <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
                         Churn score
                       </dt>
                       <dd className="text-on-surface">{selectedUser.churnScore}</dd>
@@ -436,7 +397,7 @@ export default function AdminUsersPage() {
                   )}
                   {selectedUser.lastVisitDate && (
                     <div>
-                      <dt className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
                         Lần ghé gần nhất
                       </dt>
                       <dd className="text-on-surface">{selectedUser.lastVisitDate}</dd>
@@ -444,7 +405,7 @@ export default function AdminUsersPage() {
                   )}
                   {selectedUser.vehicles?.length > 0 && (
                     <div>
-                      <dt className="mb-2 text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+                      <dt className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
                         Xe ({selectedUser.vehicles.length})
                       </dt>
                       <dd className="space-y-1">
@@ -453,7 +414,9 @@ export default function AdminUsersPage() {
                             key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
                             className="rounded-lg bg-surface-container-low px-3 py-2"
                           >
-                            <p className="font-medium text-on-surface">{v.licensePlate || '—'}</p>
+                            <p className="font-medium text-on-surface">
+                              {v.licensePlate || '—'}
+                            </p>
                             {(v.displayName || v.vehicleType || v.vehicleTypeName) && (
                               <p className="text-sm text-on-surface-variant">
                                 {[v.displayName, v.vehicleType || v.vehicleTypeName]
@@ -472,31 +435,20 @@ export default function AdminUsersPage() {
               {selectedUser.role === 'Customer' && !detailLoading && (
                 <button
                   type="button"
-                  className={`mt-6 inline-flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-95 ${
+                  className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold ${
                     selectedUser.userStatus === 'Blocked'
-                      ? 'bg-primary text-on-primary hover:bg-primary/90'
-                      : 'border border-error/40 text-error hover:bg-error-container/40'
+                      ? 'bg-primary text-on-primary'
+                      : 'border border-error/30 text-error hover:bg-error-container/20'
                   }`}
                   onClick={() => setStatusTarget(selectedUser)}
                 >
-                  <span
-                    className="material-symbols-outlined text-[18px]"
-                    style={{ fontVariationSettings: "'FILL' 0" }}
-                  >
-                    {selectedUser.userStatus === 'Blocked' ? 'lock_open' : 'lock'}
-                  </span>
                   {selectedUser.userStatus === 'Blocked' ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
                 </button>
               )}
             </div>
           ) : (
-            <div className="lw-card rounded-xl p-8 text-center text-on-surface-variant">
-              <span
-                className="material-symbols-outlined mb-2 text-4xl opacity-50"
-                style={{ fontVariationSettings: "'FILL' 0" }}
-              >
-                person
-              </span>
+            <div className="glass-panel soft-shadow rounded-xl border border-outline-variant bg-surface-container-lowest p-8 text-center text-on-surface-variant">
+              <span className="material-symbols-outlined mb-2 text-4xl opacity-50">person</span>
               <p className="text-sm">Chọn người dùng để xem chi tiết</p>
             </div>
           )}
@@ -512,84 +464,58 @@ export default function AdminUsersPage() {
             : `Khóa tài khoản của ${statusTarget?.fullName}? Khách hàng sẽ không thể sử dụng dịch vụ.`
         }
         confirmLabel={updatingStatus ? 'Đang xử lý…' : 'Xác nhận'}
-        loading={updatingStatus}
         variant={statusTarget?.userStatus === 'Blocked' ? 'default' : 'danger'}
         onConfirm={handleStatusChange}
         onCancel={() => !updatingStatus && setStatusTarget(null)}
       />
 
       {pointsHistoryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            aria-label="Đóng"
-            onClick={() => setPointsHistoryOpen(false)}
-          />
-          <div className="lw-panel-enter relative flex max-h-[90vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-lw-xl">
-            <div className="flex items-center justify-between border-b border-outline-variant px-6 py-4">
-              <h3 className="font-sora text-lg font-semibold text-on-surface">Lịch sử điểm</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-surface p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-sora text-xl font-bold text-on-surface">Lịch sử điểm</h3>
               <button
                 type="button"
                 onClick={() => setPointsHistoryOpen(false)}
-                className="rounded-lg p-1 text-on-surface-variant transition-colors hover:bg-surface-variant hover:text-on-surface"
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-container"
               >
-                <span className="material-symbols-outlined">close</span>
+                <span className="material-symbols-outlined text-xl">close</span>
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto p-6">
+            <div className="flex-1 overflow-auto">
               {loadingPointsHistory ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Skeleton key={i} height="48px" />
-                  ))}
-                </div>
+                <p className="py-8 text-center text-on-surface-variant">Đang tải...</p>
               ) : pointsHistory.length === 0 ? (
-                <p className="py-8 text-center text-on-surface-variant">
-                  Không có giao dịch nào.
-                </p>
+                <p className="py-8 text-center text-on-surface-variant">Không có giao dịch nào.</p>
               ) : (
-                <div className="lw-table-container overflow-hidden">
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="lw-table-header">
-                        <th>Thời gian</th>
-                        <th>Biến động</th>
-                        <th>Lý do</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pointsHistory.map((pt) => {
-                        const net = (pt.pointsAdded || 0) - (pt.pointsDeducted || 0)
-                        return (
-                          <tr key={pt.ledgerId} className="lw-table-row border-t border-outline-variant/40">
-                            <td className="text-on-surface">
-                              {pt.transactionDate
-                                ? new Date(pt.transactionDate).toLocaleString('vi-VN')
-                                : '—'}
-                            </td>
-                            <td>
-                              <span
-                                className={`font-semibold ${
-                                  net > 0
-                                    ? 'text-primary'
-                                    : net < 0
-                                      ? 'text-error'
-                                      : 'text-on-surface-variant'
-                                }`}
-                              >
-                                {net > 0 ? '+' : ''}
-                                {net}
-                              </span>
-                            </td>
-                            <td className="text-on-surface-variant">{pt.reason || '—'}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <table className="w-full text-left text-sm text-on-surface">
+                  <thead className="sticky top-0 bg-surface text-xs text-on-surface-variant uppercase">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold">Thời gian</th>
+                      <th className="px-4 py-3 font-semibold">Biến động</th>
+                      <th className="px-4 py-3 font-semibold">Lý do</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-outline-variant">
+                    {pointsHistory.map((pt) => {
+                      const net = (pt.pointsAdded || 0) - (pt.pointsDeducted || 0)
+                      return (
+                        <tr key={pt.ledgerId} className="hover:bg-surface-container-lowest">
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            {pt.transactionDate ? new Date(pt.transactionDate).toLocaleString('vi-VN') : '—'}
+                          </td>
+                          <td className="px-4 py-3 font-medium">
+                            <span className={net > 0 ? 'text-primary' : net < 0 ? 'text-error' : ''}>
+                              {net > 0 ? '+' : ''}{net}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{pt.reason || '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           </div>

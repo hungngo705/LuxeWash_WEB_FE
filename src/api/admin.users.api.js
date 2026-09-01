@@ -39,7 +39,17 @@ import { apiRequest } from './client'
  *   pageSize?: number
  *   keyword?: string
  *   status?: 'Active' | 'Blocked'
+ *   role?: 'Customer' | 'Staff' | 'Manager' | 'Admin'
  * }} FetchUsersParams
+ *
+ * @typedef {{
+ *   total: number
+ *   customer: number
+ *   staff: number
+ *   manager: number
+ *   business: number
+ *   blocked: number
+ * }} UserRoleStats
  */
 
 /** @param {FetchUsersParams & { signal?: AbortSignal }} [params] @returns {Promise<UserListPage>} */
@@ -51,9 +61,15 @@ export function fetchUsers(params = {}) {
   if (rest.pageSize) searchParams.set('pageSize', String(rest.pageSize))
   if (rest.keyword) searchParams.set('keyword', rest.keyword)
   if (rest.status) searchParams.set('status', rest.status)
+  if (rest.role) searchParams.set('role', rest.role)
 
   const query = searchParams.toString()
   return apiRequest(`/admin/users${query ? `?${query}` : ''}`, signal ? { signal } : undefined)
+}
+
+/** @param {{ signal?: AbortSignal }} [options] @returns {Promise<UserRoleStats>} */
+export function fetchUserRoleStats(options = {}) {
+  return apiRequest('/admin/users/stats', options)
 }
 
 /** @param {Record<string, unknown>} vehicle */

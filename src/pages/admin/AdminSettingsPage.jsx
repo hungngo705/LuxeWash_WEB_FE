@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ApiError, API_BASE_URL, changePassword, fetchCurrentUser, updateCurrentUserProfile } from '../../api'
 import { useAuth } from '../../context/AuthContext'
-import PageHeader from '../../components/admin/shared/PageHeader'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
-
-const PASSWORD_PATTERN = /^(?=.*[A-Z])(?=.*\d).{8,}$/
+import { PASSWORD_REGEX as PASSWORD_PATTERN, isValidPhoneNumber, isValidEmail, PHONE_ERROR_MESSAGE, EMAIL_ERROR_MESSAGE } from '../../utils/validation'
 
 function normalizeProfile(profile, user) {
   return {
@@ -34,8 +30,13 @@ export default function AdminSettingsPage() {
   const [profileError, setProfileError] = useState('')
   const [savingProfile, setSavingProfile] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [toast, setToast] = useState('')
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const toast = useToast()
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const loadProfile = useCallback(async () => {
     setLoadingProfile(true)
@@ -64,7 +65,15 @@ export default function AdminSettingsPage() {
     if (savingProfile) return
 
     if (!profileForm.fullName.trim()) {
-      toast.error('Họ tên không được để trống')
+      showToast('Họ tên không được để trống')
+      return
+    }
+    if (profileForm.phoneNumber.trim() && !isValidPhoneNumber(profileForm.phoneNumber)) {
+      showToast(PHONE_ERROR_MESSAGE)
+      return
+    }
+    if (profileForm.email.trim() && !isValidEmail(profileForm.email)) {
+      showToast(EMAIL_ERROR_MESSAGE)
       return
     }
 
@@ -84,9 +93,9 @@ export default function AdminSettingsPage() {
         phoneNumber: normalized.phoneNumber,
         email: normalized.email,
       })
-      toast.success('Đã cập nhật hồ sơ')
+      showToast('Đã cập nhật hồ sơ')
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không cập nhật được hồ sơ')
+      showToast(err instanceof ApiError ? err.message : 'Không cập nhật được hồ sơ')
     } finally {
       setSavingProfile(false)
     }
@@ -97,17 +106,17 @@ export default function AdminSettingsPage() {
     if (changingPassword) return
 
     if (!passwordForm.oldPassword || !passwordForm.newPassword) {
-      toast.error('Vui lòng nhập đủ mật khẩu')
+      showToast('Vui lòng nhập đủ mật khẩu')
       return
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error('Mật khẩu mới không khớp')
+      showToast('Mật khẩu mới không khớp')
       return
     }
 
     if (!PASSWORD_PATTERN.test(passwordForm.newPassword)) {
-      toast.error('Mật khẩu mới cần ≥8 ký tự, có chữ hoa và số')
+      showToast('Mật khẩu mới cần ≥8 ký tự, có chữ hoa và số')
       return
     }
 
@@ -115,9 +124,9 @@ export default function AdminSettingsPage() {
     try {
       await changePassword(passwordForm.oldPassword, passwordForm.newPassword)
       setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' })
-      toast.success('Đã đổi mật khẩu thành công')
+      showToast('Đã đổi mật khẩu thành công')
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không đổi được mật khẩu')
+      showToast(err instanceof ApiError ? err.message : 'Không đổi được mật khẩu')
     } finally {
       setChangingPassword(false)
     }
@@ -137,13 +146,20 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <PageHeader
-        eyebrow="Tài khoản"
-        title="Cài đặt Admin"
-        description="Tài khoản quản trị và bảo mật"
-      />
+      <div className="mb-6">
+        <h1 className="font-sora text-2xl font-semibold text-on-surface">Cài đặt Admin</h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
+          Tài khoản quản trị và bảo mật
+        </p>
+      </div>
 
-      <section className="lw-card mb-6 overflow-hidden rounded-xl">
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
+
+      <section className="glass-panel soft-shadow mb-6 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h2 className="flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
             <span className="material-symbols-outlined text-primary">admin_panel_settings</span>
@@ -166,31 +182,42 @@ export default function AdminSettingsPage() {
                 <span className="material-symbols-outlined text-4xl text-primary">admin_panel_settings</span>
               </div>
               <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2">
-                <Input
-                  label="Họ tên"
-                  required
-                  value={profileForm.fullName}
-                  disabled={savingProfile}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, fullName: e.target.value }))}
-                  className="sm:col-span-2"
-                  iconLeft="person"
-                />
-                <Input
-                  label="Số điện thoại"
-                  value={profileForm.phoneNumber}
-                  disabled={savingProfile}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, phoneNumber: e.target.value }))}
-                  iconLeft="call"
-                />
-                <Input
-                  label="Email"
-                  type="email"
-                  value={profileForm.email}
-                  disabled={savingProfile}
-                  onChange={(e) => setProfileForm((f) => ({ ...f, email: e.target.value }))}
-                  placeholder="admin@example.com"
-                  iconLeft="mail"
-                />
+                <label className="block space-y-1 sm:col-span-2">
+                  <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                    Họ tên
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                    value={profileForm.fullName}
+                    disabled={savingProfile}
+                    onChange={(e) => setProfileForm((f) => ({ ...f, fullName: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                    Số điện thoại
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                    value={profileForm.phoneNumber}
+                    disabled={savingProfile}
+                    onChange={(e) => setProfileForm((f) => ({ ...f, phoneNumber: e.target.value }))}
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+                    Email
+                  </span>
+                  <input
+                    type="email"
+                    className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                    value={profileForm.email}
+                    disabled={savingProfile}
+                    onChange={(e) => setProfileForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="admin@example.com"
+                  />
+                </label>
                 <div>
                   <p className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                     Vai trò
@@ -217,7 +244,7 @@ export default function AdminSettingsPage() {
         )}
       </section>
 
-      <section className="lw-card mb-6 overflow-hidden rounded-xl">
+      <section className="glass-panel soft-shadow mb-6 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h2 className="flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
             <span className="material-symbols-outlined text-primary">lock</span>
@@ -225,37 +252,49 @@ export default function AdminSettingsPage() {
           </h2>
         </div>
         <form className="space-y-4 p-6" onSubmit={handleChangePassword}>
-          <Input
-            label="Mật khẩu hiện tại"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={passwordForm.oldPassword}
-            disabled={changingPassword}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, oldPassword: e.target.value }))}
-            iconLeft="lock"
-          />
-          <Input
-            label="Mật khẩu mới"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={passwordForm.newPassword}
-            disabled={changingPassword}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
-            iconLeft="key"
-            helper="Ít nhất 8 ký tự, có chữ hoa và số"
-          />
-          <Input
-            label="Xác nhận mật khẩu mới"
-            type="password"
-            autoComplete="new-password"
-            required
-            value={passwordForm.confirmPassword}
-            disabled={changingPassword}
-            onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))}
-            iconLeft="key"
-          />
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Mật khẩu hiện tại
+            </span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={passwordForm.oldPassword}
+              disabled={changingPassword}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, oldPassword: e.target.value }))}
+              required
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Mật khẩu mới
+            </span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={passwordForm.newPassword}
+              disabled={changingPassword}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, newPassword: e.target.value }))}
+              required
+            />
+            <p className="text-xs text-on-surface-variant">Ít nhất 8 ký tự, có chữ hoa và số</p>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Xác nhận mật khẩu mới
+            </span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={passwordForm.confirmPassword}
+              disabled={changingPassword}
+              onChange={(e) => setPasswordForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+              required
+            />
+          </label>
           <button
             type="submit"
             className="rounded-xl border border-outline-variant px-4 py-2.5 text-sm font-semibold text-on-surface hover:bg-surface-variant disabled:opacity-50"
@@ -266,7 +305,7 @@ export default function AdminSettingsPage() {
         </form>
       </section>
 
-      <section className="lw-card mb-6 overflow-hidden rounded-xl">
+      <section className="glass-panel soft-shadow mb-6 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h2 className="flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
             <span className="material-symbols-outlined text-primary">info</span>

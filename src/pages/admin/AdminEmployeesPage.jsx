@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   createEmployee,
-  fetchBranchEmployeesSummary,
+  fetchAllBranchesEmployeesSummary,
   fetchBranches,
   transferEmployee,
 } from '../../api'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import { useToast } from '../../components/ui/Toast'
+import { isValidPhoneNumber, isValidPassword, PHONE_ERROR_MESSAGE, PASSWORD_ERROR_MESSAGE } from '../../utils/validation'
 
 const emptyCreate = {
   phoneNumber: '',
@@ -41,24 +41,27 @@ export default function AdminEmployeesPage() {
   const [employeeLoadError, setEmployeeLoadError] = useState('')
   const [creating, setCreating] = useState(false)
   const [transferring, setTransferring] = useState(false)
-  const toast = useToast()
+  const [toast, setToast] = useState('')
+
+  const showToast = (msg) => {
+    setToast(msg)
+    setTimeout(() => setToast(''), 2500)
+  }
 
   const loadBranchesAndEmployees = useCallback(async () => {
     try {
-      const branchList = await fetchBranches()
+      const [branchList, summaries] = await Promise.all([
+        fetchBranches(),
+        fetchAllBranchesEmployeesSummary(),
+      ])
       setBranches(branchList)
       setEmployeeLoadError('')
 
-      const results = await Promise.allSettled(
-        branchList.map(async (branch) => ({
-          branch,
-          summary: await fetchBranchEmployeesSummary(branch.id),
-        })),
-      )
+      const branchNameById = new Map(branchList.map((branch) => [Number(branch.id), branch.name]))
       const employeeMap = new Map()
-      results.forEach((result) => {
-        if (result.status !== 'fulfilled') return
-        const { branch, summary } = result.value
+      const summaryList = Array.isArray(summaries) ? summaries : []
+      summaryList.forEach((summary) => {
+        const branchId = Number(summary?.branchId)
         const members = [
           ...(Array.isArray(summary?.managers) ? summary.managers : []),
           ...(Array.isArray(summary?.staff) ? summary.staff : []),
@@ -72,8 +75,8 @@ export default function AdminEmployeesPage() {
             phoneNumber: String(member.phoneNumber ?? '—'),
             role: String(member.role ?? 'Staff'),
             status: String(member.status ?? 'Active'),
-            branchId: Number(member.branchId ?? branch.id),
-            branchName: branch.name,
+            branchId: Number(member.branchId ?? branchId),
+            branchName: branchNameById.get(branchId) ?? '—',
           })
         })
       })
@@ -82,9 +85,6 @@ export default function AdminEmployeesPage() {
           a.fullName.localeCompare(b.fullName, 'vi'),
         ),
       )
-      if (results.some((result) => result.status === 'rejected')) {
-        setEmployeeLoadError('Một số chi nhánh chưa tải được danh sách nhân viên.')
-      }
     } catch {
       setEmployeeLoadError('Không tải được danh sách nhân viên và chi nhánh.')
     } finally {
@@ -122,8 +122,21 @@ export default function AdminEmployeesPage() {
   const handleCreate = async (e) => {
     e.preventDefault()
     if (creating) return
-    if (!createForm.phoneNumber.trim() || !createForm.password || !createForm.fullName.trim()) {
-      toast.warning('Vui lòng điền SĐT, mật khẩu và họ tên')
+    if (
+      !createForm.phoneNumber.trim() ||
+      !createForm.password ||
+      !createForm.fullName.trim() ||
+      !createForm.branchId
+    ) {
+      showToast('Vui lòng điền họ tên, SĐT, mật khẩu và chi nhánh')
+      return
+    }
+    if (!isValidPhoneNumber(createForm.phoneNumber)) {
+      showToast(PHONE_ERROR_MESSAGE)
+      return
+    }
+    if (!isValidPassword(createForm.password)) {
+      showToast(PASSWORD_ERROR_MESSAGE)
       return
     }
 
@@ -134,12 +147,12 @@ export default function AdminEmployeesPage() {
         password: createForm.password,
         fullName: createForm.fullName.trim(),
         role: createForm.role,
-        branchId: createForm.branchId ? Number(createForm.branchId) : null,
+        branchId: Number(createForm.branchId),
       })
-      toast.success('Đã tạo tài khoản nhân viên')
+      showToast('Đã tạo tài khoản nhân viên')
       setCreateForm(emptyCreate)
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không tạo được nhân viên')
+      showToast(err instanceof ApiError ? err.message : 'Không tạo được nhân viên')
     } finally {
       setCreating(false)
     }
@@ -151,18 +164,18 @@ export default function AdminEmployeesPage() {
     const employeeId = Number(transferForm.employeeId)
     const branchId = Number(transferForm.branchId)
     if (!employeeId || !branchId) {
-      toast.warning('Chọn nhân viên và chi nhánh đích')
+      showToast('Chọn nhân viên và chi nhánh đích')
       return
     }
     if (selectedEmployee?.branchId === branchId) {
-      toast.warning('Nhân viên đã thuộc chi nhánh này')
+      showToast('Nhân viên đã thuộc chi nhánh này')
       return
     }
 
     setTransferring(true)
     try {
       await transferEmployee(employeeId, { branchId })
-      toast.success('Đã chuyển nhân viên sang chi nhánh mới')
+      showToast('Đã chuyển nhân viên sang chi nhánh mới')
       setEmployees((items) => items.map((employee) =>
         employee.employeeId === employeeId
           ? {
@@ -178,7 +191,7 @@ export default function AdminEmployeesPage() {
       setSourceBranchId('')
       setEmployeePickerOpen(false)
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không chuyển được nhân viên')
+      showToast(err instanceof ApiError ? err.message : 'Không chuyển được nhân viên')
     } finally {
       setTransferring(false)
     }
@@ -187,10 +200,15 @@ export default function AdminEmployeesPage() {
   return (
     <div className="w-full max-w-2xl">
       <PageHeader
-        eyebrow="Nhân sự"
         title="Nhân viên"
         description="Tạo Manager/Staff và chuyển chi nhánh"
       />
+
+      {toast && (
+        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
+          {toast}
+        </p>
+      )}
 
       <form
         onSubmit={handleCreate}
@@ -238,14 +256,14 @@ export default function AdminEmployeesPage() {
           </select>
         </label>
         <label className="block space-y-1">
-          <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh (tùy chọn)</span>
+          <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh</span>
           <select
             className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
             value={createForm.branchId}
             disabled={creating}
             onChange={(e) => setCreateForm((f) => ({ ...f, branchId: e.target.value }))}
           >
-            <option value="">— Không gán —</option>
+            <option value="">— Chọn chi nhánh —</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}
