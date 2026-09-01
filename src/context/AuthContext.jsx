@@ -23,6 +23,11 @@ function loadSession() {
   return isPortalSession(session) ? session : null
 }
 
+function normalizeBranchId(raw) {
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
 /**
  * @param {Record<string, unknown>} data Login API `data`
  */
@@ -36,6 +41,7 @@ function mapLoginToSession(data) {
     token: data.token,
     refreshToken: data.refreshToken,
     avatar: DEFAULT_AVATAR,
+    branchId: normalizeBranchId(data.branchId ?? data.BranchId),
   }
 
   if (role === 'Staff') {
@@ -94,6 +100,9 @@ export function AuthProvider({ children }) {
           ...session,
           fullName: profile.fullName ?? session.fullName,
           phoneNumber: profile.phoneNumber ?? session.phoneNumber,
+          branchId:
+            normalizeBranchId(profile.branchId ?? profile.BranchId) ??
+            session.branchId,
         }
         saveSession(session)
       } catch {

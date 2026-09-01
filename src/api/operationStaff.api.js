@@ -1,4 +1,4 @@
-import { apiRequest, getAccessToken } from './client'
+import { apiRequest } from './client'
 import {
   asBookingList,
   fetchBookingsByDate,
@@ -7,31 +7,12 @@ import {
 } from './admin.bookings.api'
 import { fetchTransactions, normalizeTransaction } from './admin.transactions.api'
 import { fetchUserById } from './admin.users.api'
+import { getBranchIdFromToken } from './branchContext'
 import { findUserByLicensePlate, maskPhoneNumber } from './staff.customers.api'
 
 // Customer identity data changes rarely; keep it across dashboard polls/routes so
 // the same Staff session does not reload every user detail every 30 seconds.
 const staffUserDetailCache = new Map()
-
-function decodeJwtPayload(token) {
-  if (!token || typeof token !== 'string') return null
-  const payload = token.split('.')[1]
-  if (!payload) return null
-  try {
-    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
-    return JSON.parse(atob(padded))
-  } catch {
-    return null
-  }
-}
-
-function getBranchIdFromToken() {
-  const payload = decodeJwtPayload(getAccessToken())
-  const raw = payload?.BranchId ?? payload?.branchId
-  const branchId = Number(raw)
-  return Number.isFinite(branchId) && branchId > 0 ? branchId : undefined
-}
 
 /**
  * @typedef {{

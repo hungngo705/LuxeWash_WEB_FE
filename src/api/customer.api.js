@@ -90,6 +90,7 @@ export function createWalkInBooking(payload) {
 
   if (Number(payload.vehicleId) > 0) body.vehicleId = Number(payload.vehicleId)
   if (Number(payload.vehicleTypeId) > 0) body.vehicleTypeId = Number(payload.vehicleTypeId)
+  if (Number(payload.laneId) > 0) body.laneId = Number(payload.laneId)
   if (Number(payload.voucherId) > 0) body.voucherId = Number(payload.voucherId)
   if (payload.returnUrl) body.returnUrl = String(payload.returnUrl)
   if (payload.cancelUrl) body.cancelUrl = String(payload.cancelUrl)

@@ -1,147 +1,146 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  ApiError,
-  createWalkInBooking,
-  fetchVehicleTypes,
-} from '../../api'
+import { fetchVehicleTypes, getBranchId } from '../../api'
 import { apiRequest } from '../../api/client'
+import { fetchManagerLanes } from '../../api/manager.lanes.api'
+import { fetchManagerTimeSlots } from '../../api/manager.timeSlots.api'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import Input from '../../components/ui/Input'
+import FormModal from '../../components/admin/shared/FormModal'
+import SlotDetailPanel from '../../components/manager/walkIn/SlotDetailPanel'
+import WalkInForm from '../../components/manager/walkIn/WalkInForm'
+import WeekHeader from '../../components/manager/walkIn/WeekHeader'
+import WeeklyScheduleGrid from '../../components/manager/walkIn/WeeklyScheduleGrid'
 import { useToast } from '../../components/ui/Toast'
-import { formatVnd } from '../../utils/format'
 import { useAuth } from '../../context/AuthContext'
+import { getNowInVietnam, getWeekDates } from '../../utils/week'
 
-function getVehicleTypeId(type) {
-  return Number(type?.vehicleTypeId ?? type?.id ?? 0)
-}
-
-function isLocalAppHost(hostname) {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.local')
-}
-
-function getPayOsCallbackUrl(path) {
-  if (typeof window === 'undefined') return 'https://payos.vn'
-  return isLocalAppHost(window.location.hostname) ? 'https://payos.vn' : `${window.location.origin}${path}`
-}
-
-function isFallbackVehicleType(type) {
-  return String(type?.name ?? type?.vehicleTypeName ?? '')
-    .trim()
-    .toLowerCase() === 'khác'
-}
-
-function getServicePriceForVehicleType(service, vehicleTypeId) {
-  if (!vehicleTypeId || !Array.isArray(service?.prices)) return null
-  return service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
-}
-
+/**
+ * Trang Walk-in cho Manager.
+ *
+ * Layout:
+ *   1. Header tuần (prev/today/next)
+ *   2. Lịch tuần T2-CN dạng grid (N hàng slot × 7 cột ngày)
+ *   3. Mỗi ô:
+ *      - Slot hiện tại + còn trống → mở modal walk-in (WalkInForm)
+ *      - Slot hiện tại + đầy → toast error
+ *      - Slot quá khứ → toast warning + mở panel chi tiết
+ *      - Slot tương lai → mở panel chi tiết
+ *
+ * Lưu ý: dùng các API BE có sẵn, không thay đổi BE.
+ */
 export default function ManagerWalkInPage() {
   const { user } = useAuth()
+  const branchId = getBranchId(user)
+  // String param để đưa vào query URL; giữ '' khi không có branchId để rơi
+  // vào fallback /services (không query) thay vì ?branchId=undefined.
+  const branchIdParam = branchId != null ? String(branchId) : ''
+  const toast = useToast()
+
+  // Data
   const [services, setServices] = useState([])
   const [vehicleTypes, setVehicleTypes] = useState([])
   const [lanes, setLanes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const toast = useToast()
+  const [slots, setSlots] = useState([])
+  const [bookings, setBookings] = useState([])
 
-  const branchId = String(user?.branchId ?? '')
+  // Loading flags
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [walkInLoading, setWalkInLoading] = useState(true)
 
-  const [form, setForm] = useState({
-    licensePlate: '',
-    vehicleTypeId: '',
-    serviceIds: [],
-    laneId: '',
-    forceOverrideCapacity: false,
-  })
+  // UI state
+  const [weekAnchor, setWeekAnchor] = useState(() => getNowInVietnam())
+  const [walkInOpen, setWalkInOpen] = useState(false)
+  const [activeCell, setActiveCell] = useState(null)
+  const [detailCell, setDetailCell] = useState(null)
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const loadWalkInData = useCallback(async () => {
+    setWalkInLoading(true)
     try {
       const [servicesResult, lanesResult, vehicleTypesResult] = await Promise.allSettled([
-        apiRequest('/services'),
-        apiRequest('/admin/lanes'),
+        apiRequest(
+          branchIdParam
+            ? `/services?branchId=${encodeURIComponent(branchIdParam)}`
+            : '/services',
+        ),
+        fetchManagerLanes(),
         fetchVehicleTypes(),
       ])
-
       if (servicesResult.status === 'fulfilled') {
         const data = servicesResult.value
-        setServices(Array.isArray(data) ? data.filter(s => s.isActive !== false) : [])
+        setServices(Array.isArray(data) ? data.filter((s) => s.isActive !== false) : [])
       }
       if (lanesResult.status === 'fulfilled') {
-        const data = lanesResult.value
-        const list = Array.isArray(data) ? data : []
-        setLanes(list.filter(l => l.isActive !== false))
+        setLanes(Array.isArray(lanesResult.value) ? lanesResult.value : [])
       }
       if (vehicleTypesResult.status === 'fulfilled') {
         const data = vehicleTypesResult.value
         setVehicleTypes(Array.isArray(data) ? data : [])
       }
     } finally {
-      setLoading(false)
+      setWalkInLoading(false)
+    }
+  }, [])
+
+  const loadScheduleData = useCallback(async () => {
+    const [slotsResult, bookingsResult] = await Promise.allSettled([
+      fetchManagerTimeSlots(),
+      apiRequest('/manager/bookings'),
+    ])
+    if (slotsResult.status === 'fulfilled') {
+      setSlots(Array.isArray(slotsResult.value) ? slotsResult.value : [])
+    }
+    if (bookingsResult.status === 'fulfilled') {
+      setBookings(Array.isArray(bookingsResult.value) ? bookingsResult.value : [])
     }
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async page data load
-    loadData()
-  }, [loadData])
+    let cancelled = false
+    ;(async () => {
+      setInitialLoading(true)
+      try {
+        await Promise.all([loadWalkInData(), loadScheduleData()])
+      } finally {
+        if (!cancelled) setInitialLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [loadWalkInData, loadScheduleData])
 
-  const toggleService = (serviceId) => {
-    setForm((f) => {
-      const ids = f.serviceIds.includes(serviceId)
-        ? f.serviceIds.filter((id) => id !== serviceId)
-        : [...f.serviceIds, serviceId]
-      return { ...f, serviceIds: ids }
-    })
+  const handleCellClick = (cell) => {
+    // Slot hiện tại + đầy → toast error, không mở modal
+    if (cell.cellState === 'current-full') {
+      toast.error('Khung giờ đã đầy. Không thể đặt thêm walk-in.')
+      setDetailCell(cell)
+      return
+    }
+
+    // Slot quá khứ → toast warning + mở panel chi tiết
+    if (cell.cellState === 'past') {
+      toast.warning('Khung giờ này đã qua. Chỉ xem chi tiết.')
+      setDetailCell(cell)
+      return
+    }
+
+    // Slot hiện tại + còn trống → mở modal walk-in
+    if (cell.cellState === 'current-empty') {
+      setActiveCell(cell)
+      setWalkInOpen(true)
+      return
+    }
+
+    // Slot tương lai → mở panel chi tiết
+    setDetailCell(cell)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.licensePlate.trim()) {
-      toast.warning('Vui lòng nhập biển số xe.')
-      return
-    }
-    if (form.serviceIds.length === 0) {
-      toast.warning('Vui lòng chọn ít nhất một dịch vụ.')
-      return
-    }
-
-    if (!Number(form.vehicleTypeId)) {
-      toast.warning('Vui lòng chọn loại xe.')
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      const returnUrl = getPayOsCallbackUrl('/manager/walk-in')
-      await createWalkInBooking({
-        branchId: Number(branchId),
-        licensePlate: form.licensePlate.trim().toUpperCase(),
-        serviceIds: form.serviceIds.map(Number),
-        vehicleTypeId: Number(form.vehicleTypeId),
-        laneId: form.laneId ? Number(form.laneId) : undefined,
-        paymentMethod: 'Cash',
-        returnUrl,
-        cancelUrl: returnUrl,
-        forceOverrideCapacity: form.forceOverrideCapacity,
-      })
-      toast.success(`Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`)
-      setForm((f) => ({
-        ...f,
-        licensePlate: '',
-        vehicleTypeId: '',
-        serviceIds: [],
-        laneId: '',
-        forceOverrideCapacity: false,
-      }))
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi tiếp nhận khách vãng lai.')
-    } finally {
-      setSubmitting(false)
-    }
+  const handleWalkInSuccess = async () => {
+    setWalkInOpen(false)
+    setActiveCell(null)
+    await loadScheduleData()
   }
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
@@ -149,183 +148,63 @@ export default function ManagerWalkInPage() {
     )
   }
 
+  const weekDates = getWeekDates(weekAnchor)
+
   return (
-    <div className="w-full max-w-3xl">
+    <div className="w-full">
       <PageHeader
         eyebrow="Vận hành chi nhánh"
         title="Tiếp nhận khách vãng lai"
-        description="Check-in nhanh cho xe đến trạm mà không cần đặt lịch trước"
+        description="Check-in nhanh cho xe đến trạm. Click vào ô khung giờ hiện tại để đặt."
         actionIcon="directions_car"
       />
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* License plate */}
-        <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
-          <h3 className="mb-4 text-sm font-semibold text-on-surface">Biển số xe</h3>
-          <input
-            type="text"
-            className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-xl font-mono font-semibold uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal"
-            placeholder="VD: 51F-123.45"
-            value={form.licensePlate}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, licensePlate: e.target.value.toUpperCase() }))
-            }
-          />
-        </div>
+      <div className="mb-4">
+        <WeekHeader
+          anchor={weekAnchor}
+          onChange={(newMonday) => setWeekAnchor(newMonday)}
+          onToday={() => setWeekAnchor(getNowInVietnam())}
+        />
+      </div>
 
-        <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
-          <h3 className="mb-4 text-sm font-semibold text-on-surface">Loại xe</h3>
-          <select
-            className="w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-sm font-semibold text-on-surface"
-            value={form.vehicleTypeId}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, vehicleTypeId: e.target.value, serviceIds: [] }))
-            }
-          >
-            <option value="">Chọn loại xe</option>
-            {vehicleTypes.filter((type) => !isFallbackVehicleType(type)).map((type) => {
-              const id = getVehicleTypeId(type)
-              if (!id) return null
-              return (
-                <option key={id} value={id}>
-                  {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
-                </option>
-              )
-            })}
-          </select>
-        </div>
+      <WeeklyScheduleGrid
+        weekDates={weekDates}
+        slots={slots}
+        bookings={bookings}
+        lanes={lanes}
+        onCellClick={handleCellClick}
+      />
 
-        {/* Services */}
-        <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
-          <h3 className="mb-4 text-sm font-semibold text-on-surface">Chọn dịch vụ</h3>
-          {services.length === 0 ? (
-            <p className="text-sm text-on-surface-variant">Không tải được danh sách dịch vụ. Có thể chưa có dịch vụ nào cho chi nhánh này.</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {services.map((service) => {
-                const serviceId = service.serviceId ?? service.id
-                const selected = form.serviceIds.includes(serviceId)
-                const selectedPrice = getServicePriceForVehicleType(service, Number(form.vehicleTypeId))
-                const disabledByVehicleType = Number(form.vehicleTypeId) > 0 && !selectedPrice
-                const minPrice = service.prices?.length > 0
-                  ? Math.min(...service.prices.map((p) => p.price))
-                  : 0
-                const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice
-                return (
-                  <button
-                    key={serviceId}
-                    type="button"
-                    className={`rounded-xl border p-4 text-left transition-all ${
-                      selected
-                        ? 'border-secondary bg-secondary-container/30'
-                        : disabledByVehicleType
-                          ? 'border-outline-variant bg-surface-container-low opacity-50'
-                        : 'border-outline-variant bg-surface-container-low hover:border-secondary'
-                    }`}
-                    disabled={disabledByVehicleType}
-                    onClick={() => toggleService(serviceId)}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-semibold text-on-surface">{service.serviceName}</p>
-                        {service.description && (
-                          <p className="mt-0.5 text-xs text-on-surface-variant">{service.description}</p>
-                        )}
-                      </div>
-                      <span className={`material-symbols-outlined ${selected ? 'text-secondary' : 'text-outline'}`}>
-                        {selected ? 'check_circle' : 'radio_button_unchecked'}
-                      </span>
-                    </div>
-                    {displayPrice > 0 && (
-                      <p className="mt-2 text-sm font-semibold text-primary">
-                        {selectedPrice ? formatVnd(displayPrice) : `từ ${formatVnd(displayPrice)}`}
-                      </p>
-                    )}
-                    {disabledByVehicleType && (
-                      <p className="mt-2 text-xs text-error">Chưa có giá cho loại xe này</p>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+      {/* Modal walk-in: chỉ dùng cho ô slot hiện tại + còn trống */}
+      <FormModal
+        open={walkInOpen}
+        title="Tiếp nhận khách vãng lai"
+        submitLabel=""
+        onClose={() => {
+          if (walkInLoading) return
+          setWalkInOpen(false)
+          setActiveCell(null)
+        }}
+        onSubmit={() => {}}
+        size="xl"
+      >
+        <WalkInForm
+          branchId={branchIdParam}
+          services={services}
+          lanes={lanes}
+          vehicleTypes={vehicleTypes}
+          loading={walkInLoading}
+          activeCell={activeCell}
+          onSuccess={handleWalkInSuccess}
+        />
+      </FormModal>
 
-        {/* Lane (optional) */}
-        <div className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
-          <h3 className="mb-4 text-sm font-semibold text-on-surface">Làn rửa (tùy chọn)</h3>
-          {lanes.length === 0 ? (
-            <p className="text-sm text-on-surface-variant">Không có làn nào khả dụng. Admin cần tạo làn trước.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {lanes.map((lane) => (
-                <button
-                  key={lane.id}
-                  type="button"
-                  className={`rounded-xl border p-3 text-left transition-all ${
-                    form.laneId === String(lane.id)
-                      ? 'border-secondary bg-secondary-container/30'
-                      : 'border-outline-variant bg-surface-container-low hover:border-secondary'
-                  }`}
-                  onClick={() =>
-                    setForm((f) => ({
-                      ...f,
-                      laneId: f.laneId === String(lane.id) ? '' : String(lane.id),
-                    }))
-                  }
-                >
-                  <span className="material-symbols-outlined text-secondary">garage</span>
-                  <p className="mt-1 font-semibold text-on-surface">{lane.name}</p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className={`rounded-xl border p-5 ${
-          form.forceOverrideCapacity
-            ? 'border-tertiary bg-tertiary/10'
-            : 'border-outline-variant bg-surface-container-lowest'
-        }`}>
-          <label className="flex cursor-pointer items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-tertiary"
-              checked={form.forceOverrideCapacity}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  forceOverrideCapacity: event.target.checked,
-                }))
-              }
-            />
-            <span>
-              <span className="block text-sm font-semibold text-on-surface">
-                Ghi đè sức chứa để lấp chỗ trống
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-on-surface-variant">
-                Chỉ bật khi khách đặt trước đã quá thời gian ân hạn nhưng booking vẫn đang giữ tải.
-                Xe walk-in sẽ vào trạng thái đang rửa ngay cả khi khung giờ đã đủ công suất.
-              </span>
-            </span>
-          </label>
-        </div>
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-xl bg-secondary py-3.5 text-sm font-semibold tracking-wide text-on-secondary transition-colors hover:bg-secondary/90 disabled:opacity-60"
-        >
-          {submitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-secondary/30 border-t-on-secondary" />
-              Đang tiếp nhận...
-            </span>
-          ) : (
-            'Tiếp nhận khách vãng lai'
-          )}
-        </button>
-      </form>
+      {/* Panel chi tiết cho các ô không walk-in được */}
+      <SlotDetailPanel
+        open={Boolean(detailCell)}
+        cell={detailCell}
+        onClose={() => setDetailCell(null)}
+      />
     </div>
   )
 }

@@ -31,6 +31,8 @@ export {
   normalizeLaneDisplayState,
 } from './laneDisplay.api'
 
+export { getBranchId, getBranchIdFromToken } from './branchContext'
+
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
 export {
