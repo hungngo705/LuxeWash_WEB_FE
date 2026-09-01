@@ -68,6 +68,95 @@ function buildBusyLanesByLaneId(bookings = []) {
 }
 
 /**
+ * Format 'HH:MM:SS' hoặc 'HH:MM' thành label ngắn 'HH:MM'.
+ */
+function shortTime(value) {
+  if (!value) return ''
+  return String(value).slice(0, 5)
+}
+
+/**
+ * Kiểm tra slot có vượt sức chứa không (capacity warning threshold: 80%).
+ * Trả về { isNearFull, isOverCapacity, capacityPercent }
+ */
+function checkSlotCapacity(cell) {
+  const used = Number(cell?.used) || 0
+  const max = Number(cell?.max) || 0
+  if (max <= 0) return { isNearFull: false, isOverCapacity: false, capacityPercent: 0 }
+  const percent = Math.round((used / max) * 100)
+  return {
+    isNearFull: percent >= 80 && percent < 100,
+    isOverCapacity: percent >= 100,
+    capacityPercent: percent,
+  }
+}
+
+/**
+ * Badge hiển thị % sức chứa của slot.
+ * - <80%: xanh (OK)
+ * - 80-99%: vàng (gần đầy)
+ * - 100%+: đỏ (đầy)
+ */
+function CapacityBadge({ used, max, cellState }) {
+  const u = Number(used) || 0
+  const m = Number(max) || 0
+  if (m <= 0) return null
+
+  const percent = Math.round((u / m) * 100)
+  let bgClass = 'bg-primary-container/40 text-primary'
+  let label = `${percent}%`
+
+  if (percent >= 100) {
+    bgClass = 'bg-error-container/40 text-error'
+    label = 'Đầy'
+  } else if (percent >= 80) {
+    bgClass = 'bg-warning-container/40 text-warning'
+    label = `${percent}%`
+  }
+
+  return (
+    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${bgClass}`}>
+      {label}
+    </span>
+  )
+}
+
+/**
+ * Cảnh báo sức chứa: hiển thị info banner khi slot gần đầy (≥80%).
+ * Chỉ mang tính thông tin — không block booking.
+ */
+function CapacityWarning({ used, max }) {
+  const u = Number(used) || 0
+  const m = Number(max) || 0
+  if (m <= 0 || u < m * 0.8) return null
+
+  const percent = Math.round((u / m) * 100)
+  const remaining = Math.max(m - u, 0)
+
+  return (
+    <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning-container/30 px-3 py-2">
+      <span className="material-symbols-outlined mt-0.5 flex-shrink-0 text-sm text-warning">
+        info
+      </span>
+      <p className="text-xs text-on-surface">
+        {percent >= 100 ? (
+          <>
+            <strong>Khung giờ đã đạt sức chứa tối đa.</strong> Xe vẫn được check-in nhưng có
+            thể phải chờ hoặc bật{" "}
+            <strong>"Ghi đè sức chứa"</strong> để vào làn ngay.
+          </>
+        ) : (
+          <>
+            <strong>Khung giờ đã {percent}% sức chứa</strong> ({remaining} chỗ còn lại).
+            Xe vẫn được check-in bình thường.
+          </>
+        )}
+      </p>
+    </div>
+  )
+}
+
+/**
  * Form walk-in thuần (UI + submit). Nhận các props từ parent:
  *   - branchId, services, lanes, vehicleTypes, loading
  *   - activeCell: { bookings, busyLanes, totalLanes, used, max } - context ô slot hiện tại
@@ -199,6 +288,18 @@ export default function WalkInForm({
     setSubmitting(true)
     try {
       const returnUrl = getPayOsCallbackUrl('/manager/walk-in')
+
+      // Build slot context từ activeCell (nếu có)
+      const slotId = activeCell?.slot?.slotId ? Number(activeCell.slot.slotId) : undefined
+      // scheduledTime = thời điểm bắt đầu slot trong ngày (date + startTime)
+      let scheduledTime = undefined
+      if (slotId && activeCell?.date && activeCell?.slot?.startTime) {
+        const d = new Date(activeCell.date)
+        const [h, m, s = '00'] = activeCell.slot.startTime.split(':')
+        d.setHours(Number(h), Number(m), Number(s), 0)
+        scheduledTime = d.toISOString()
+      }
+
       await createWalkInBooking({
         branchId: effectiveBranchId,
         licensePlate: form.licensePlate.trim().toUpperCase(),
@@ -209,6 +310,8 @@ export default function WalkInForm({
         returnUrl,
         cancelUrl: returnUrl,
         forceOverrideCapacity: form.forceOverrideCapacity,
+        slotId,
+        scheduledTime,
       })
       toast.success(
         `Đã tiếp nhận xe ${form.licensePlate.trim().toUpperCase()} — Check-in thành công!`,
@@ -239,6 +342,30 @@ export default function WalkInForm({
 
   return (
     <div className="space-y-6">
+      {/* Slot info + capacity warning (chỉ hiện khi có activeCell) */}
+      {activeCell?.slot && (
+        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-on-surface">
+                Khung giờ: {shortTime(activeCell.slot.startTime)} – {shortTime(activeCell.slot.endTime)}
+              </p>
+              <p className="mt-0.5 text-xs text-on-surface-variant">
+                {activeCell.used ?? 0}/{activeCell.max ?? '?'} booking ·{' '}
+                {(activeCell.busyLanes ?? 0)}/{activeCell.totalLanes ?? '?'} làn bận
+              </p>
+            </div>
+            <CapacityBadge
+              used={activeCell.used}
+              max={activeCell.max}
+              cellState={activeCell.cellState}
+            />
+          </div>
+          {/* Capacity warning: hiện khi slot gần đầy hoặc đầy */}
+          <CapacityWarning used={activeCell.used} max={activeCell.max} />
+        </div>
+      )}
+
       <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
         <h3 className="mb-3 text-sm font-semibold text-on-surface">Biển số xe</h3>
         <input

@@ -75,6 +75,8 @@ export function createBooking(payload) {
  *   returnUrl?: string
  *   cancelUrl?: string
  *   forceOverrideCapacity?: boolean
+ *   slotId?: number
+ *   scheduledTime?: string
  * }} payload
  */
 export function createWalkInBooking(payload) {
@@ -94,6 +96,9 @@ export function createWalkInBooking(payload) {
   if (Number(payload.voucherId) > 0) body.voucherId = Number(payload.voucherId)
   if (payload.returnUrl) body.returnUrl = String(payload.returnUrl)
   if (payload.cancelUrl) body.cancelUrl = String(payload.cancelUrl)
+  // slotId + scheduledTime: cho phép gán walk-in vào slot cụ thể
+  if (Number(payload.slotId) > 0) body.slotId = Number(payload.slotId)
+  if (payload.scheduledTime) body.scheduledTime = String(payload.scheduledTime)
 
   return apiRequest('/bookings/walk-in', {
     method: 'POST',
