@@ -434,7 +434,6 @@
   border: 1px solid rgb(190 200 207 / 0.6);
   border-radius: 0.75rem;
   box-shadow: var(--shadow-lw-sm);
-  overflow: hidden;
 }
 
 /* Table header row */

@@ -57,18 +57,20 @@ const emptyWinbackForm = { ...emptyBase, inactiveDays: '', resendAfterDays: '' }
 const emptyVipForm = { ...emptyBase, requiredTierId: '' }
 const emptyWelcomeForm = { ...emptyBase }
 
-const TAB_KEYS = ['welcome', 'birthday', 'winback', 'vip']
+const TAB_KEYS = ['welcome', 'birthday', 'winback', 'vip', 'weather']
 const TAB_LABELS = {
   welcome: 'Chào mừng',
   birthday: 'Sinh Nhật',
   winback: 'Winback',
   vip: 'VIP',
+  weather: 'Thời Tiết',
 }
 const TAB_ICONS = {
   welcome: 'waving_hand',
   birthday: 'cake',
   winback: 'replay',
   vip: 'workspace_premium',
+  weather: 'partly_cloudy_day',
 }
 
 function getCreateFn(tab) {
@@ -77,6 +79,7 @@ function getCreateFn(tab) {
     case 'birthday': return createBirthdayCampaign
     case 'winback': return createWinbackCampaign
     case 'vip': return createVipCampaign
+    case 'weather': return null // Weather campaign do hệ thống tự tạo, không có form BE
     default: return createBirthdayCampaign
   }
 }
@@ -105,6 +108,9 @@ function validateBase(form) {
 }
 
 function validateTab(tab, form) {
+  // Weather campaign do hệ thống tự tạo — không cần validate form
+  if (tab === 'weather') return null
+
   const base = validateBase(form)
   if (base) return base
 
@@ -394,6 +400,12 @@ export default function AdminVoucherCampaignsPage() {
     const form = formRefs.current[tab]
     if (!form) return
 
+    // Weather campaign do hệ thống tự tạo — không có endpoint POST /admin/vouchers/weather
+    if (tab === 'weather') {
+      toast.info('Campaign thời tiết được hệ thống tự động tạo. Không có form thủ công.')
+      return
+    }
+
     if (saving) return
     const err = validateTab(tab, form)
     if (err) {
@@ -404,6 +416,10 @@ export default function AdminVoucherCampaignsPage() {
     setSaving(true)
     try {
       const createFn = getCreateFn(tab)
+      if (!createFn) {
+        toast.error('Loại campaign này chưa hỗ trợ tạo thủ công.')
+        return
+      }
       await createFn(form)
       toast.success('Tạo chiến dịch thành công!')
       formRefs.current[tab] = (() => {
@@ -491,6 +507,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: 'Tự động cấp voucher cho khách hàng có ngày sinh trùng hôm nay. Mỗi khách chỉ nhận được một lần mỗi năm.',
     winback: 'Tự động cấp voucher để thu hút khách hàng lâu ngày không quay lại sử dụng dịch vụ.',
     vip: 'Tự động cấp voucher cho khách thuộc hạng thành viên bằng hoặc cao hơn hạng được chọn.',
+    weather: 'Danh sách voucher thời tiết do hệ thống tự động tạo khi phát hiện điều kiện thời tiết phù hợp (mưa, nắng nóng…).',
   }
 
   const activeCounts = {
@@ -498,6 +515,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Birthday).length,
     winback: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Winback).length,
     vip: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Vip).length,
+    weather: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Weather).length,
   }
 
   const TAB_CAMPAIGN_TYPE_MAP = {
@@ -505,6 +523,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: CAMPAIGN_TYPE.Birthday,
     winback: CAMPAIGN_TYPE.Winback,
     vip: CAMPAIGN_TYPE.Vip,
+    weather: CAMPAIGN_TYPE.Weather,
   }
 
   // Derived state for Filtering & Pagination
@@ -513,10 +532,14 @@ export default function AdminVoucherCampaignsPage() {
     birthday: CAMPAIGN_TYPE.Birthday,
     winback: CAMPAIGN_TYPE.Winback,
     vip: CAMPAIGN_TYPE.Vip,
+    weather: CAMPAIGN_TYPE.Weather,
   }
 
   const filteredCampaigns = campaigns
     .filter(c => {
+      // Lọc theo tab đang active (mỗi tab chỉ hiển thị campaign đúng loại của nó)
+      const activeTabType = tabToCampaignType[activeTab]
+      if (activeTabType != null && Number(c.campaignType) !== Number(activeTabType)) return false
       if (filterType !== 'all' && c.campaignType !== Number(filterType)) return false;
       if (!filterDate) return true;
       if (!c.createdAt && !c.startDate) return true; // fallback
@@ -524,13 +547,13 @@ export default function AdminVoucherCampaignsPage() {
       return target === filterDate;
     })
     .sort((a, b) => b.voucherId - a.voucherId);
-  
+
   const totalPages = Math.ceil(filteredCampaigns.length / pageSize);
   const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterDate, campaigns.length]);
+  }, [filterDate, activeTab, campaigns.length]);
 
   const columns = [
     { key: 'code', label: 'Mã voucher', render: (c) => <span className="font-mono font-medium">{c.code}</span> },
@@ -660,7 +683,28 @@ export default function AdminVoucherCampaignsPage() {
         <p className="text-sm text-on-surface-variant">{tabDescriptions[activeTab]}</p>
       </div>
 
-      {/* ── Create Form ───────────────────────────────────────────────────── */}
+      {/* ── Create Form (or Weather info panel) ───────────────────────────── */}
+      {activeTab === 'weather' ? (
+        <div className="mb-10 glass-panel soft-shadow overflow-hidden rounded-xl border border-secondary/30 bg-secondary-container/10">
+          <div className="border-b border-secondary/20 bg-secondary-container/20 px-6 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+              <span className="material-symbols-outlined text-base text-secondary">partly_cloudy_day</span>
+              Campaign Thời Tiết tự động
+            </h3>
+          </div>
+          <div className="space-y-4 p-6 text-sm text-on-surface-variant">
+            <p>
+              Voucher thời tiết được hệ thống tự động tạo khi AI phát hiện điều kiện thời tiết phù hợp
+              (mưa, nắng nóng…). Manager có thể kích hoạt nhanh tại Bảng điều khiển doanh thu hoặc
+              dùng nút <strong className="text-on-surface">"Chạy campaign hôm nay"</strong> phía trên.
+            </p>
+            <p>
+              Tab này ở chế độ <strong className="text-on-surface">chỉ đọc</strong> — không có form tạo thủ
+              công. Bạn vẫn có thể bật/tắt hoặc xóa từng campaign ở bảng bên phải.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="mb-10 glass-panel soft-shadow overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h3 className="text-sm font-semibold text-on-surface">Tạo chiến dịch mới</h3>
@@ -707,6 +751,7 @@ export default function AdminVoucherCampaignsPage() {
           </div>
         </div>
       </div>
+      )}
       </div>
 
       {/* Right Column: List & Filters */}
