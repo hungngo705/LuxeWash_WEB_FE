@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { fetchBookingsByUserId } from './admin.bookings.api'
 
 /**
  * @typedef {{
@@ -117,6 +118,15 @@ export function syncUserPoints() {
 /** @param {number} id @returns {Promise<unknown[]>} */
 export function fetchUserPointsHistory(id) {
   return apiRequest(`/admin/users/${id}/points-history`)
+}
+
+/**
+ * Lịch sử sử dụng dịch vụ của khách hàng (mỗi booking = 1 lần rửa).
+ * Tận dụng endpoint /bookings/user/{userId} đã có sẵn trong BE.
+ * @param {number} userId
+ */
+export function fetchUserServiceHistory(userId) {
+  return fetchBookingsByUserId(userId)
 }
 
 /** @param {UserListItem} item */

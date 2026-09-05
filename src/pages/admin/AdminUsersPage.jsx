@@ -4,6 +4,7 @@ import {
   fetchUserById,
   fetchUserPointsHistory,
   fetchUserRoleStats,
+  fetchUserServiceHistory,
   fetchUsers,
   normalizeListUser,
   syncUserPoints,
@@ -13,6 +14,43 @@ import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+
+/**
+ * Map reason từ BE (thường là tiếng Anh / chuỗi kỹ thuật)
+ * sang tiếng Việt để hiển thị cho admin.
+ * Nếu không khớp pattern nào, trả về nguyên reason gốc.
+ */
+function translatePointsReason(rawReason) {
+  if (!rawReason || typeof rawReason !== 'string') return ''
+  const r = rawReason.trim()
+
+  // Redeem voucher (BE trả 'Redeem voucher' hoặc có kèm tên voucher)
+  if (/^redeem\s+voucher(\s|$|:)/i.test(r)) {
+    // Cố gắng giữ phần phía sau dấu ':' nếu có tên voucher
+    const colonIdx = r.indexOf(':')
+    if (colonIdx > 0 && r.length > colonIdx + 1) {
+      return `Đổi điểm lấy voucher: ${r.slice(colonIdx + 1).trim()}`
+    }
+    return 'Đổi điểm lấy voucher'
+  }
+
+  // Service completion #123 -> Hoàn thành dịch vụ #123
+  // Chấp nhận cả 'Service completion #366', 'service-completion #366', 'ServiceCompletion #366'
+  const svcMatch = r.match(/^service[\s_-]*completion\s*#?(\d+)$/i)
+  if (svcMatch) {
+    return `Hoàn thành dịch vụ #${svcMatch[1]}`
+  }
+
+  // Một vài reason phổ biến khác (mở rộng khi cần):
+  if (/^earn$/i.test(r)) return 'Tích điểm'
+  if (/^redeem$/i.test(r)) return 'Đổi điểm'
+  if (/^refund$/i.test(r)) return 'Hoàn điểm'
+  if (/^adjust$/i.test(r)) return 'Điều chỉnh điểm'
+  if (/^birthday$/i.test(r)) return 'Thưởng sinh nhật'
+  if (/^manual$/i.test(r)) return 'Điều chỉnh thủ công'
+
+  return r // fallback: trả về reason gốc
+}
 
 const ROLE_TABS = ['All', 'Customer', 'Staff', 'Manager', 'Business']
 const PAGE_SIZE = 10
@@ -37,10 +75,14 @@ export default function AdminUsersPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [syncingPoints, setSyncingPoints] = useState(false)
   const [toast, setToast] = useState('')
-  
-  const [pointsHistoryOpen, setPointsHistoryOpen] = useState(false)
+
+  const [detailTab, setDetailTab] = useState('info') // 'info' | 'points' | 'services'
   const [pointsHistory, setPointsHistory] = useState([])
   const [loadingPointsHistory, setLoadingPointsHistory] = useState(false)
+  const [pointsHistoryLoaded, setPointsHistoryLoaded] = useState(false)
+  const [serviceHistory, setServiceHistory] = useState([])
+  const [loadingServiceHistory, setLoadingServiceHistory] = useState(false)
+  const [serviceHistoryLoaded, setServiceHistoryLoaded] = useState(false)
 
   const showToast = (msg) => {
     setToast(msg)
@@ -106,6 +148,11 @@ export default function AdminUsersPage() {
 
   const selectUser = async (user) => {
     setSelectedUser({ ...user })
+    setDetailTab('info')
+    setPointsHistory([])
+    setPointsHistoryLoaded(false)
+    setServiceHistory([])
+    setServiceHistoryLoaded(false)
     setDetailLoading(true)
     try {
       const detail = await fetchUserById(user.userId)
@@ -125,15 +172,32 @@ export default function AdminUsersPage() {
   }
 
   const handleOpenPointsHistory = async (userId) => {
-    setPointsHistoryOpen(true)
+    setDetailTab('points')
+    if (pointsHistoryLoaded) return
     setLoadingPointsHistory(true)
     try {
       const data = await fetchUserPointsHistory(userId)
       setPointsHistory(Array.isArray(data) ? data : [])
+      setPointsHistoryLoaded(true)
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử điểm')
     } finally {
       setLoadingPointsHistory(false)
+    }
+  }
+
+  const handleOpenServiceHistory = async (userId) => {
+    setDetailTab('services')
+    if (serviceHistoryLoaded) return
+    setLoadingServiceHistory(true)
+    try {
+      const data = await fetchUserServiceHistory(userId)
+      setServiceHistory(Array.isArray(data) ? data : [])
+      setServiceHistoryLoaded(true)
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử dịch vụ')
+    } finally {
+      setLoadingServiceHistory(false)
     }
   }
 
@@ -328,7 +392,7 @@ export default function AdminUsersPage() {
 
         <div className="xl:col-span-5">
           {selectedUser ? (
-            <div className="glass-panel soft-shadow sticky top-20 rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
+            <div className="glass-panel soft-shadow sticky top-20 flex max-h-[calc(100vh-6rem)] flex-col rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
               <div className="mb-4 flex items-start gap-4">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-primary-container bg-surface-container-low">
                   <span className="material-symbols-outlined text-3xl text-primary">person</span>
@@ -342,97 +406,239 @@ export default function AdminUsersPage() {
                 </div>
               </div>
 
-              {detailLoading ? (
-                <p className="text-sm text-on-surface-variant">Đang tải chi tiết…</p>
-              ) : (
-                <dl className="space-y-3 text-sm">
-                  <div>
-                    <dt className="text-xs font-semibold text-on-surface-variant uppercase">SĐT</dt>
-                    <dd className="text-on-surface">{selectedUser.phoneNumber}</dd>
-                  </div>
-                  {selectedUser.tierName && (
-                    <div>
-                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">Hạng</dt>
-                      <dd className="text-on-surface">{selectedUser.tierName}</dd>
-                    </div>
-                  )}
-                  {selectedUser.totalPoint != null && (
-                    <div>
-                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                        Tổng điểm
-                      </dt>
-                      <dd className="text-on-surface">
-                        {selectedUser.totalPoint.toLocaleString('vi-VN')}
-                      </dd>
-                    </div>
-                  )}
-                  {selectedUser.promotionPoint != null && (
-                    <div>
-                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                        Điểm khuyến mãi
-                      </dt>
-                      <dd className="text-on-surface">
-                        {selectedUser.promotionPoint.toLocaleString('vi-VN')}
-                      </dd>
-                    </div>
-                  )}
-                  {selectedUser.totalPoint != null && (
-                    <div className="pt-2">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenPointsHistory(selectedUser.userId)}
-                        className="text-sm font-semibold text-primary hover:underline"
-                      >
-                        Xem lịch sử giao dịch điểm
-                      </button>
-                    </div>
-                  )}
-                  {selectedUser.churnScore != null && (
-                    <div>
-                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                        Churn score
-                      </dt>
-                      <dd className="text-on-surface">{selectedUser.churnScore}</dd>
-                    </div>
-                  )}
-                  {selectedUser.lastVisitDate && (
-                    <div>
-                      <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                        Lần ghé gần nhất
-                      </dt>
-                      <dd className="text-on-surface">{selectedUser.lastVisitDate}</dd>
-                    </div>
-                  )}
-                  {selectedUser.vehicles?.length > 0 && (
-                    <div>
-                      <dt className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
-                        Xe ({selectedUser.vehicles.length})
-                      </dt>
-                      <dd className="space-y-1">
-                        {selectedUser.vehicles.map((v) => (
-                          <div
-                            key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
-                            className="rounded-lg bg-surface-container-low px-3 py-2"
-                          >
-                            <p className="font-medium text-on-surface">
-                              {v.licensePlate || '—'}
-                            </p>
-                            {(v.displayName || v.vehicleType || v.vehicleTypeName) && (
-                              <p className="text-sm text-on-surface-variant">
-                                {[v.displayName, v.vehicleType || v.vehicleTypeName]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </dd>
-                    </div>
-                  )}
-                </dl>
-              )}
+              <div className="mb-4 flex flex-wrap gap-2 border-b border-outline-variant pb-3">
+                {[
+                  { key: 'info', label: 'Thông tin' },
+                  { key: 'points', label: 'Lịch sử điểm' },
+                  { key: 'services', label: 'Lịch sử dịch vụ' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                      detailTab === tab.key
+                        ? 'bg-primary text-on-primary'
+                        : 'border border-outline-variant text-on-surface-variant hover:bg-surface-variant'
+                    }`}
+                    onClick={() => {
+                      if (tab.key === 'points') handleOpenPointsHistory(selectedUser.userId)
+                      else if (tab.key === 'services') handleOpenServiceHistory(selectedUser.userId)
+                      else setDetailTab(tab.key)
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
 
-              {selectedUser.role === 'Customer' && !detailLoading && (
+              <div className="flex-1 overflow-auto">
+                {detailTab === 'info' &&
+                  (detailLoading ? (
+                    <p className="text-sm text-on-surface-variant">Đang tải chi tiết…</p>
+                  ) : (
+                    <dl className="space-y-3 text-sm">
+                      <div>
+                        <dt className="text-xs font-semibold text-on-surface-variant uppercase">SĐT</dt>
+                        <dd className="text-on-surface">{selectedUser.phoneNumber}</dd>
+                      </div>
+                      {selectedUser.tierName && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">Hạng</dt>
+                          <dd className="text-on-surface">{selectedUser.tierName}</dd>
+                        </div>
+                      )}
+                      {selectedUser.totalPoint != null && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">
+                            Tổng điểm
+                          </dt>
+                          <dd className="text-on-surface">
+                            {selectedUser.totalPoint.toLocaleString('vi-VN')}
+                          </dd>
+                        </div>
+                      )}
+                      {selectedUser.promotionPoint != null && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">
+                            Điểm khuyến mãi
+                          </dt>
+                          <dd className="text-on-surface">
+                            {selectedUser.promotionPoint.toLocaleString('vi-VN')}
+                          </dd>
+                        </div>
+                      )}
+                      {selectedUser.churnScore != null && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">
+                            Churn score
+                          </dt>
+                          <dd className="text-on-surface">{selectedUser.churnScore}</dd>
+                        </div>
+                      )}
+                      {selectedUser.lastVisitDate && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">
+                            Lần ghé gần nhất
+                          </dt>
+                          <dd className="text-on-surface">{selectedUser.lastVisitDate}</dd>
+                        </div>
+                      )}
+                      {selectedUser.vehicles?.length > 0 && (
+                        <div>
+                          <dt className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
+                            Xe ({selectedUser.vehicles.length})
+                          </dt>
+                          <dd className="space-y-1">
+                            {selectedUser.vehicles.map((v) => (
+                              <div
+                                key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
+                                className="rounded-lg bg-surface-container-low px-3 py-2"
+                              >
+                                <p className="font-medium text-on-surface">
+                                  {v.licensePlate || '—'}
+                                </p>
+                                {(v.displayName || v.vehicleType || v.vehicleTypeName) && (
+                                  <p className="text-sm text-on-surface-variant">
+                                    {[v.displayName, v.vehicleType || v.vehicleTypeName]
+                                      .filter(Boolean)
+                                      .join(' · ')}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </dd>
+                        </div>
+                      )}
+                    </dl>
+                  ))}
+
+                {detailTab === 'points' && (
+                  <div className="space-y-2">
+                    <h4 className="font-sora text-base font-semibold text-on-surface">
+                      Biến động điểm thưởng
+                    </h4>
+                    {loadingPointsHistory ? (
+                      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
+                        Đang tải lịch sử điểm…
+                      </div>
+                    ) : pointsHistory.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant py-8 text-center text-on-surface-variant">
+                        <span className="material-symbols-outlined text-3xl opacity-50">stars</span>
+                        <p className="text-sm">Chưa có giao dịch điểm nào.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {pointsHistory.map((pt) => {
+                          const added = Number(pt.pointsAdded ?? 0)
+                          const deducted = Number(pt.pointsDeducted ?? 0)
+                          const net = added - deducted
+                          const netClass =
+                            net > 0
+                              ? 'text-primary'
+                              : net < 0
+                                ? 'text-error'
+                                : 'text-on-surface-variant'
+                          return (
+                            <div
+                              key={pt.ledgerId}
+                              className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 transition-colors hover:bg-surface-container-low/40"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <span className="text-sm font-medium whitespace-nowrap text-on-surface-variant">
+                                  {pt.transactionDate
+                                    ? new Date(pt.transactionDate).toLocaleString('vi-VN')
+                                    : '—'}
+                                </span>
+                                <span
+                                  className={`text-lg font-bold tabular-nums whitespace-nowrap ${netClass}`}
+                                >
+                                  {net > 0 ? '+' : ''}
+                                  {net.toLocaleString('vi-VN')}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-sm text-on-surface">
+                                {translatePointsReason(pt.reason) || '—'}
+                              </p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {detailTab === 'services' && (
+                  <div className="space-y-2">
+                    <h4 className="font-sora text-base font-semibold text-on-surface">
+                      Lịch sử sử dụng dịch vụ
+                    </h4>
+                    {loadingServiceHistory ? (
+                      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
+                        Đang tải lịch sử dịch vụ…
+                      </div>
+                    ) : serviceHistory.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant py-8 text-center text-on-surface-variant">
+                        <span className="material-symbols-outlined text-3xl opacity-50">
+                          local_car_wash
+                        </span>
+                        <p className="text-sm">Khách hàng chưa sử dụng dịch vụ nào.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {serviceHistory.map((bk) => {
+                          const dateRaw = bk.scheduledTime || bk.scheduledDate
+                          const amount = Number(bk.finalAmount ?? 0)
+                          const isPaid = bk.paymentStatus === 'Paid'
+                          const subServices = Array.isArray(bk.details)
+                            ? bk.details
+                                .map((d) => d?.serviceName)
+                                .filter((n) => n && n !== bk.serviceName)
+                            : []
+                          return (
+                            <div
+                              key={bk.bookingId}
+                              className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 transition-colors hover:bg-surface-container-low/40"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <span className="text-sm font-medium whitespace-nowrap text-on-surface-variant">
+                                  {dateRaw ? new Date(dateRaw).toLocaleString('vi-VN') : '—'}
+                                </span>
+                                <span
+                                  className={`text-lg font-bold tabular-nums whitespace-nowrap ${
+                                    isPaid ? 'text-primary' : 'text-on-surface-variant'
+                                  }`}
+                                >
+                                  {amount.toLocaleString('vi-VN')} ₫
+                                </span>
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <span className="font-medium text-on-surface">
+                                  {bk.licensePlate || '—'}
+                                </span>
+                                <span className="text-on-surface-variant">·</span>
+                                <span className="text-on-surface-variant">
+                                  {bk.serviceName || '—'}
+                                </span>
+                              </div>
+                              {subServices.length > 0 && (
+                                <p className="mt-1 text-xs text-on-surface-variant">
+                                  + {subServices.join(', ')}
+                                </p>
+                              )}
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <StatusBadge status={bk.status} />
+                                <StatusBadge status={bk.paymentStatus} />
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {selectedUser.role === 'Customer' && !detailLoading && detailTab === 'info' && (
                 <button
                   type="button"
                   className={`mt-6 w-full rounded-xl px-4 py-2.5 text-sm font-semibold ${
@@ -468,59 +674,6 @@ export default function AdminUsersPage() {
         onConfirm={handleStatusChange}
         onCancel={() => !updatingStatus && setStatusTarget(null)}
       />
-
-      {pointsHistoryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-surface p-6 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-sora text-xl font-bold text-on-surface">Lịch sử điểm</h3>
-              <button
-                type="button"
-                onClick={() => setPointsHistoryOpen(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-surface-container"
-              >
-                <span className="material-symbols-outlined text-xl">close</span>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto">
-              {loadingPointsHistory ? (
-                <p className="py-8 text-center text-on-surface-variant">Đang tải...</p>
-              ) : pointsHistory.length === 0 ? (
-                <p className="py-8 text-center text-on-surface-variant">Không có giao dịch nào.</p>
-              ) : (
-                <table className="w-full text-left text-sm text-on-surface">
-                  <thead className="sticky top-0 bg-surface text-xs text-on-surface-variant uppercase">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Thời gian</th>
-                      <th className="px-4 py-3 font-semibold">Biến động</th>
-                      <th className="px-4 py-3 font-semibold">Lý do</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-outline-variant">
-                    {pointsHistory.map((pt) => {
-                      const net = (pt.pointsAdded || 0) - (pt.pointsDeducted || 0)
-                      return (
-                        <tr key={pt.ledgerId} className="hover:bg-surface-container-lowest">
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            {pt.transactionDate ? new Date(pt.transactionDate).toLocaleString('vi-VN') : '—'}
-                          </td>
-                          <td className="px-4 py-3 font-medium">
-                            <span className={net > 0 ? 'text-primary' : net < 0 ? 'text-error' : ''}>
-                              {net > 0 ? '+' : ''}{net}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">{pt.reason || '—'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

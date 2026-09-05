@@ -132,6 +132,7 @@ export {
   fetchUsers,
   fetchUserById,
   fetchUserPointsHistory,
+  fetchUserServiceHistory,
   fetchUserRoleStats,
   updateUserStatus,
   syncUserPoints,
