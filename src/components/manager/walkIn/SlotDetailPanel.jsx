@@ -1,5 +1,9 @@
 import FormModal from '../../admin/shared/FormModal'
-import { formatDayFull, isSameDay, getNowInVietnam } from '../../../utils/week'
+import { formatDayFull } from '../../../utils/week'
+import {
+  isOccupying,
+  sortBookingsForDisplay,
+} from './WeeklyScheduleGrid'
 
 const STATUS_LABELS = {
   Pending: 'Chờ xác nhận',
@@ -38,15 +42,16 @@ function shortTime(value) {
  * Panel chi tiết 1 ô (read-only). Hiển thị:
  *   - Tên slot + ngày
  *   - used/max + busyLanes/totalLanes
- *   - Danh sách booking (nếu có)
- *   - Banner cảnh báo nếu slot đầy / quá khứ
+ *   - Danh sách booking (mọi status — Manager Lịch đặt chỉ xem)
+ *   - Banner cảnh báo nếu slot đầy (giữ nguyên cho manager quyết định nhân viên)
  *
  * Props:
  *   - open: boolean
  *   - cell: { date, slot, cellState, bookings, busyLanes, totalLanes, used, max } | null
  *   - onClose()
+ *   - onBookingClick(booking) (optional): nếu truyền thì <li> clickable → mở detail
  */
-export default function SlotDetailPanel({ open, cell, onClose }) {
+export default function SlotDetailPanel({ open, cell, onClose, onBookingClick }) {
   if (!cell) {
     return <FormModal open={open} title="Chi tiết khung giờ" onClose={onClose} />
   }
@@ -64,8 +69,6 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
 
   const slotLabel = `${shortTime(slot.startTime)} – ${shortTime(slot.endTime)}`
   const isFull = cellState === 'current-full' || (max > 0 && used >= max)
-  const isPast = cellState === 'past'
-  const isToday = isSameDay(date, getNowInVietnam())
 
   return (
     <FormModal
@@ -80,7 +83,9 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
       size="lg"
     >
       <div className="space-y-4">
-        {/* Banner cảnh báo */}
+        {/* Banner cảnh báo - chỉ giữ "slot đầy" cho manager quyết định
+            có nhận thêm walk-in không. Bỏ banner isPast/isFuture: Manager Lịch
+            đặt chỉ xem, không có hành động nào phụ thuộc quá khứ/tương lai. */}
         {isFull && (
           <div className="flex items-start gap-2 rounded-lg border border-error/40 bg-error-container/30 px-4 py-3">
             <span className="material-symbols-outlined text-error">block</span>
@@ -89,36 +94,8 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
                 Khung giờ đã đầy
               </p>
               <p className="mt-1 text-xs text-on-surface-variant">
-                Sức chứa tối đa ({max}) đã được lấp đầy. Không thể đặt thêm walk-in cho khung
-                giờ này.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {isPast && !isToday && (
-          <div className="flex items-start gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
-            <span className="material-symbols-outlined text-on-surface-variant">history</span>
-            <div>
-              <p className="text-sm font-semibold text-on-surface">
-                Khung giờ thuộc ngày trong quá khứ
-              </p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                Chỉ xem chi tiết. Walk-in chỉ áp dụng cho khung giờ hiện tại.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!isToday && !isPast && (
-          <div className="flex items-start gap-2 rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3">
-            <span className="material-symbols-outlined text-on-surface-variant">info</span>
-            <div>
-              <p className="text-sm font-semibold text-on-surface">
-                Khung giờ trong tương lai
-              </p>
-              <p className="mt-1 text-xs text-on-surface-variant">
-                Chỉ xem chi tiết. Walk-in chỉ áp dụng cho khung giờ hiện tại.
+                Sức chứa tối đa ({max}) đã được lấp đầy. Manager không thể tạo thêm
+                walk-in cho khung giờ này (BE sẽ từ chối).
               </p>
             </div>
           </div>
@@ -134,7 +111,7 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
               {used}
               <span className="text-sm font-normal text-on-surface-variant"> / {max}</span>
             </p>
-            <p className="mt-1 text-xs text-on-surface-variant">booking đang hoạt động</p>
+            <p className="mt-1 text-xs text-on-surface-variant">booking đang chiếm chỗ</p>
           </div>
           <div className="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
             <p className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -154,7 +131,7 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
         {/* Booking list */}
         <div>
           <h4 className="mb-2 text-sm font-semibold text-on-surface">
-            Booking đang hoạt động ({bookings.length})
+            Booking trong khung giờ ({bookings.length})
           </h4>
 
           {bookings.length === 0 ? (
@@ -163,52 +140,62 @@ export default function SlotDetailPanel({ open, cell, onClose }) {
                 event_available
               </span>
               <p className="mt-2 text-sm text-on-surface-variant">
-                {isToday
-                  ? 'Chưa có booking nào trong khung giờ này.'
-                  : 'Chưa có dữ liệu cập nhật cho ngày này.'}
+                Không có booking nào trong khung giờ này.
               </p>
             </div>
           ) : (
             <ul className="space-y-2">
-              {bookings.map((b) => (
-                <li
-                  key={b.bookingId}
-                  className="flex flex-col gap-1 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-mono text-sm font-semibold text-on-surface">
-                      {b.licensePlate}
-                    </span>
-                    <span className="text-xs text-on-surface-variant">
-                      {b.customerName && b.customerName !== '—'
-                        ? b.customerName
-                        : 'Khách vãng lai'}
-                      {b.serviceName && b.serviceName !== '—' && ` • ${b.serviceName}`}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {b.processingLaneName && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-secondary-container/30 px-2 py-0.5 text-[11px] font-medium text-on-secondary-container">
-                        <span
-                          className="material-symbols-outlined text-[12px]"
-                          style={{ fontVariationSettings: "'FILL' 0" }}
-                        >
-                          garage
-                        </span>
-                        {b.processingLaneName}
+              {sortBookingsForDisplay(bookings).map((b) => {
+                const occupying = isOccupying(b)
+                return (
+                  <li
+                    key={b.bookingId}
+                    onClick={() => onBookingClick?.(b)}
+                    className={`flex flex-col gap-1 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 sm:flex-row sm:items-center sm:justify-between ${
+                      onBookingClick ? 'cursor-pointer hover:bg-surface-container' : ''
+                    } ${occupying ? '' : 'opacity-70'}`}
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span
+                        className={`font-mono text-sm font-semibold ${
+                          occupying
+                            ? 'text-on-surface'
+                            : 'text-on-surface-variant line-through'
+                        }`}
+                      >
+                        {b.licensePlate}
                       </span>
-                    )}
-                    <span
-                      className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusClass(
-                        b.status,
-                      )}`}
-                    >
-                      {statusLabel(b.status)}
-                    </span>
-                  </div>
-                </li>
-              ))}
+                      <span className="text-xs text-on-surface-variant">
+                        {b.customerName && b.customerName !== '—'
+                          ? b.customerName
+                          : 'Khách vãng lai'}
+                        {b.serviceName && b.serviceName !== '—' && ` • ${b.serviceName}`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {b.processingLaneName && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-secondary-container/30 px-2 py-0.5 text-[11px] font-medium text-on-secondary-container">
+                          <span
+                            className="material-symbols-outlined text-[12px]"
+                            style={{ fontVariationSettings: "'FILL' 0" }}
+                          >
+                            garage
+                          </span>
+                          {b.processingLaneName}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusClass(
+                          b.status,
+                        )}`}
+                      >
+                        {statusLabel(b.status)}
+                      </span>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </div>

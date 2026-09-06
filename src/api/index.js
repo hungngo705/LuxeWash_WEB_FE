@@ -33,6 +33,8 @@ export {
 
 export { getBranchId, getBranchIdFromToken } from './branchContext'
 
+export { getRoleFromToken } from './authRoles'
+
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
 export {
@@ -148,6 +150,7 @@ export {
 
 export {
   fetchBookingsByDate,
+  fetchBookingsByDateForRole,
   fetchBookingsByLicensePlate,
   searchBookingsByLicensePlate,
   smartLookupLicensePlate,
@@ -194,6 +197,7 @@ export {
 
 export {
   fetchManagerBookings,
+  fetchManagerBookingsByDate,
   fetchManagerStaffs,
   checkinAssignBooking,
   markManagerBookingNoShow,

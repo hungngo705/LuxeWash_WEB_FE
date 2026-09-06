@@ -8,8 +8,6 @@ import {
   parseTimeOfDay,
 } from '../../../utils/week'
 
-const ACTIVE_STATUSES = new Set(['Pending', 'CheckedIn', 'Processing'])
-
 /**
  * Helper parse 'HH:MM:SS' hoặc 'HH:MM' thành label ngắn 'HH:MM'.
  */
@@ -19,20 +17,50 @@ function shortTime(value) {
 }
 
 /**
- * Lấy các booking thuộc (date, slot) - chỉ status active.
+ * Các status booking "đang chiếm chỗ" (chiếm dung lượng slot + làn).
+ *
+ * Lý do:
+ *   - BE validate capacity khi tạo walk-in: chỉ reject khi có booking đang
+ *     chiếm chỗ (Pending / CheckedIn / Processing). Completed / Cancelled /
+ *     NoShow đã giải phóng slot nên KHÔNG tính vào dung lượng.
+ *   - `used`      = COUNT số booking thuộc tập này trong slot.
+ *   - `busyLanes` = COUNT làn distinct có booking thuộc tập này + đã assign
+ *     làn (`processingLaneId > 0`).
+ *
+ * Booking ngoài tập này (Completed/Cancelled/NoShow) vẫn hiển thị trong cell
+ * để tra cứu (kèm badge) nhưng không đóng góp vào `used`/`busyLanes`.
+ *
+ * Export để `SlotDetailPanel.jsx` (và các chỗ khác nếu cần) tái sử dụng
+ * cùng một định nghĩa.
+ */
+export const OCCUPYING_STATUSES = new Set([
+  'Pending',
+  'CheckedIn',
+  'Processing',
+])
+
+export function isOccupying(booking) {
+  return Boolean(booking) && OCCUPYING_STATUSES.has(booking.status)
+}
+
+/**
+ * Lấy các booking thuộc (date, slot). Trả về:
+ *   - `all`:       mọi booking có ScheduledTime rơi vào slot (để hiển thị).
+ *   - `occupying`: trong `all`, lọc theo status đang chiếm chỗ (để tính capacity).
  *
  * Hạn chế BE: ManagerBookingListDTO không trả CapacityWeight, nên ước lượng
- * used = số booking (mặc định BaseWeight=1). BE vẫn validate capacity khi tạo
- * walk-in nên kết quả thực tế không bị ảnh hưởng.
+ * `used = COUNT(occupying)` (mặc định BaseWeight=1). BE vẫn validate capacity
+ * khi tạo walk-in nên kết quả thực tế không bị ảnh hưởng.
  *
  * @param {Date} date
  * @param {{ slotId: number, startTime: string, endTime: string }} slot
  * @param {Array} bookings
+ * @returns {{ all: Array, occupying: Array }}
  */
 function getBookingsForCell(date, slot, bookings) {
   const start = parseTimeOfDay(slot.startTime)
   const end = parseTimeOfDay(slot.endTime)
-  if (!start || !end) return []
+  if (!start || !end) return { all: [], occupying: [] }
 
   const dayStart = new Date(
     date.getFullYear(),
@@ -51,19 +79,37 @@ function getBookingsForCell(date, slot, bookings) {
     0,
   )
 
-  return bookings.filter((b) => {
-    if (!b?.scheduledTime) return false
-    if (!ACTIVE_STATUSES.has(b.status)) return false
+  const all = []
+  for (const b of bookings) {
+    if (!b?.scheduledTime) continue
     const t = new Date(b.scheduledTime)
-    if (Number.isNaN(t.getTime())) return false
-    if (t < dayStart || t >= dayEnd) return false
+    if (Number.isNaN(t.getTime())) continue
+    if (t < dayStart || t >= dayEnd) continue
 
-    const h = t.getHours()
-    const m = t.getMinutes()
-    const minutes = h * 60 + m
+    const minutes = t.getHours() * 60 + t.getMinutes()
     const startMin = start.hours * 60 + start.minutes
     const endMin = end.hours * 60 + end.minutes
-    return minutes >= startMin && minutes < endMin
+    if (minutes < startMin || minutes >= endMin) continue
+
+    all.push(b)
+  }
+
+  const occupying = all.filter(isOccupying)
+  return { all, occupying }
+}
+
+/**
+ * Sắp xếp booking để hiển thị: booking đang chiếm chỗ (Pending/CheckedIn/
+ * Processing) lên đầu, sau đó licensePlate tăng dần. Dùng cho cell và panel.
+ */
+export function sortBookingsForDisplay(list) {
+  return [...list].sort((a, b) => {
+    const ao = isOccupying(a) ? 0 : 1
+    const bo = isOccupying(b) ? 0 : 1
+    if (ao !== bo) return ao - bo
+    return String(a?.licensePlate ?? '').localeCompare(
+      String(b?.licensePlate ?? ''),
+    )
   })
 }
 
@@ -73,16 +119,15 @@ function getBookingsForCell(date, slot, bookings) {
  * Props:
  *   - weekDates: Date[] - 7 ngày T2..CN
  *   - slots: ManagerTimeSlot[] - khung giờ của chi nhánh
- *   - bookings: ManagerBooking[] - booking active (Pending/CheckedIn/Processing)
+ *   - bookings: ManagerBooking[] - booking trong tuần (mọi status
+ *     Pending/CheckedIn/Processing/Completed/Cancelled/NoShow). Cell tự tách
+ *     occupancy để tính capacity + lanes.
  *   - lanes: ManagerLane[] - làn rửa của chi nhánh
  *   - onCellClick(payload): callback khi click 1 ô
  *      payload: { date, slot, cellState: 'current-empty' | 'current-full' | 'future' | 'past', bookings }
- *
- * State hiển thị mỗi ô:
- *   - current + empty: viền xanh primary, hover sáng
- *   - current + full: viền đỏ, cursor not-allowed
- *   - future: viền outline, hover sáng
- *   - past: nền xám, opacity-60
+ *   - onDayClick(date): callback khi click header ngày (chỉ khi showDayClickHint=true)
+ *   - showDayClickHint: bật click được vào header ngày (mặc định false để không phá
+ *       hành vi Walk-in cũ). Khi true, header ngày có cursor-pointer + hover sáng.
  */
 export default function WeeklyScheduleGrid({
   weekDates,
@@ -90,6 +135,8 @@ export default function WeeklyScheduleGrid({
   bookings,
   lanes,
   onCellClick,
+  onDayClick,
+  showDayClickHint = false,
 }) {
   const today = useMemo(() => getNowInVietnam(), [])
   const totalLanes = lanes.length
@@ -133,7 +180,21 @@ export default function WeeklyScheduleGrid({
                     isToday ? 'bg-primary-container/30' : ''
                   }`}
                 >
-                  <div className="flex flex-col items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={!showDayClickHint}
+                    onClick={() => showDayClickHint && onDayClick?.(date)}
+                    className={`flex w-full flex-col items-center gap-1 rounded-lg px-2 py-1 transition-colors ${
+                      showDayClickHint
+                        ? 'cursor-pointer hover:bg-primary-container/40'
+                        : 'cursor-default'
+                    }`}
+                    aria-label={
+                      showDayClickHint
+                        ? `Mở sổ ngày ${formatDayShort(date)}`
+                        : undefined
+                    }
+                  >
                     <span
                       className={`text-[11px] font-semibold tracking-wider uppercase ${
                         isToday ? 'text-primary' : 'text-on-surface-variant'
@@ -153,7 +214,7 @@ export default function WeeklyScheduleGrid({
                         Hôm nay
                       </span>
                     )}
-                  </div>
+                  </button>
                 </th>
               )
             })}
@@ -177,15 +238,18 @@ export default function WeeklyScheduleGrid({
                 </th>
 
                 {weekDates.map((date, dateIdx) => {
-                  const cellBookings = getBookingsForCell(date, slot, bookings)
-                  const used = cellBookings.length
+                  const { all: cellBookings, occupying: occupyingBookings } =
+                    getBookingsForCell(date, slot, bookings)
+                  const used = occupyingBookings.length
                   const max = Number(slot.maxCapacity) || 0
                   const busyLaneIds = new Set(
-                    cellBookings
+                    occupyingBookings
                       .map((b) => b.processingLaneId)
                       .filter((id) => id != null && id > 0),
                   )
                   const busyLanes = busyLaneIds.size
+                  const displayBookings =
+                    sortBookingsForDisplay(cellBookings).slice(0, 2)
 
                   const timeState = classifySlotTime(date, slot)
                   const isFull = max > 0 && used >= max
@@ -193,18 +257,21 @@ export default function WeeklyScheduleGrid({
                   const isCurrent = timeState === 'current'
                   const isFuture = timeState === 'future'
 
-                  // Style theo trạng thái
+                  // Style theo trạng thái. Manager Lịch đặt chỉ xem nên mọi ô
+                  // đều clickable, kể cả ô quá khứ. Ô hiện tại đầy vẫn clickable
+                  // (SlotDetailPanel sẽ hiển thị banner "Khung giờ đã đầy").
                   let cellClass =
                     'border-r border-outline-variant/40 last:border-r-0 align-top px-2 py-2'
                   let buttonClass =
                     'flex h-[88px] w-full flex-col gap-1.5 rounded-lg border px-2 py-1.5 text-left transition-colors'
 
                   if (isPast) {
+                    // Trung tính — vẫn clickable, không mờ để giữ khả năng đọc.
                     buttonClass +=
-                      ' cursor-not-allowed border-outline-variant/40 bg-surface-container-low opacity-60'
+                      ' cursor-pointer border-outline-variant bg-surface-container-lowest hover:border-secondary hover:bg-secondary-container/15'
                   } else if (isCurrent && isFull) {
                     buttonClass +=
-                      ' cursor-not-allowed border-error/40 bg-error-container/20 hover:bg-error-container/30'
+                      ' cursor-pointer border-error/40 bg-error-container/20 hover:bg-error-container/30'
                   } else if (isCurrent) {
                     buttonClass +=
                       ' cursor-pointer border-primary bg-primary-container/15 hover:border-primary hover:bg-primary-container/30'
@@ -218,7 +285,7 @@ export default function WeeklyScheduleGrid({
                       <button
                         type="button"
                         className={buttonClass}
-                        disabled={isPast || (isCurrent && isFull)}
+                        disabled={false}
                         onClick={() =>
                           onCellClick?.({
                             date,
@@ -235,6 +302,7 @@ export default function WeeklyScheduleGrid({
                             totalLanes,
                             used,
                             max,
+                            occupyingCount: occupyingBookings.length,
                           })
                         }
                         aria-label={`${slotLabel} ngày ${formatDayShort(date)}, ${used}/${max} booking, ${busyLanes}/${totalLanes} làn`}
@@ -270,15 +338,22 @@ export default function WeeklyScheduleGrid({
                           </div>
                         ) : (
                           <div className="flex flex-1 flex-col gap-0.5 overflow-hidden">
-                            {cellBookings.slice(0, 2).map((b) => (
-                              <span
-                                key={b.bookingId}
-                                className="truncate rounded bg-secondary-container/40 px-1.5 py-0.5 text-[10px] font-medium text-on-secondary-container"
-                                title={`${b.licensePlate} • ${b.status}`}
-                              >
-                                {b.licensePlate}
-                              </span>
-                            ))}
+                            {displayBookings.map((b) => {
+                              const occupying = isOccupying(b)
+                              return (
+                                <span
+                                  key={b.bookingId}
+                                  className={
+                                    occupying
+                                      ? 'truncate rounded bg-secondary-container/40 px-1.5 py-0.5 text-[10px] font-medium text-on-secondary-container'
+                                      : 'truncate rounded bg-outline-variant/30 px-1.5 py-0.5 text-[10px] font-medium text-on-surface-variant opacity-70 line-through'
+                                  }
+                                  title={`${b.licensePlate} • ${b.status}`}
+                                >
+                                  {b.licensePlate}
+                                </span>
+                              )
+                            })}
                             {cellBookings.length > 2 && (
                               <span className="text-[10px] text-on-surface-variant">
                                 +{cellBookings.length - 2} nữa

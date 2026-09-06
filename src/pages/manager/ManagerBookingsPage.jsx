@@ -1,211 +1,263 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ApiError, fetchManagerBookings, normalizeManagerBooking } from '../../api'
+import { ApiError } from '../../api'
+import { fetchManagerBookingsByDate } from '../../api/manager.api'
+import { fetchManagerTimeSlots } from '../../api/manager.timeSlots.api'
+import { fetchManagerLanes } from '../../api/manager.lanes.api'
 import PageHeader from '../../components/admin/shared/PageHeader'
-import StatusBadge from '../../components/admin/shared/StatusBadge'
-import { WashDurationBadge } from '../../components/shared/WashTelemetry'
-import { formatDateTime, formatVnd } from '../../utils/format'
+import BookingDetailPanel from '../../components/manager/bookings/BookingDetailPanel'
+import DayBookingsPanel from '../../components/manager/bookings/DayBookingsPanel'
+import WeekHeader from '../../components/manager/walkIn/WeekHeader'
+import WeeklyScheduleGrid from '../../components/manager/walkIn/WeeklyScheduleGrid'
+import SlotDetailPanel from '../../components/manager/walkIn/SlotDetailPanel'
+import { getMondayOfWeek, getNowInVietnam, getWeekDates, toDateKey } from '../../utils/week'
 
-const STATUS_FILTERS = [
-  { id: 'all', label: 'Tất cả' },
-  { id: 'Pending', label: 'Chờ check-in' },
-  { id: 'Checked-in', label: 'Đã check-in' },
-  { id: 'Processing', label: 'Đang rửa' },
-  { id: 'Completed', label: 'Hoàn thành' },
-  { id: 'No-show', label: 'Vắng mặt' },
-  { id: 'Cancelled', label: 'Đã hủy' },
-]
-
+/**
+ * Trang Lịch đặt của Manager.
+ *
+ * Layout:
+ *   1. PageHeader: mô tả hướng dẫn.
+ *   2. WeekHeader: chuyển tuần + ô chọn ngày (date picker) "Tới ngày".
+ *   3. WeeklyScheduleGrid: lịch tuần T2..CN (tái sử dụng từ trang Walk-in).
+ *      - Click header ngày hoặc ô slot → mở DayBookingsPanel.
+ *   4. DayBookingsPanel: sổ thông tin đầy đủ booking của 1 ngày
+ *      (active status: Pending / Checked-in / Processing; bao gồm walk-in).
+ *      - Click 1 dòng → mở BookingDetailPanel.
+ *   5. BookingDetailPanel: chi tiết read-only 1 booking.
+ *
+ * Manager chỉ xem — không có action tạo/sửa booking trên trang này.
+ *
+ * API sử dụng:
+ *   - GET /manager/timeslots       → layout slot cho grid
+ *   - GET /manager/bookings        → active bookings (Pending/Checked-in/Processing) cho grid + sổ ngày
+ *   - GET /manager/lanes           → tổng lanes cho hiển thị capacity hint
+ *   - Helper `fetchManagerBookingsByDate(dateKey)` filter ngày ở FE (an toàn timezone VN).
+ *
+ * Giới hạn: sổ ngày chỉ hiển thị booking active (Pending/CheckedIn/Processing).
+ * Nếu BE cung cấp `/manager/bookings/by-date?targetDate=...`, chỉ cần đổi
+ * `fetchManagerBookingsByDate` để gọi endpoint đó — page này không cần sửa.
+ *
+ * 100% endpoint BE có sẵn — không cần thay đổi BE.
+ */
 export default function ManagerBookingsPage() {
-  const [bookings, setBookings] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [search, setSearch] = useState('')
+  const [weekAnchor, setWeekAnchor] = useState(() => getNowInVietnam())
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
-    try {
-      const data = await fetchManagerBookings()
-      setBookings(Array.isArray(data) ? data.map(normalizeManagerBooking) : [])
-    } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Không tải được lịch đặt.')
-    } finally {
-      setLoading(false)
+  // Grid data
+  const [slots, setSlots] = useState([])
+  const [weekBookings, setWeekBookings] = useState([])
+  const [lanes, setLanes] = useState([])
+  const [gridLoading, setGridLoading] = useState(true)
+  const [gridError, setGridError] = useState('')
+
+  // Day bookings
+  const [dayOpen, setDayOpen] = useState(null) // Date | null
+  const [dayBookings, setDayBookings] = useState([])
+  const [dayLoading, setDayLoading] = useState(false)
+  const [dayError, setDayError] = useState('')
+
+  // Slot detail (cell)
+  const [slotCell, setSlotCell] = useState(null)
+
+  // Booking detail
+  const [detailBooking, setDetailBooking] = useState(null)
+
+  // weekDates được tính sớm để dùng chung cho loadWeek + useMemo render.
+  const weekDates = useMemo(() => getWeekDates(weekAnchor), [weekAnchor])
+
+  const loadWeek = useCallback(async () => {
+    setGridLoading(true)
+    setGridError('')
+    const dates = weekDates
+    const [slotsResult, lanesResult, ...dateResults] = await Promise.allSettled([
+      fetchManagerTimeSlots(),
+      fetchManagerLanes(),
+      ...dates.map((d) => fetchManagerBookingsByDate(toDateKey(d))),
+    ])
+
+    if (slotsResult.status === 'fulfilled') {
+      setSlots(Array.isArray(slotsResult.value) ? slotsResult.value : [])
+    } else {
+      setSlots([])
     }
-  }, [])
+    if (lanesResult.status === 'fulfilled') {
+      setLanes(Array.isArray(lanesResult.value) ? lanesResult.value : [])
+    } else {
+      setLanes([])
+    }
+
+    const merged = []
+    const seen = new Set()
+    let hasBookingError = false
+    for (const r of dateResults) {
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+        for (const b of r.value) {
+          if (b?.bookingId != null && !seen.has(b.bookingId)) {
+            seen.add(b.bookingId)
+            merged.push(b)
+          }
+        }
+      } else {
+        hasBookingError = true
+      }
+    }
+    setWeekBookings(merged)
+    if (hasBookingError) {
+      setGridError(
+        'Một số ngày không tải được dữ liệu booking. Ô lịch của các ngày đó có thể trống.',
+      )
+    }
+    setGridLoading(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekAnchor])
+
+  const loadDay = useCallback(
+    async (date) => {
+      if (!date) return
+      setDayLoading(true)
+      setDayError('')
+      try {
+        const list = await fetchManagerBookingsByDate(toDateKey(date))
+        setDayBookings(Array.isArray(list) ? list : [])
+      } catch (err) {
+        if (err instanceof ApiError && err.isForbidden) {
+          // BE không cấp quyền cho role này — hiển thị lỗi rõ ràng thay vì
+          // set [] im lặng khiến sổ ngày trông như rỗng.
+          setDayError(
+            'Bạn không có quyền xem sổ booking của ngày này. Vui lòng liên hệ quản trị viên.',
+          )
+        } else {
+          const message =
+            err instanceof ApiError ? err.message : 'Không tải được danh sách booking của ngày.'
+          setDayError(message)
+        }
+        setDayBookings([])
+      } finally {
+        setDayLoading(false)
+      }
+    },
+    [],
+  )
 
   useEffect(() => {
-    loadBookings()
-    const interval = setInterval(loadBookings, 30_000)
-    return () => clearInterval(interval)
-  }, [loadBookings])
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return bookings.filter((b) => {
-      const matchStatus = statusFilter === 'all' || b.status === statusFilter
-      const matchSearch =
-        !q ||
-        b.licensePlate?.toLowerCase().includes(q) ||
-        b.customerName?.toLowerCase().includes(q) ||
-        b.serviceName?.toLowerCase().includes(q)
-      return matchStatus && matchSearch
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) loadWeek()
     })
-  }, [bookings, statusFilter, search])
+    return () => {
+      cancelled = true
+    }
+  }, [loadWeek])
 
-  const stats = useMemo(
-    () => ({
-      total: bookings.length,
-      pending: bookings.filter((b) => b.status === 'Pending').length,
-      checkedIn: bookings.filter((b) => b.status === 'Checked-in').length,
-      processing: bookings.filter((b) => b.status === 'Processing').length,
-    }),
-    [bookings],
+  const handleCellClick = useCallback((cell) => {
+    setSlotCell(cell)
+  }, [])
+
+  const handleCloseSlot = useCallback(() => {
+    setSlotCell(null)
+  }, [])
+
+  const handleDayClick = useCallback(
+    (date) => {
+      setDayOpen(date)
+      loadDay(date)
+    },
+    [loadDay],
+  )
+
+  const handleJumpToDate = useCallback(
+    (dateKey) => {
+      if (!dateKey) return
+      const [y, m, d] = dateKey.split('-').map(Number)
+      if (!y || !m || !d) return
+      const target = new Date(y, m - 1, d)
+      // Nhảy tuần về tuần chứa ngày đó
+      setWeekAnchor(getMondayOfWeek(target))
+      setDayOpen(target)
+      loadDay(target)
+    },
+    [loadDay],
+  )
+
+  const handleCloseDay = useCallback(() => {
+    setDayOpen(null)
+    setDayError('')
+  }, [])
+
+  const handleCloseDetail = useCallback(() => {
+    setDetailBooking(null)
+  }, [])
+
+  const gridSection = gridLoading ? (
+    <div className="flex items-center justify-center py-20">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
+    </div>
+  ) : gridError ? (
+    <div className="mb-6 rounded-xl border border-error-container/40 bg-error-container/10 p-4">
+      <p className="text-sm text-error">{gridError}</p>
+      <button
+        type="button"
+        className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary"
+        onClick={loadWeek}
+      >
+        Thử lại
+      </button>
+    </div>
+  ) : (
+    <WeeklyScheduleGrid
+      weekDates={weekDates}
+      slots={slots}
+      bookings={weekBookings}
+      lanes={lanes}
+      onCellClick={handleCellClick}
+      onDayClick={handleDayClick}
+      showDayClickHint
+    />
   )
 
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Vận hành chi nhánh"
         title="Lịch đặt"
-        description="Theo dõi booking chi nhánh: chờ check-in, đã check-in và đang rửa"
+        description="Lịch tuần tại chi nhánh. Bấm vào ngày hoặc ô khung giờ để xem sổ thông tin booking trong ngày."
+        actionIcon="calendar_month"
       />
 
-      <div className="mb-4 flex justify-end">
-        <Link
-          to="/manager/queue"
-          className="inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-on-secondary hover:bg-secondary/90"
-        >
-          <span className="material-symbols-outlined text-[18px]">local_shipping</span>
-          Điều phối & check-in
-        </Link>
+      <div className="mb-4">
+        <WeekHeader
+          anchor={weekAnchor}
+          onChange={setWeekAnchor}
+          onToday={() => setWeekAnchor(getNowInVietnam())}
+          enableDatePicker
+          onJumpToDate={handleJumpToDate}
+        />
       </div>
 
-      {loadError ? (
-        <div className="mb-6 rounded-xl border border-error-container/40 bg-error-container/10 p-4">
-          <p className="text-sm text-error">{loadError}</p>
-          <button
-            type="button"
-            className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary"
-            onClick={loadBookings}
-          >
-            Thử lại
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {[
-              { label: 'Tổng lịch', value: stats.total },
-              { label: 'Chờ check-in', value: stats.pending },
-              { label: 'Đã check-in', value: stats.checkedIn },
-              { label: 'Đang rửa', value: stats.processing },
-            ].map((s) => (
-              <div
-                key={s.label}
-                className="glass-panel rounded-xl border border-outline-variant bg-surface-container-lowest p-4 text-center"
-              >
-                <p className="font-sora text-2xl font-semibold text-on-surface">{s.value}</p>
-                <p className="text-xs font-medium text-on-surface-variant">{s.label}</p>
-              </div>
-            ))}
-          </div>
+      {gridSection}
 
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    statusFilter === f.id
-                      ? 'bg-secondary text-on-secondary'
-                      : 'border border-outline-variant text-on-surface-variant hover:bg-surface-variant'
-                  }`}
-                  onClick={() => setStatusFilter(f.id)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <input
-              type="search"
-              className="h-11 w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-3 text-sm lg:w-72"
-              placeholder="Tìm biển số, khách, dịch vụ…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+      <DayBookingsPanel
+        open={Boolean(dayOpen)}
+        date={dayOpen}
+        bookings={dayBookings}
+        loading={dayLoading}
+        error={dayError}
+        onClose={handleCloseDay}
+        onBookingClick={(b) => setDetailBooking(b)}
+      />
 
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-container/30 border-t-primary-container" />
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-outline-variant/40 bg-surface-container-lowest p-12 text-center">
-              <span className="material-symbols-outlined text-5xl text-outline">event_busy</span>
-              <p className="text-sm text-on-surface-variant">
-                Không có booking đang hoạt động tại chi nhánh.
-              </p>
-            </div>
-          ) : (
-            <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-              <table className="w-full min-w-[1040px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                    <th className="px-4 py-3">#</th>
-                    <th className="px-4 py-3">Biển số</th>
-                    <th className="px-4 py-3">Khách hàng</th>
-                    <th className="px-4 py-3">Dịch vụ</th>
-                    <th className="px-4 py-3">Giờ hẹn</th>
-                    <th className="px-4 py-3">Làn</th>
-                    <th className="px-4 py-3">Trạng thái</th>
-                    <th className="px-4 py-3">Thanh toán</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-outline-variant/60">
-                  {filtered.map((b, index) => (
-                    <tr key={b.bookingId} className="hover:bg-surface-container-low/50">
-                      <td className="px-4 py-3 text-on-surface-variant">{index + 1}</td>
-                      <td className="px-4 py-3 font-mono font-semibold uppercase text-secondary">
-                        {b.licensePlate}
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-on-surface">{b.customerName}</p>
-                        {b.customerPhone && b.customerPhone !== '—' && (
-                          <p className="text-xs text-on-surface-variant">{b.customerPhone}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-on-surface">{b.serviceName}</td>
-                      <td className="px-4 py-3">
-                        <p>{b.slotLabel}</p>
-                        <p className="text-xs text-on-surface-variant">
-                          {formatDateTime(b.scheduledTime ?? b.scheduledDate)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p>{b.processingLaneName || '—'}</p>
-                        {b.isBusinessLane && (
-                          <span className="mt-1 inline-flex rounded-full border border-secondary/30 bg-secondary-container/40 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-on-secondary-container">
-                            Doanh nghiệp
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={b.status} />
-                      </td>
-                      <td className="px-4 py-3 font-medium">
-                        <div>{formatVnd(b.finalAmount)}</div>
-                        <WashDurationBadge booking={b} className="mt-2" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </>
+      <SlotDetailPanel
+        open={Boolean(slotCell)}
+        cell={slotCell}
+        onClose={handleCloseSlot}
+        onBookingClick={(b) => setDetailBooking(b)}
+      />
+
+      {/* Nếu DayBookingsPanel đang đóng, vẫn cho phép mở detail trực tiếp */}
+      {detailBooking && (
+        <BookingDetailPanel
+          open={Boolean(detailBooking)}
+          booking={detailBooking}
+          onClose={handleCloseDetail}
+        />
       )}
     </div>
   )
