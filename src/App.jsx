@@ -42,7 +42,6 @@ import StaffShiftsPage from './pages/StaffShiftsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
 import ManagerStaffPage from './pages/manager/ManagerStaffPage'
-import ManagerWalkInPage from './pages/manager/ManagerWalkInPage'
 import ManagerDashboardPage from './pages/manager/ManagerDashboardPage'
 import ManagerSettingsPage from './pages/manager/ManagerSettingsPage'
 import ManagerLanesPage from './pages/manager/ManagerLanesPage'
@@ -162,7 +161,6 @@ export default function App() {
             <Route path="/manager/staff" element={<ManagerStaffPage />} />
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />
             <Route path="/manager/customers" element={<ManagerCustomersPage />} />
-            <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
             <Route path="/manager/inventory" element={<ManagerInventoryPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
             <Route path="/manager/shifts" element={<ManagerShiftsPage />} />

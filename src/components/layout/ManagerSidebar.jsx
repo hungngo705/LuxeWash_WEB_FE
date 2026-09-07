@@ -10,7 +10,6 @@ const navItems = [
   { to: '/manager/shifts', label: 'Ca làm', icon: 'schedule' },
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
   { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
-  { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
   { to: '/manager/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
 ]
 

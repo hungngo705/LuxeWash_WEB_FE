@@ -10,7 +10,6 @@ const PAGE_TITLES = {
   '/manager/time-slots': 'Khung giờ đặt lịch',
   '/manager/staff': 'Phân công nhân viên & Làn',
   '/manager/employees': 'Quản lý nhân viên',
-  '/manager/walk-in': 'Tiếp nhận khách vãng lai',
   '/manager/settings': 'Cài đặt Manager',
   '/manager/shifts': 'Quản lý ca làm',
   '/manager/customers': 'Tra cứu khách hàng',

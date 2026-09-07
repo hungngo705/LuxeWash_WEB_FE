@@ -22,6 +22,7 @@ import {
   fetchStaffTasks,
   fetchUserById,
   fetchVehicleTypes,
+  getBranchId,
   maskPhoneNumber,
   fleetCheckout,
   fleetStartProcessing,
@@ -608,9 +609,12 @@ function PlateLookupPanel({
   plateInput,
   onPlateChange,
   onSearch,
+  onCreateWalkIn,
   loading,
   checkedInCount,
   processingCount,
+  walkInReady = false,
+  hasPlate = false,
 }) {
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -653,6 +657,21 @@ function PlateLookupPanel({
               )}
             </button>
           </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-secondary/40 bg-secondary-container/10 px-3 py-2 text-xs text-on-surface-variant">
+          <span className="material-symbols-outlined text-base text-secondary">info</span>
+          <p>
+            Không tìm thấy biển số?&nbsp;
+            <button
+              type="button"
+              className="font-semibold text-secondary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={onCreateWalkIn}
+              disabled={!walkInReady || !hasPlate}
+            >
+              Tạo walk-in ngay
+            </button>
+            &nbsp;cho khách vãng lai.
+          </p>
         </div>
       </div>
     </section>
@@ -1589,7 +1608,7 @@ function ProcessingVehiclesPanel({
 }
 
 export default function DashboardPage() {
-  const { laneAssignment } = useAuth()
+  const { laneAssignment, user } = useAuth()
   const [staffTasks, setStaffTasks] = useState([]);
   const [plateInput, setPlateInput] = useState("");
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -2262,6 +2281,71 @@ export default function DashboardPage() {
     }
   }, [walkInDraft, loadStaffTasks, applySelectedBooking, notice]);
 
+  const handleCreateWalkInDraft = useCallback(async () => {
+    const branchId = getBranchId(user);
+    const plate = plateInput.trim().toUpperCase();
+    if (!branchId) {
+      setLookupError(
+        "Chưa xác định được chi nhánh/làn của nhân viên để tạo walk-in.",
+      );
+      return;
+    }
+    if (!plate || !isValidVietnameseLicensePlate(plate)) {
+      setLookupError(
+        "Vui lòng nhập biển số hợp lệ trước khi tạo walk-in cho khách vãng lai.",
+      );
+      return;
+    }
+
+    setSelectedBooking(null);
+    setLookupError(
+      "Tạo walk-in cá nhân. Chọn dịch vụ để tạo check-in cho khách vãng lai.",
+    );
+
+    let walkInCustomer = null;
+    try {
+      const lookup = await smartLookupLicensePlate(plate);
+      if (lookup.customerType === "PreBooked" && lookup.booking) {
+        const booking = normalizeStaffTask(lookup.booking);
+        await applySelectedBooking(booking, {
+          message: plateLookupMessage(booking.status),
+        });
+        return;
+      }
+      if (lookup.customerType === "WalkIn") {
+        walkInCustomer = lookup.walkInCustomer ?? null;
+      }
+    } catch {
+      // Bỏ qua lỗi lookup — vẫn cho phép tạo walk-in từ biển số đã nhập.
+    }
+
+    setWalkInDraft({
+      licensePlate: plate,
+      branchId,
+      serviceIds: [],
+      userId: walkInCustomer?.userId ?? 0,
+      customerName: walkInCustomer?.customerName ?? "",
+      phoneNumber: walkInCustomer?.phoneNumber ?? "",
+      customerTierName: walkInCustomer?.customerTierName,
+      customerTierPoints: walkInCustomer?.customerTierPoints,
+      isVip: walkInCustomer?.isVip === true,
+      vehicleId: walkInCustomer?.vehicleId,
+      vehicleTypeId: walkInCustomer?.vehicleTypeId,
+      paymentMethod: "Cash",
+    });
+
+    try {
+      await loadWalkInServices(branchId);
+    } catch {
+      // loadWalkInServices đã tự thông báo lỗi
+    }
+  }, [
+    plateInput,
+    user,
+    applySelectedBooking,
+    loadWalkInServices,
+  ]);
+
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase();
     if (!plate) return;
@@ -2289,7 +2373,7 @@ export default function DashboardPage() {
 
       if (lookup.customerType === "Fleet") {
         setWalkInDraft(null);
-        const branchId = Number(laneAssignment?.branchId);
+        const branchId = getBranchId(user);
         if (!branchId) {
           setSelectedBooking(null);
           setLookupError(
@@ -2306,7 +2390,7 @@ export default function DashboardPage() {
       }
 
       if (lookup.customerType === "WalkIn") {
-        const branchId = Number(laneAssignment?.branchId);
+        const branchId = getBranchId(user);
         setSelectedBooking(null);
         if (!branchId) {
           setWalkInDraft(null);
@@ -2349,7 +2433,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingLookup(false);
     }
-  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
+  }, [plateInput, staffTasks, applySelectedBooking, user, loadWalkInServices]);
 
   const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
     const plate = String(plateText ?? "").trim().toUpperCase();
@@ -3385,9 +3469,12 @@ export default function DashboardPage() {
             plateInput={plateInput}
             onPlateChange={setPlateInput}
             onSearch={handleSearch}
+            onCreateWalkIn={handleCreateWalkInDraft}
             loading={loadingLookup}
             checkedInCount={checkedInQueue.length}
             processingCount={activeWashCount}
+            walkInReady={Boolean(laneAssignment?.branchId)}
+            hasPlate={Boolean(plateInput.trim())}
           />
           {walkInDraft ? (
             <PersonalWalkInPanel
