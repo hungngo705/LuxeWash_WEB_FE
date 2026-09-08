@@ -95,6 +95,8 @@ export default function AdminVouchersPage() {
   const [grantTarget, setGrantTarget] = useState(null)
   const [grantUserIds, setGrantUserIds] = useState('')
   const [granting, setGranting] = useState(false)
+  const [deactivateTarget, setDeactivateTarget] = useState(null)
+  const [deactivating, setDeactivating] = useState(false)
   const toast = useToast()
 
   const loadVouchers = useCallback(async () => {
@@ -207,9 +209,31 @@ export default function AdminVouchersPage() {
       toast.success('Đã xóa voucher')
       await loadVouchers()
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không xóa được voucher')
+      setDeleteTarget(null)
+      const msg = err instanceof ApiError ? err.message : String(err)
+      if (msg.toLowerCase().includes('claimed')) {
+        setDeactivateTarget(deleteTarget)
+      } else {
+        toast.error(msg)
+      }
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleDeactivate = async () => {
+    if (!deactivateTarget || deactivating) return
+
+    setDeactivating(true)
+    try {
+      await updateVoucher(deactivateTarget, { isActive: false })
+      toast.success('Đã hủy kích hoạt voucher. Voucher không còn khả dụng với khách.')
+      setDeactivateTarget(null)
+      await loadVouchers()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không hủy kích hoạt được')
+    } finally {
+      setDeactivating(false)
     }
   }
 
@@ -575,6 +599,17 @@ export default function AdminVouchersPage() {
         loading={deleting}
         onConfirm={handleDelete}
         onCancel={() => !deleting && setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deactivateTarget)}
+        title="Không thể xóa voucher"
+        message="Voucher đã có khách nhận, không thể xóa. Bạn có muốn hủy kích hoạt voucher này để ngăn khách sử dụng không?"
+        confirmLabel={deactivating ? 'Đang hủy…' : 'Hủy kích hoạt'}
+        variant="warning"
+        loading={deactivating}
+        onConfirm={handleDeactivate}
+        onCancel={() => !deactivating && setDeactivateTarget(null)}
       />
     </div>
   )

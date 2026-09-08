@@ -265,6 +265,11 @@ export default function ManagerInventoryPage() {
   const importTotalCost =
     Number(importForm.quantity || 0) * Number(importForm.unitCost || 0);
 
+  const isDateRangeInvalid = useMemo(() => {
+    if (!filters.from || !filters.to) return false;
+    return filters.from > filters.to;
+  }, [filters.from, filters.to]);
+
   const canSaveImport = Boolean(
     importForm.materialId &&
     importForm.batchCode.trim() &&
@@ -305,6 +310,11 @@ export default function ManagerInventoryPage() {
         setBatches(Array.isArray(batchData) ? batchData : []);
         setExpiring(Array.isArray(expiringData) ? expiringData : []);
       } else if (activeTab === "transactions") {
+        if (filters.from && filters.to && filters.from > filters.to) {
+          toast.error("Từ ngày phải nhỏ hơn Đến ngày.");
+          setTransactions([]);
+          return;
+        }
         setTransactions(
           await fetchManagerInventoryTransactions({
             materialId: filters.materialId || undefined,
@@ -343,6 +353,7 @@ export default function ManagerInventoryPage() {
     filters.to,
     filters.txType,
     loadBase,
+    toast,
   ]);
 
   useEffect(() => {
@@ -632,6 +643,13 @@ export default function ManagerInventoryPage() {
             </button>
           </div>
         </Panel>
+      )}
+
+      {isDateRangeInvalid && (
+        <Notice
+          message="Từ ngày phải nhỏ hơn hoặc bằng Đến ngày."
+          type="error"
+        />
       )}
 
       {loading ? (
