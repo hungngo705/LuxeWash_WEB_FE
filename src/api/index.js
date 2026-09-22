@@ -211,6 +211,16 @@ export {
 } from './manager.lanes.api'
 
 export {
+  previewIncident,
+  createIncident,
+  listIncidents,
+  getIncident,
+  getIncidentImpact,
+  extendIncident,
+  resolveIncident,
+} from './manager.incidents.api'
+
+export {
   fetchManagerTimeSlots,
   createManagerTimeSlot,
   updateManagerTimeSlot,

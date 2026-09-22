@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ApiError,
   createManagerLane,
@@ -87,6 +88,7 @@ export default function ManagerLanesPage() {
         actionLabel="Thêm làn"
         actionIcon="add_road"
         onAction={openCreate}
+        secondary={<Link to="/manager/incidents" className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-semibold text-primary hover:bg-surface-variant">Báo buồng hỏng</Link>}
       />
 
       <div className="soft-shadow mb-5 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">

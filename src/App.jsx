@@ -45,6 +45,7 @@ import ManagerStaffPage from './pages/manager/ManagerStaffPage'
 import ManagerDashboardPage from './pages/manager/ManagerDashboardPage'
 import ManagerSettingsPage from './pages/manager/ManagerSettingsPage'
 import ManagerLanesPage from './pages/manager/ManagerLanesPage'
+import ManagerIncidentsPage from './pages/manager/ManagerIncidentsPage'
 import ManagerTimeSlotsPage from './pages/manager/ManagerTimeSlotsPage'
 import ManagerEmployeesPage from './pages/manager/ManagerEmployeesPage'
 import ManagerCustomersPage from './pages/manager/ManagerCustomersPage'
@@ -157,6 +158,7 @@ export default function App() {
             <Route path="/manager/bookings" element={<ManagerBookingsPage />} />
             <Route path="/manager/queue" element={<ManagerQueuePage />} />
             <Route path="/manager/lanes" element={<ManagerLanesPage />} />
+            <Route path="/manager/incidents" element={<ManagerIncidentsPage />} />
             <Route path="/manager/time-slots" element={<ManagerTimeSlotsPage />} />
             <Route path="/manager/staff" element={<ManagerStaffPage />} />
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />

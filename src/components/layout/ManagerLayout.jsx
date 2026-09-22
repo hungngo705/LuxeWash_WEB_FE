@@ -7,6 +7,7 @@ const PAGE_TITLES = {
   '/manager/bookings': 'Lịch đặt',
   '/manager/queue': 'Điều phối xe vào làn',
   '/manager/lanes': 'Quản lý làn rửa',
+  '/manager/incidents': 'Sự cố chi nhánh',
   '/manager/time-slots': 'Khung giờ đặt lịch',
   '/manager/staff': 'Phân công nhân viên & Làn',
   '/manager/employees': 'Quản lý nhân viên',
