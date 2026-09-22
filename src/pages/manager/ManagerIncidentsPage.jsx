@@ -22,6 +22,20 @@ const TYPES = {
   Other: 'Sự cố khác',
 }
 
+const CUSTOMER_ACTION_LABELS = {
+  AwaitingCustomer: 'Chờ khách hàng phản hồi',
+  NeedsManualHandling: 'Cần xử lý thủ công',
+  Transferred: 'Chuyển lịch',
+  Cancelled: 'Hủy lịch',
+  Kept: 'Giữ lịch',
+}
+
+const SYSTEM_RESOLUTION_LABELS = {
+  Transfer: 'Đã chuyển lịch',
+  Cancel: 'Đã hủy lịch',
+  Keep: 'Đã giữ lịch',
+}
+
 const inputClass = 'w-full rounded-lg border border-outline-variant bg-white px-3 py-2.5 text-sm text-on-surface focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20'
 const buttonClass = 'rounded-lg border border-outline-variant bg-white px-4 py-2.5 text-sm font-medium text-on-surface hover:bg-surface-variant disabled:cursor-not-allowed disabled:opacity-50'
 const primaryClass = 'rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50'
@@ -61,6 +75,11 @@ function formatVn(value) {
   if (!value) return '—'
   const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/)
   return match ? `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}` : String(value)
+}
+
+function formatIncidentValue(value, labels) {
+  if (!value) return '—'
+  return labels[value] ?? value
 }
 
 function toLocalInput(value) {
@@ -367,7 +386,7 @@ export default function ManagerIncidentsPage() {
         {extensionOpen && <div className="mt-4 rounded-lg border border-outline-variant p-4"><h3 className="font-semibold">Gia hạn ETA</h3><p className="mt-1 text-sm text-on-surface-variant">Backend chưa có xem trước riêng cho gia hạn; lịch mới bị ảnh hưởng sẽ được tính và gửi thông báo khi lưu. Kiểm tra lại danh sách lịch sau khi gia hạn.</p>{extensionError && <div className="mt-3"><Alert tone="error">{extensionError}</Alert></div>}<div className="mt-3 grid gap-3 md:grid-cols-2"><label className="text-sm">ETA mới (giờ Việt Nam)<input type="datetime-local" className={`${inputClass} mt-1`} value={extensionEnd} onChange={(event) => setExtensionEnd(event.target.value)} /></label><label className="text-sm">Lý do gia hạn<input className={`${inputClass} mt-1`} maxLength={500} value={extensionNote} onChange={(event) => setExtensionNote(event.target.value)} /></label></div><div className="mt-3 flex gap-2"><button type="button" className={primaryClass} disabled={extending} onClick={handleExtend}>{extending ? 'Đang gia hạn…' : 'Xác nhận gia hạn'}</button><button type="button" className={buttonClass} disabled={extending} onClick={() => setExtensionOpen(false)}>Hủy</button></div></div>}
         {resolveTargetId === selectedId && <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4"><h3 className="font-semibold">Xác nhận sự cố đã được khắc phục?</h3><p className="mt-1 text-sm">Backend sẽ đánh giá lại {impact.filter((item) => item.customerAction === 'AwaitingCustomer').length} lịch còn chờ. Lịch đủ công suất được giữ, lịch vẫn thiếu chỗ có thể bị hủy/hoàn tiền. Chỉ xác nhận khi buồng đã hoạt động thực tế.</p>{resolveError && <div className="mt-3"><Alert tone="error">{resolveError}</Alert></div>}<div className="mt-3 flex gap-2"><button type="button" className={primaryClass} disabled={resolving} onClick={handleResolve}>{resolving ? 'Đang khắc phục…' : 'Xác nhận khắc phục'}</button><button type="button" className={buttonClass} disabled={resolving} onClick={() => setResolveTargetId(null)}>Hủy</button></div></div>}
       </>}
-      <div className="mt-6"><h3 className="mb-2 font-semibold">Lịch đặt bị ảnh hưởng ({impact.length})</h3>{impactError && <div className="mb-3"><Alert tone="error">{impactError}</Alert></div>}{detailLoading && impact.length === 0 ? <p className="text-sm text-on-surface-variant">Đang tải lịch ảnh hưởng…</p> : impact.length === 0 ? (!impactError && <p className="text-sm text-on-surface-variant">Chưa có lịch bị ảnh hưởng.</p>) : <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-sm"><thead><tr className="border-b border-outline-variant text-on-surface-variant"><th className="p-2">Booking</th><th className="p-2">Biển số</th><th className="p-2">Giờ đặt</th><th className="p-2">Phản hồi</th><th className="p-2">Xử lý</th><th className="p-2">Hạn trả lời</th><th className="p-2">Đích chuyển</th></tr></thead><tbody>{impact.map((item) => <tr key={item.affectedBookingId} className="border-b border-outline-variant/50"><td className="p-2">#{item.bookingId}</td><td className="p-2">{item.licensePlate || '—'}</td><td className="p-2">{formatVn(item.scheduledTime)}</td><td className="p-2">{item.customerAction || '—'}</td><td className="p-2">{item.systemResolution || '—'}</td><td className="p-2">{formatVn(item.customerDeadlineVn)}</td><td className="p-2">{item.alternativeBranchId && item.alternativeBranchId !== '' ? `Chi nhánh #${item.alternativeBranchId}, slot ${item.alternativeTimeSlot}` : '—'}</td></tr>)}</tbody></table></div>}</div>
+      <div className="mt-6"><h3 className="mb-2 font-semibold">Lịch đặt bị ảnh hưởng ({impact.length})</h3>{impactError && <div className="mb-3"><Alert tone="error">{impactError}</Alert></div>}{detailLoading && impact.length === 0 ? <p className="text-sm text-on-surface-variant">Đang tải lịch ảnh hưởng…</p> : impact.length === 0 ? (!impactError && <p className="text-sm text-on-surface-variant">Chưa có lịch bị ảnh hưởng.</p>) : <div className="overflow-x-auto"><table className="min-w-[850px] w-full text-left text-sm"><thead><tr className="border-b border-outline-variant text-on-surface-variant"><th className="p-2">Mã lịch đặt</th><th className="p-2">Biển số</th><th className="p-2">Giờ đặt</th><th className="p-2">Phản hồi</th><th className="p-2">Xử lý</th><th className="p-2">Hạn trả lời</th><th className="p-2">Đích chuyển</th></tr></thead><tbody>{impact.map((item) => <tr key={item.affectedBookingId} className="border-b border-outline-variant/50"><td className="p-2">#{item.bookingId}</td><td className="p-2">{item.licensePlate || '—'}</td><td className="p-2">{formatVn(item.scheduledTime)}</td><td className="p-2">{formatIncidentValue(item.customerAction, CUSTOMER_ACTION_LABELS)}</td><td className="p-2">{formatIncidentValue(item.systemResolution, SYSTEM_RESOLUTION_LABELS)}</td><td className="p-2">{formatVn(item.customerDeadlineVn)}</td><td className="p-2">{item.alternativeBranchId && item.alternativeBranchId !== '' ? `Chi nhánh #${item.alternativeBranchId}, khung giờ ${item.alternativeTimeSlot}` : '—'}</td></tr>)}</tbody></table></div>}</div>
     </section>}
   </div>
 }
