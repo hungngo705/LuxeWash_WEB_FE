@@ -55,6 +55,16 @@ export function fetchBranchEmployeesSummary(branchId) {
 }
 
 /**
+ * GET /api/v1/admin/branches/employees-summary
+ * Returns a summary of all managers and staff for every branch in a single call,
+ * avoiding one HTTP/DB round trip per branch.
+ * @returns {Promise<Array<BranchEmployeesSummary & { branchId: number }>>}
+ */
+export function fetchAllBranchesEmployeesSummary() {
+  return apiRequest('/admin/branches/employees-summary')
+}
+
+/**
  * POST /api/v1/admin/employees
  * Creates a new employee (Staff or Manager) — Admin-only operation.
  * @param {{ fullName: string; phoneNumber: string; password: string; role?: string }} payload

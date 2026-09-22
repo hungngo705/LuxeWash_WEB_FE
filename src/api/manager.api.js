@@ -159,8 +159,35 @@ export function normalizeManagerBooking(item) {
  * Returns all Pending/CheckedIn/Processing bookings at the Manager's branch.
  * @returns {Promise<ManagerBooking[]>}
  */
-export function fetchManagerBookings() {
-  return apiRequest('/manager/bookings').then((data) =>
+export function fetchManagerBookings(options = {}) {
+  return apiRequest('/manager/bookings', options).then((data) =>
+    asManagerCollection(data).map(normalizeManagerBooking),
+  )
+}
+
+/**
+ * Lấy booking theo ngày cho Manager — gọi endpoint `/manager/bookings?date=YYYY-MM-DD`.
+ * BE trả về TẤT CẢ status (Pending/Checked-in/Processing/Completed/Cancelled/
+ * No-show) của các booking có ScheduledTime rơi vào ngày đó (theo giờ máy chủ
+ * BE), đã được filter BranchId theo chi nhánh của Manager.
+ *
+ * Lý do tồn tại: endpoint `/admin/bookings?targetDate=` được `[Authorize(Roles
+ * = "Admin,Staff")]` ở BE (file `API/Controllers/Staff/StaffBookingsController.cs`)
+ * → Manager gọi sẽ nhận 403. BE mở rộng `/manager/bookings` (đã tồn tại từ
+ * trước cho Walk-in grid) để chấp nhận query `?date=` — khi có date, BE bỏ
+ * filter status và chỉ filter ngày.
+ *
+ * Lưu ý: `fetchManagerBookings` (Walk-in grid, không query) vẫn chỉ nhận active
+ * bookings như cũ — không bị ảnh hưởng.
+ *
+ * @param {string} dateKey `yyyy-MM-dd`
+ * @param {{ signal?: AbortSignal }} [options]
+ * @returns {Promise<ManagerBooking[]>}
+ */
+export function fetchManagerBookingsByDate(dateKey, options = {}) {
+  if (!dateKey) return Promise.resolve([])
+  const params = new URLSearchParams({ date: dateKey })
+  return apiRequest(`/manager/bookings?${params}`, options).then((data) =>
     asManagerCollection(data).map(normalizeManagerBooking),
   )
 }

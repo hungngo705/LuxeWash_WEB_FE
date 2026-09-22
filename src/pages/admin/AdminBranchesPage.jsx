@@ -6,9 +6,11 @@ import {
   updateBranch,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = { name: '', address: '', isActive: true }
 
@@ -20,12 +22,7 @@ export default function AdminBranchesPage() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadBranches = useCallback(async () => {
     setLoading(true)
@@ -70,15 +67,15 @@ export default function AdminBranchesPage() {
       }
       if (editingId) {
         await updateBranch(editingId, { ...payload, isActive: form.isActive })
-        showToast('Đã cập nhật chi nhánh')
+        toast.success('Đã cập nhật chi nhánh')
       } else {
         await createBranch(payload)
-        showToast('Đã thêm chi nhánh')
+        toast.success('Đã thêm chi nhánh')
       }
       setModalOpen(false)
       await loadBranches()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được chi nhánh')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được chi nhánh')
     } finally {
       setSaving(false)
     }
@@ -87,67 +84,94 @@ export default function AdminBranchesPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Cơ sở vật hành"
         title="Chi nhánh"
         description="Quản lý chi nhánh — tạo trước khi cấu hình làn rửa"
         actionLabel="Thêm chi nhánh"
+        actionIcon="add_business"
         onAction={openCreate}
       />
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
       {loadError && (
-        <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
-          <button type="button" className="text-sm text-error" onClick={loadBranches}>
+          <button
+            type="button"
+            className="rounded-lg border border-error/40 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error-container/40"
+            onClick={loadBranches}
+          >
             Thử lại
           </button>
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải…</p>
-      ) : branches.length === 0 && !loadError ? (
-        <EmptyState icon="store" title="Chưa có chi nhánh" />
-      ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Tên</th>
-                <th className="px-4 py-3">Địa chỉ</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {branches.map((branch) => (
-                <tr key={branch.id} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{branch.id}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{branch.name}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{branch.address || '—'}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={branch.isActive !== false ? 'Active' : 'Inactive'} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      className="rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
-                      onClick={() => openEdit(branch)}
-                    >
-                      Sửa
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={branches}
+        loading={loading}
+        minWidth="640px"
+        emptyIcon="store"
+        emptyTitle="Chưa có chi nhánh"
+        emptyMessage="Thêm chi nhánh đầu tiên để bắt đầu cấu hình làn rửa."
+        emptyAction={
+          !loadError
+            ? {
+                label: 'Thêm chi nhánh',
+                icon: 'add_business',
+                onClick: openCreate,
+              }
+            : undefined
+        }
+        columns={[
+          {
+            key: 'id',
+            label: 'ID',
+            width: '80px',
+            render: (row) => (
+              <span className="font-mono text-on-surface-variant">#{row.id}</span>
+            ),
+          },
+          {
+            key: 'name',
+            label: 'Tên',
+            render: (row) => <span className="font-medium">{row.name}</span>,
+          },
+          {
+            key: 'address',
+            label: 'Địa chỉ',
+            render: (row) => row.address || '—',
+            tdClassName: 'text-on-surface-variant',
+          },
+          {
+            key: 'isActive',
+            label: 'Trạng thái',
+            width: '160px',
+            render: (row) => (
+              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
+            ),
+          },
+          {
+            key: 'actions',
+            label: 'Thao tác',
+            width: '100px',
+            align: 'right',
+            renderActions: (row) => (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-container/30"
+                onClick={() => openEdit(row)}
+              >
+                <span
+                  className="material-symbols-outlined text-[14px]"
+                  style={{ fontVariationSettings: "'FILL' 0" }}
+                >
+                  edit
+                </span>
+                Sửa
+              </button>
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
@@ -157,36 +181,33 @@ export default function AdminBranchesPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Tên</span>
-            <input
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.name}
-              maxLength={100}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Địa chỉ</span>
-            <input
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.address}
-              maxLength={255}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
-            />
-          </label>
+          <Input
+            label="Tên chi nhánh"
+            required
+            maxLength={100}
+            value={form.name}
+            disabled={saving}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            iconLeft="store"
+          />
+          <Input
+            label="Địa chỉ"
+            maxLength={255}
+            value={form.address}
+            disabled={saving}
+            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            iconLeft="location_on"
+          />
           {editingId && (
-            <label className="flex items-center gap-2 text-sm text-on-surface">
+            <label className="flex items-center gap-2.5 rounded-lg border border-outline-variant/60 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface cursor-pointer hover:bg-surface-variant/40">
               <input
                 type="checkbox"
+                className="h-4 w-4 rounded border-outline-variant accent-primary"
                 checked={form.isActive}
                 disabled={saving}
                 onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
               />
-              Đang hoạt động
+              <span className="font-medium">Đang hoạt động</span>
             </label>
           )}
         </div>

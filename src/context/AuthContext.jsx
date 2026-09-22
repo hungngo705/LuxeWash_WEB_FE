@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { fetchCurrentUser, loginWithCredentials, refreshAccessToken } from '../api/auth.api'
 import { ApiError, setSessionRefreshedHandler, setUnauthorizedHandler } from '../api/client'
 import { clearSession, getStoredSession, saveSession } from '../api/session'
+import { fetchStaffLaneAssignment } from '../api/operationStaff.api'
 
 const AuthContext = createContext(null)
 
@@ -23,6 +24,11 @@ function loadSession() {
   return isPortalSession(session) ? session : null
 }
 
+function normalizeBranchId(raw) {
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? value : undefined
+}
+
 /**
  * @param {Record<string, unknown>} data Login API `data`
  */
@@ -36,6 +42,7 @@ function mapLoginToSession(data) {
     token: data.token,
     refreshToken: data.refreshToken,
     avatar: DEFAULT_AVATAR,
+    branchId: normalizeBranchId(data.branchId ?? data.BranchId),
   }
 
   if (role === 'Staff') {
@@ -94,6 +101,9 @@ export function AuthProvider({ children }) {
           ...session,
           fullName: profile.fullName ?? session.fullName,
           phoneNumber: profile.phoneNumber ?? session.phoneNumber,
+          branchId:
+            normalizeBranchId(profile.branchId ?? profile.BranchId) ??
+            session.branchId,
         }
         saveSession(session)
       } catch {
@@ -101,6 +111,14 @@ export function AuthProvider({ children }) {
       }
 
       setUser(session)
+
+      // Staff: fetch lane assignment once and store in session (localStorage)
+      if (role === 'Staff') {
+        fetchStaffLaneAssignment()
+          .then((assignment) => patchUser({ laneAssignment: assignment }))
+          .catch(() => patchUser({ laneAssignment: null }))
+      }
+
       return session.role
     } catch (err) {
       const message =
@@ -174,6 +192,7 @@ export function AuthProvider({ children }) {
       manager: user,
       business: user,
       isAuthenticated: isPortalSession(user),
+      laneAssignment: user?.laneAssignment ?? null,
       login,
       logout,
       error,

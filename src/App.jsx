@@ -10,6 +10,8 @@ import BusinessLayout from './components/layout/BusinessLayout'
 import ManagerLayout from './components/layout/ManagerLayout'
 import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
+import ErrorBoundary from './components/ui/ErrorBoundary'
+import { ToastProvider } from './components/ui/Toast'
 import AdminBookingsPage from './pages/admin/AdminBookingsPage'
 import AdminBranchesPage from './pages/admin/AdminBranchesPage'
 import AdminCarModelsPage from './pages/admin/AdminCarModelsPage'
@@ -40,10 +42,10 @@ import StaffShiftsPage from './pages/StaffShiftsPage'
 import ManagerBookingsPage from './pages/manager/ManagerBookingsPage'
 import ManagerQueuePage from './pages/manager/ManagerQueuePage'
 import ManagerStaffPage from './pages/manager/ManagerStaffPage'
-import ManagerWalkInPage from './pages/manager/ManagerWalkInPage'
 import ManagerDashboardPage from './pages/manager/ManagerDashboardPage'
 import ManagerSettingsPage from './pages/manager/ManagerSettingsPage'
 import ManagerLanesPage from './pages/manager/ManagerLanesPage'
+import ManagerIncidentsPage from './pages/manager/ManagerIncidentsPage'
 import ManagerTimeSlotsPage from './pages/manager/ManagerTimeSlotsPage'
 import ManagerEmployeesPage from './pages/manager/ManagerEmployeesPage'
 import ManagerCustomersPage from './pages/manager/ManagerCustomersPage'
@@ -77,8 +79,9 @@ import LaneAssignmentDisplayPage from './pages/display/LaneAssignmentDisplayPage
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/business/register" element={<BusinessRegisterPage />} />
@@ -155,11 +158,11 @@ export default function App() {
             <Route path="/manager/bookings" element={<ManagerBookingsPage />} />
             <Route path="/manager/queue" element={<ManagerQueuePage />} />
             <Route path="/manager/lanes" element={<ManagerLanesPage />} />
+            <Route path="/manager/incidents" element={<ManagerIncidentsPage />} />
             <Route path="/manager/time-slots" element={<ManagerTimeSlotsPage />} />
             <Route path="/manager/staff" element={<ManagerStaffPage />} />
             <Route path="/manager/employees" element={<ManagerEmployeesPage />} />
             <Route path="/manager/customers" element={<ManagerCustomersPage />} />
-            <Route path="/manager/walk-in" element={<ManagerWalkInPage />} />
             <Route path="/manager/inventory" element={<ManagerInventoryPage />} />
             <Route path="/manager/settings" element={<ManagerSettingsPage />} />
             <Route path="/manager/shifts" element={<ManagerShiftsPage />} />
@@ -200,7 +203,8 @@ export default function App() {
 
           <Route path="*" element={<RootRedirect />} />
         </Routes>
-      </BrowserRouter>
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

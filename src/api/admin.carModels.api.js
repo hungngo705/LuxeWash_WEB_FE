@@ -101,9 +101,12 @@ function buildCarModelPayload(payload) {
   return body
 }
 
-/** @returns {Promise<CarModel[]>} */
-export async function fetchCarModels() {
-  const data = await apiRequest('/CarModels')
+/**
+ * @param {{ includeInactive?: boolean }} [options]
+ * @returns {Promise<CarModel[]>}
+ */
+export async function fetchCarModels({ includeInactive = false } = {}) {
+  const data = await apiRequest(`/CarModels${includeInactive ? '?includeInactive=true' : ''}`)
   const list = Array.isArray(data) ? data : []
   return list.map(normalizeCarModel)
 }

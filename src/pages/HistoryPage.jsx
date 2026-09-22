@@ -3,13 +3,13 @@ import HistoryStats from '../components/history/HistoryStats'
 import HistoryTable from '../components/history/HistoryTable'
 import HistoryToolbar from '../components/history/HistoryToolbar'
 import {
-  fetchStaffLaneAssignment,
   fetchStaffServiceHistory,
   formatPaymentMethodLabel,
   formatStaffStationLabel,
   toApiTargetDate,
 } from '../api'
 import { ApiError } from '../api/client'
+import { useAuth } from '../context/AuthContext'
 
 function todayDateValue() {
   const now = new Date()
@@ -144,6 +144,7 @@ function HistoryImagesModal({ record, onClose }) {
 }
 
 export default function HistoryPage() {
+  const { laneAssignment } = useAuth()
   const [allRecords, setAllRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -154,16 +155,17 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('')
   const [selectedImageRecord, setSelectedImageRecord] = useState(null)
 
-  // Separate refetch that also loads lane assignment (used by the error "Thử lại" button)
+  // Update lane label whenever laneAssignment changes (from AuthContext)
+  useEffect(() => {
+    setLaneLabel(laneAssignment ? formatStaffStationLabel(laneAssignment) : '')
+  }, [laneAssignment])
+
+  // refetch chỉ load dữ liệu chính (history); laneAssignment đọc từ context
   const refetch = useCallback(async () => {
     setLoading(true)
     setFetchError('')
     try {
-      const [assignment, tasks] = await Promise.all([
-        fetchStaffLaneAssignment(),
-        fetchStaffServiceHistory(toApiTargetDate(dateFilter), {}),
-      ])
-      setLaneLabel(formatStaffStationLabel(assignment))
+      const tasks = await fetchStaffServiceHistory(toApiTargetDate(dateFilter), {})
       setAllRecords(tasks.map(mapHistoryRecord))
     } catch (err) {
       setFetchError(

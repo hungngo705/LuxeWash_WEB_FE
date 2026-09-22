@@ -9,10 +9,12 @@ import {
   updateService,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import { formatVnd } from '../../utils/format'
 
 function buildPricesForAllVehicleTypes(vehicleTypes, branchId, defaultDuration) {
@@ -109,12 +111,7 @@ export default function AdminServicesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -155,11 +152,11 @@ export default function AdminServicesPage() {
 
   const openCreate = () => {
     if (!branches.length) {
-      showToast('Cần tạo chi nhánh trước khi thêm dịch vụ')
+      toast.warning('Cần tạo chi nhánh trước khi thêm dịch vụ')
       return
     }
     if (!vehicleTypes.length) {
-      showToast('Cần tạo loại xe trước khi thêm dịch vụ')
+      toast.warning('Cần tạo loại xe trước khi thêm dịch vụ')
       return
     }
 
@@ -191,7 +188,7 @@ export default function AdminServicesPage() {
 
     const validationError = validateForm(form, vehicleTypes)
     if (validationError) {
-      showToast(validationError)
+      toast.error(validationError)
       return
     }
 
@@ -201,16 +198,16 @@ export default function AdminServicesPage() {
     try {
       if (editingId) {
         await updateService(editingId, payload)
-        showToast('Đã cập nhật dịch vụ')
+        toast.success('Đã cập nhật dịch vụ')
       } else {
         await createService(payload)
-        showToast('Đã thêm dịch vụ mới')
+        toast.success('Đã thêm dịch vụ mới')
       }
 
       setModalOpen(false)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được dịch vụ')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được dịch vụ')
     } finally {
       setSaving(false)
     }
@@ -223,10 +220,10 @@ export default function AdminServicesPage() {
     try {
       await deleteService(deleteTarget)
       setDeleteTarget(null)
-      showToast('Đã ngừng hoạt động dịch vụ')
+      toast.success('Đã ngừng hoạt động dịch vụ')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không ngừng hoạt động được dịch vụ')
+      toast.error(err instanceof ApiError ? err.message : 'Không ngừng hoạt động được dịch vụ')
     } finally {
       setDeleting(false)
     }
@@ -255,36 +252,44 @@ export default function AdminServicesPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Dịch vụ & Xe"
         title="Quản lý dịch vụ"
-        description=""
+        description="Cấu hình dịch vụ, giá và thời lượng theo từng loại xe tại mỗi chi nhánh"
         actionLabel="Thêm dịch vụ"
+        actionIcon="add_circle"
         onAction={openCreate}
       />
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
       {!loading && branches.length === 0 && (
-        <p className="mb-4 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-2 text-sm text-on-surface">
-          Chưa có chi nhánh — hãy tạo chi nhánh trước khi thêm dịch vụ.
-        </p>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-3 text-sm text-on-surface">
+          <span
+            className="material-symbols-outlined mt-0.5 shrink-0 text-tertiary"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            info
+          </span>
+          <p>Chưa có chi nhánh — hãy tạo chi nhánh trước khi thêm dịch vụ.</p>
+        </div>
       )}
 
       {!loading && vehicleTypes.length === 0 && (
-        <p className="mb-4 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-2 text-sm text-on-surface">
-          Chưa có loại xe — hãy tạo loại xe trước khi thêm dịch vụ.
-        </p>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-3 text-sm text-on-surface">
+          <span
+            className="material-symbols-outlined mt-0.5 shrink-0 text-tertiary"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            info
+          </span>
+          <p>Chưa có loại xe — hãy tạo loại xe trước khi thêm dịch vụ.</p>
+        </div>
       )}
 
       {loadError && (
-        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
           <button
             type="button"
-            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            className="rounded-lg border border-error/40 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error-container/40"
             onClick={loadData}
           >
             Thử lại
@@ -292,69 +297,104 @@ export default function AdminServicesPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải danh sách dịch vụ…</p>
-      ) : activeServices.length === 0 && !loadError ? (
-        <EmptyState icon="local_car_wash" title="Chưa có dịch vụ" message="Thêm dịch vụ đầu tiên để bắt đầu." />
-      ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Tên dịch vụ</th>
-                <th className="px-4 py-3">Chi nhánh</th>
-                <th className="px-4 py-3">Mô tả</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Số mức giá</th>
-                <th className="px-4 py-3">Giá thấp nhất–cao nhất</th>
-                <th className="px-4 py-3">Thời lượng</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {activeServices.map((service) => (
-                <tr key={service.serviceId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{service.serviceId}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{service.serviceName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">
-                    {branchName(service.prices?.[0]?.branchId)}
-                  </td>
-                  <td className="max-w-xs truncate px-4 py-3 text-on-surface-variant">
-                    {service.description || '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={service.isActive === false ? 'Inactive' : 'Active'} />
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">{service.prices?.length ?? 0}</td>
-                  <td className="px-4 py-3 text-on-surface">{getPriceRange(service.prices)}</td>
-                  <td className="px-4 py-3 text-on-surface">{getDurationRange(service.prices)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
-                        onClick={() => openEdit(service)}
-                      >
-                        Sửa
-                      </button>
-                      {service.isActive !== false && (
-                        <button
-                          type="button"
-                          className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                          onClick={() => setDeleteTarget(service.serviceId)}
-                        >
-                          ngừng hoạt động
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={activeServices}
+        loading={loading}
+        minWidth="900px"
+        emptyIcon="local_car_wash"
+        emptyTitle="Chưa có dịch vụ"
+        emptyMessage="Thêm dịch vụ đầu tiên để bắt đầu."
+        columns={[
+          {
+            key: 'serviceId',
+            label: 'ID',
+            width: '70px',
+            render: (row) => <span className="font-mono text-on-surface-variant">#{row.serviceId}</span>,
+          },
+          {
+            key: 'serviceName',
+            label: 'Tên dịch vụ',
+            render: (row) => <span className="font-medium">{row.serviceName}</span>,
+          },
+          {
+            key: 'branch',
+            label: 'Chi nhánh',
+            render: (row) => branchName(row.prices?.[0]?.branchId),
+            tdClassName: 'text-on-surface-variant',
+          },
+          {
+            key: 'description',
+            label: 'Mô tả',
+            render: (row) => (
+              <span className="line-clamp-1 max-w-xs">{row.description || '—'}</span>
+            ),
+            tdClassName: 'text-on-surface-variant',
+          },
+          {
+            key: 'isActive',
+            label: 'Trạng thái',
+            width: '140px',
+            render: (row) => (
+              <StatusBadge status={row.isActive === false ? 'Inactive' : 'Active'} />
+            ),
+          },
+          {
+            key: 'priceCount',
+            label: 'Số mức giá',
+            width: '110px',
+            align: 'center',
+            render: (row) => row.prices?.length ?? 0,
+          },
+          {
+            key: 'priceRange',
+            label: 'Giá thấp nhất – cao nhất',
+            render: (row) => getPriceRange(row.prices),
+          },
+          {
+            key: 'durationRange',
+            label: 'Thời lượng',
+            render: (row) => getDurationRange(row.prices),
+          },
+          {
+            key: 'actions',
+            label: 'Thao tác',
+            width: '180px',
+            align: 'right',
+            renderActions: (row) => (
+              <div className="flex justify-end gap-1">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-container/30"
+                  onClick={() => openEdit(row)}
+                >
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    style={{ fontVariationSettings: "'FILL' 0" }}
+                  >
+                    edit
+                  </span>
+                  Sửa
+                </button>
+                {row.isActive !== false && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-error transition-colors hover:bg-error-container/30"
+                    onClick={() => setDeleteTarget(row.serviceId)}
+                  >
+                    <span
+                      className="material-symbols-outlined text-[14px]"
+                      style={{ fontVariationSettings: "'FILL' 0" }}
+                    >
+                      pause_circle
+                    </span>
+                    Ngừng
+                  </button>
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
@@ -488,6 +528,7 @@ export default function AdminServicesPage() {
         title="Ngừng hoạt động dịch vụ"
         message="Dịch vụ sẽ được đánh dấu không hoạt động. Bạn chắc chắn muốn tiếp tục?"
         confirmLabel={deleting ? 'Đang xử lý…' : 'Xác nhận'}
+        loading={deleting}
         variant="danger"
         onConfirm={handleDelete}
         onCancel={() => !deleting && setDeleteTarget(null)}

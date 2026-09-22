@@ -12,6 +12,8 @@ import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import { useToast } from '../../components/ui/Toast'
 import { WashDurationBadge } from '../../components/shared/WashTelemetry'
 import LaneAssignmentBadge from '../../components/shared/LaneAssignmentBadge'
 import { formatVnd } from '../../utils/format'
@@ -50,7 +52,6 @@ export default function ManagerQueuePage() {
   const [loadError, setLoadError] = useState('')
   const [statusFilter, setStatusFilter] = useState('Tất cả')
   const [search, setSearch] = useState('')
-  const [toast, setToast] = useState('')
 
   const [assignTarget, setAssignTarget] = useState(null)
   const [selectedLaneId, setSelectedLaneId] = useState('')
@@ -58,11 +59,7 @@ export default function ManagerQueuePage() {
 
   const [noShowTarget, setNoShowTarget] = useState(null)
   const [noShowing, setNoShowing] = useState(false)
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadData = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true)
@@ -148,12 +145,12 @@ export default function ManagerQueuePage() {
         laneId: Number(selectedLaneId),
         laneName: selectedLane?.name ?? selectedLane?.laneName,
       })
-      showToast(`Xe ${assignTarget.licensePlate} đã điều vào làn.`)
+      toast.success(`Xe ${assignTarget.licensePlate} đã điều vào làn.`)
       setAssignTarget(null)
       setSelectedLaneId('')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi điều xe vào làn.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi điều xe vào làn.')
     } finally {
       setAssigning(false)
     }
@@ -164,11 +161,11 @@ export default function ManagerQueuePage() {
     setNoShowing(true)
     try {
       await markManagerBookingNoShow(noShowTarget.bookingId)
-      showToast('Đã đánh dấu vắng mặt.')
+      toast.success('Đã đánh dấu vắng mặt.')
       setNoShowTarget(null)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi đánh dấu vắng mặt.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi đánh dấu vắng mặt.')
     } finally {
       setNoShowing(false)
     }
@@ -181,15 +178,11 @@ export default function ManagerQueuePage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Vận hành chi nhánh"
         title="Điều phối xe vào làn"
         description="Quản lý xe chờ, check-in và phân công làn rửa"
+        actionIcon="local_shipping"
       />
-
-      {toast && (
-        <div className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </div>
-      )}
 
       {/* Stats row */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
@@ -251,71 +244,127 @@ export default function ManagerQueuePage() {
           <p className="text-sm text-on-surface-variant">Không có xe nào trong danh sách</p>
         </div>
       ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">Booking ID</th>
-                <th className="px-4 py-3">Biển số</th>
-                <th className="px-4 py-3">Khách hàng</th>
-                <th className="px-4 py-3">Dịch vụ</th>
-                <th className="px-4 py-3">Slot/Giờ</th>
-                <th className="px-4 py-3">Làn</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Số tiền</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {filtered.map((b) => (
-                <tr key={b.bookingId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 font-medium text-on-surface">#{b.bookingId}</td>
-                  <td className="px-4 py-3 font-mono font-semibold text-secondary uppercase">{b.licensePlate}</td>
-                  <td className="px-4 py-3 text-on-surface">{b.customerName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{b.serviceName}</td>
-                  <td className="px-4 py-3">
-                    <p className="text-on-surface">{b.slotLabel}</p>
-                    <p className="text-xs text-on-surface-variant">{b.scheduledDate}</p>
-                  </td>
-                  <td className="px-4 py-3"><LaneAssignmentBadge booking={{ ...b, status: b.status === 'Đã check-in' ? 'Checked-in' : b.status === 'Đang rửa' ? 'Processing' : b.status === 'Chờ check-in' ? 'Pending' : b.status }} /></td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={b.status} />
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">
-                    <div>{formatVnd(b.finalAmount)}</div>
-                    <WashDurationBadge booking={b} className="mt-2" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      {canAssign(b) && (
-                        <button
-                          type="button"
-                          className="rounded-lg bg-secondary px-2.5 py-1 text-xs font-semibold text-on-secondary hover:bg-secondary/90 disabled:opacity-50"
-                          onClick={() => {
-                            setAssignTarget(b)
-                            setSelectedLaneId('')
-                          }}
-                          disabled={lanes.length === 0}
-                        >
-                          {b.status === 'Chờ check-in' ? 'Check-in & phân làn' : 'Phân làn thủ công'}
-                        </button>
-                      )}
-                      {canNoShow(b) && (
-                        <button
-                          type="button"
-                          className="rounded-lg border border-outline-variant px-2.5 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
-                          onClick={() => setNoShowTarget(b)}
-                        >
-                          Vắng mặt
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={filtered}
+          loading={loading}
+          minWidth="900px"
+          emptyIcon="garage"
+          emptyTitle="Không có xe nào trong danh sách"
+          columns={[
+            {
+              key: 'bookingId',
+              label: 'Booking ID',
+              width: '110px',
+              render: (b) => (
+                <span className="font-medium text-on-surface">#{b.bookingId}</span>
+              ),
+            },
+            {
+              key: 'licensePlate',
+              label: 'Biển số',
+              render: (b) => (
+                <span className="font-mono font-semibold text-secondary uppercase">
+                  {b.licensePlate}
+                </span>
+              ),
+            },
+            {
+              key: 'customerName',
+              label: 'Khách hàng',
+              render: (b) => <span className="text-on-surface">{b.customerName}</span>,
+              tdClassName: 'text-on-surface',
+            },
+            {
+              key: 'serviceName',
+              label: 'Dịch vụ',
+              render: (b) => <span className="text-on-surface-variant">{b.serviceName}</span>,
+              tdClassName: 'text-on-surface-variant',
+            },
+            {
+              key: 'slotLabel',
+              label: 'Slot/Giờ',
+              render: (b) => (
+                <>
+                  <p className="text-on-surface">{b.slotLabel}</p>
+                  <p className="text-xs text-on-surface-variant">{b.scheduledDate}</p>
+                </>
+              ),
+            },
+            {
+              key: 'lane',
+              label: 'Làn',
+              render: (b) => (
+                <LaneAssignmentBadge
+                  booking={{
+                    ...b,
+                    status:
+                      b.status === 'Đã check-in'
+                        ? 'Checked-in'
+                        : b.status === 'Đang rửa'
+                          ? 'Processing'
+                          : b.status === 'Chờ check-in'
+                            ? 'Pending'
+                            : b.status,
+                  }}
+                />
+              ),
+            },
+            {
+              key: 'status',
+              label: 'Trạng thái',
+              render: (b) => <StatusBadge status={b.status} />,
+            },
+            {
+              key: 'finalAmount',
+              label: 'Số tiền',
+              render: (b) => (
+                <>
+                  <div>{formatVnd(b.finalAmount)}</div>
+                  <WashDurationBadge booking={b} className="mt-2" />
+                </>
+              ),
+              tdClassName: 'text-on-surface',
+            },
+            {
+              key: 'actions',
+              label: 'Thao tác',
+              width: '220px',
+              align: 'right',
+              renderActions: (b) => (
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  {canAssign(b) && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg bg-secondary px-2.5 py-1 text-xs font-semibold text-on-secondary hover:bg-secondary/90 disabled:opacity-50"
+                      onClick={() => {
+                        setAssignTarget(b)
+                        setSelectedLaneId('')
+                      }}
+                      disabled={lanes.length === 0}
+                    >
+                      {b.status === 'Chờ check-in' ? 'Check-in & phân làn' : 'Phân làn thủ công'}
+                    </button>
+                  )}
+                  {canNoShow(b) && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg border border-outline-variant px-2.5 py-1 text-xs font-medium text-on-surface-variant hover:bg-surface-variant"
+                      onClick={() => setNoShowTarget(b)}
+                    >
+                      <span
+                        className="material-symbols-outlined text-[14px]"
+                        style={{ fontVariationSettings: "'FILL' 0" }}
+                      >
+                        person_off
+                      </span>
+                      Vắng mặt
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
 
       {/* Assign Lane Modal */}
@@ -367,6 +416,7 @@ export default function ManagerQueuePage() {
         }
         confirmLabel={noShowing ? 'Đang xử lý...' : 'Đánh dấu vắng mặt'}
         variant="danger"
+        loading={noShowing}
         onConfirm={handleNoShow}
         onCancel={() => !noShowing && setNoShowTarget(null)}
       />

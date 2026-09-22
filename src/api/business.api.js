@@ -25,7 +25,12 @@ export function normalizeBusinessVehicle(item) {
     brand: String(item.brand ?? ''),
     model: String(item.model ?? item.carModel ?? ''),
     driverName: item.driverName != null ? String(item.driverName) : '',
-    employeeCode: item.employeeCode != null ? String(item.employeeCode) : '',
+    employeeCode:
+      item.employeeCode != null
+        ? String(item.employeeCode)
+        : item.employeeId != null
+          ? String(item.employeeId)
+          : '',
     status: String(item.status ?? 'Unknown'),
   }
 }
@@ -493,34 +498,37 @@ export async function importFleet(formData) {
   })
 }
 
-/**
- * BE chưa expose lịch sử nhập cho role Business (GET /fleet/staff/imports → 403).
- * Giữ hàm để trang không crash; trả lỗi rõ ràng khi gọi.
- */
+/** GET /fleet/my-imports — lịch sử nhập xe của chính doanh nghiệp đang đăng nhập. */
 export async function fetchImportHistory() {
-  try {
-    const data = await apiRequest('/fleet/staff/imports')
-    return asBusinessCollection(data)
-  } catch (err) {
-    if (err instanceof ApiError && err.isForbidden) {
-      throw new ApiError(
-        'Lịch sử nhập xe chưa khả dụng cho tài khoản doanh nghiệp trên API hiện tại.',
-        403,
-      )
-    }
-    throw err
-  }
+  const data = await apiRequest('/fleet/my-imports')
+  return asBusinessCollection(data)
 }
 
 export const fetchImportBatchDetail = (batchId) =>
-  apiRequest(`/fleet/staff/imports/${batchId}`)
+  apiRequest(`/fleet/my-imports/${batchId}`)
 
 // === Bookings ===
 
-export async function fetchBusinessBookings() {
-  const data = await apiRequest('/business')
+export async function fetchBusinessBookings({ page = 1, pageSize = 50 } = {}) {
+  const data = await apiRequest(`/business?page=${page}&pageSize=${pageSize}`)
   const bookings = asBusinessCollection(data).map(normalizeBusinessBooking)
   return enrichBusinessBookingsWithBranches(bookings)
+}
+
+/**
+ * GET /business trả một mảng thô không kèm tổng số trang/bản ghi, nên cách
+ * duy nhất để biết đã lấy hết dữ liệu là lặp cho tới khi 1 trang trả về ít
+ * hơn pageSize. Dùng cho các màn cần đầy đủ dữ liệu (lịch sử, báo cáo) thay
+ * vì gọi 1 trang lớn cố định rồi âm thầm bỏ sót các bản ghi cũ hơn.
+ */
+export async function fetchAllBusinessBookings({ pageSize = 200, maxPages = 25 } = {}) {
+  const all = []
+  for (let page = 1; page <= maxPages; page += 1) {
+    const chunk = await fetchBusinessBookings({ page, pageSize })
+    all.push(...chunk)
+    if (chunk.length < pageSize) break
+  }
+  return all
 }
 
 export async function fetchBookingDetail(id) {
@@ -786,7 +794,7 @@ function paginateBusinessHistory(items, filter) {
  */
 async function fetchBusinessHistoryFromBookings(filter = {}) {
   const [bookings, vehicles, branches] = await Promise.all([
-    fetchBusinessBookings(),
+    fetchAllBusinessBookings(),
     fetchFleetVehicles().catch(() => []),
     fetchBranches().catch(() => []),
   ])

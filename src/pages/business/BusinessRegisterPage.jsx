@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { registerBusinessProfile } from '../../api/business.api'
+import { isValidPhoneNumber, isValidPassword, isValidEmail, PHONE_ERROR_MESSAGE, PASSWORD_ERROR_MESSAGE } from '../../utils/validation'
 
 export default function BusinessRegisterPage() {
   const navigate = useNavigate()
@@ -41,8 +42,9 @@ export default function BusinessRegisterPage() {
 
   const validate = () => {
     if (!form.phoneNumber.trim()) return 'Số điện thoại là bắt buộc.'
-    if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) return 'Email không hợp lệ.'
-    if (!form.password || form.password.length < 8) return 'Mật khẩu phải có ít nhất 8 ký tự.'
+    if (!isValidPhoneNumber(form.phoneNumber)) return PHONE_ERROR_MESSAGE
+    if (!isValidEmail(form.email)) return 'Email không hợp lệ.'
+    if (!isValidPassword(form.password)) return PASSWORD_ERROR_MESSAGE
     if (form.password !== form.confirmPassword) return 'Mật khẩu xác nhận không khớp.'
     if (!form.companyName.trim()) return 'Tên công ty là bắt buộc.'
     if (!form.taxCode.trim()) return 'Mã số thuế là bắt buộc.'

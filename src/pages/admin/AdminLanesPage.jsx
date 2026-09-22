@@ -8,9 +8,11 @@ import {
   updateLane,
 } from '../../api'
 import FormModal from '../../components/admin/shared/FormModal'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = {
   name: '',
@@ -28,12 +30,7 @@ export default function AdminLanesPage() {
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const branchName = (branchId) =>
     branches.find((b) => b.id === branchId)?.name ?? `#${branchId}`
@@ -91,18 +88,18 @@ export default function AdminLanesPage() {
           ...payload,
           isActive: form.isActive,
         })
-        showToast('Đã cập nhật làn rửa')
+        toast.success('Đã cập nhật làn rửa')
       } else if (form.isBusinessLane) {
         await createBusinessLane(payload)
-        showToast('Đã thêm làn doanh nghiệp')
+        toast.success('Đã thêm làn doanh nghiệp')
       } else {
         await createLane(payload)
-        showToast('Đã thêm làn rửa')
+        toast.success('Đã thêm làn rửa')
       }
       setModalOpen(false)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được làn rửa')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được làn rửa')
     } finally {
       setSaving(false)
     }
@@ -111,22 +108,24 @@ export default function AdminLanesPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Cơ sở vật hành"
         title="Làn rửa"
         description="Làn rửa gắn với chi nhánh — dùng cho phân công Manager"
         actionLabel="Thêm làn"
+        actionIcon="add_road"
         onAction={openCreate}
       />
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
       {!loading && branches.length === 0 && (
-        <p className="mb-4 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-2 text-sm text-on-surface">
-          Chưa có chi nhánh — hãy tạo chi nhánh trước.
-        </p>
+        <div className="mb-4 flex items-start gap-3 rounded-lg border border-tertiary/30 bg-tertiary-container/20 px-4 py-3 text-sm text-on-surface">
+          <span
+            className="material-symbols-outlined mt-0.5 shrink-0 text-tertiary"
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            info
+          </span>
+          <p>Chưa có chi nhánh — hãy tạo chi nhánh trước.</p>
+        </div>
       )}
 
       {loadError && (
@@ -138,58 +137,75 @@ export default function AdminLanesPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải…</p>
-      ) : lanes.length === 0 && !loadError ? (
-        <EmptyState icon="garage" title="Chưa có làn rửa" />
-      ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Tên làn</th>
-                <th className="px-4 py-3">Chi nhánh</th>
-                <th className="px-4 py-3">Loại làn</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {lanes.map((lane) => (
-                <tr key={lane.id} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{lane.id}</td>
-                  <td className="px-4 py-3 font-medium text-on-surface">{lane.name}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">
-                    {lane.branchName ?? branchName(lane.branchId)}
-                  </td>
-                  <td className="px-4 py-3">
-                    {lane.isBusinessLane ? (
-                      <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary-container/40 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-on-secondary-container uppercase">
-                        Doanh nghiệp
-                      </span>
-                    ) : (
-                      <span className="text-on-surface-variant">Tiêu dùng</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={lane.isActive !== false ? 'Active' : 'Inactive'} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      className="rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
-                      onClick={() => openEdit(lane)}
-                    >
-                      Sửa
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={lanes}
+        loading={loading}
+        minWidth="720px"
+        emptyIcon="garage"
+        emptyTitle="Chưa có làn rửa"
+        columns={[
+          {
+            key: 'id',
+            label: 'ID',
+            width: '80px',
+            render: (row) => (
+              <span className="font-mono text-on-surface-variant">#{row.id}</span>
+            ),
+          },
+          {
+            key: 'name',
+            label: 'Tên làn',
+            render: (row) => <span className="font-medium text-on-surface">{row.name}</span>,
+          },
+          {
+            key: 'branchId',
+            label: 'Chi nhánh',
+            render: (row) => row.branchName ?? branchName(row.branchId),
+            tdClassName: 'text-on-surface-variant',
+          },
+          {
+            key: 'isBusinessLane',
+            label: 'Loại làn',
+            render: (row) =>
+              row.isBusinessLane ? (
+                <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary-container/40 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-on-secondary-container uppercase">
+                  Doanh nghiệp
+                </span>
+              ) : (
+                <span className="text-on-surface-variant">Tiêu dùng</span>
+              ),
+          },
+          {
+            key: 'isActive',
+            label: 'Trạng thái',
+            width: '140px',
+            render: (row) => (
+              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
+            ),
+          },
+          {
+            key: 'actions',
+            label: 'Thao tác',
+            width: '100px',
+            align: 'right',
+            renderActions: (row) => (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-container/30"
+                onClick={() => openEdit(row)}
+              >
+                <span
+                  className="material-symbols-outlined text-[14px]"
+                  style={{ fontVariationSettings: "'FILL' 0" }}
+                >
+                  edit
+                </span>
+                Sửa
+              </button>
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
@@ -199,17 +215,15 @@ export default function AdminLanesPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Tên làn</span>
-            <input
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.name}
-              maxLength={50}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              required
-            />
-          </label>
+          <Input
+            label="Tên làn"
+            required
+            value={form.name}
+            maxLength={50}
+            disabled={saving}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            iconLeft="garage"
+          />
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh</span>
             <select

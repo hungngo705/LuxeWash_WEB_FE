@@ -93,6 +93,10 @@ export function fetchServiceMaterials(serviceId) {
   return apiRequest(`/admin/services/${Number(serviceId)}/materials`)
 }
 
+export function fetchAllServiceMaterials() {
+  return apiRequest('/admin/inventory/service-materials')
+}
+
 export function upsertServiceMaterials(serviceId, payload) {
   return apiRequest(`/admin/services/${Number(serviceId)}/materials`, {
     method: 'POST',
@@ -140,8 +144,19 @@ export function adjustManagerInventoryStock(payload) {
   })
 }
 
+function endOfDayIso(dateOnly) {
+  if (!dateOnly) return undefined
+  // dateOnly dạng 'YYYY-MM-DD' -> ISO với 23:59:59.999 để bao trọn ngày
+  return `${dateOnly}T23:59:59.999`
+}
+
 export function fetchManagerInventoryTransactions({ materialId, from, to, type } = {}) {
-  return apiRequest(`/manager/inventory/transactions${cleanParams({ materialId, from, to, type })}`)
+  return apiRequest(`/manager/inventory/transactions${cleanParams({
+    materialId,
+    from: from || undefined,
+    to: endOfDayIso(to),
+    type,
+  })}`)
 }
 
 export function fetchManagerInventoryReport({ from, to } = {}) {

@@ -7,6 +7,7 @@ import {
   updateCarModel,
   fetchVehicleTypes,
 } from '../../api'
+import { useToast } from '../../components/ui/Toast'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
@@ -26,19 +27,14 @@ export default function AdminCarModelsPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadData = useCallback(async () => {
     setLoading(true)
     setLoadError('')
     try {
       const [fetchedModels, fetchedTypes] = await Promise.all([
-        fetchCarModels(),
+        fetchCarModels({ includeInactive: true }),
         fetchVehicleTypes(),
       ])
       setModels(fetchedModels)
@@ -80,12 +76,21 @@ export default function AdminCarModelsPage() {
     const trimmedName = form.name.trim()
 
     if (!trimmedBrand) {
-      showToast('Vui lòng nhập tên hãng xe')
+      toast.warning('Vui lòng nhập tên hãng xe')
       return
     }
     if (!trimmedName) {
-      showToast('Vui lòng nhập tên dòng xe')
+      toast.warning('Vui lòng nhập tên dòng xe')
       return
+    }
+
+    if (form.productionYear) {
+      const year = Number(form.productionYear)
+      const maxYear = new Date().getFullYear() + 1
+      if (!Number.isInteger(year) || year < 1980 || year > maxYear) {
+        toast.warning(`Năm sản xuất phải từ 1980 đến ${maxYear}`)
+        return
+      }
     }
 
     setSaving(true)
@@ -99,15 +104,15 @@ export default function AdminCarModelsPage() {
       }
       if (editingId) {
         await updateCarModel(editingId, { ...payload, isActive: form.isActive })
-        showToast('Đã cập nhật mẫu xe')
+        toast.success('Đã cập nhật mẫu xe')
       } else {
         await createCarModel(payload)
-        showToast('Đã thêm mẫu xe')
+        toast.success('Đã thêm mẫu xe')
       }
       setModalOpen(false)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được mẫu xe')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được mẫu xe')
     } finally {
       setSaving(false)
     }
@@ -119,10 +124,10 @@ export default function AdminCarModelsPage() {
     try {
       await deleteCarModel(deleteTarget)
       setDeleteTarget(null)
-      showToast('Đã xóa mẫu xe')
+      toast.success('Đã xóa mẫu xe')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được mẫu xe')
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được mẫu xe')
     } finally {
       setDeleting(false)
     }
@@ -136,12 +141,6 @@ export default function AdminCarModelsPage() {
         actionLabel="Thêm mẫu xe"
         onAction={openCreate}
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
@@ -242,7 +241,7 @@ export default function AdminCarModelsPage() {
               <input
                 type="number"
                 min={1980}
-                max={2100}
+                max={new Date().getFullYear() + 1}
                 className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
                 value={form.productionYear}
                 disabled={saving}

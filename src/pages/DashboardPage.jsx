@@ -18,11 +18,11 @@ import {
   enrichStaffBooking,
   enrichStaffTasks,
   fetchBookingPaymentStatus,
-  fetchStaffLaneAssignment,
   fetchStaffLaneOccupancies,
   fetchStaffTasks,
   fetchUserById,
   fetchVehicleTypes,
+  getBranchId,
   maskPhoneNumber,
   fleetCheckout,
   fleetStartProcessing,
@@ -37,6 +37,7 @@ import {
   submitVehicleVisionFeedback,
   updateStaffBookingStatus,
 } from "../api";
+import { useAuth } from '../context/AuthContext';
 import { formatDateTime, formatVnd } from "../utils/format";
 import {
   isValidVietnameseLicensePlate,
@@ -50,6 +51,8 @@ import {
   hasAssignedLane,
 } from "../utils/laneAssignment";
 import useBarrierController from "../hooks/useBarrierController";
+import DataTable from '../components/ui/DataTable';
+import { useToast } from '../components/ui/Toast';
 import {
   BARRIER_GATES,
   gateFromBarrierId,
@@ -423,29 +426,6 @@ function PaymentStatusBadge({ status }) {
   );
 }
 
-function Toast({ message, type, onClose }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 3500);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  const isError = type === "error";
-  return (
-    <div
-      className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl border px-5 py-3 shadow-xl ${
-        isError
-          ? "border-error-container/50 bg-error-container/20 text-error"
-          : "border-primary-container/50 bg-primary-container/20 text-primary-container"
-      }`}
-    >
-      <span className="material-symbols-outlined text-xl">
-        {isError ? "error" : "check_circle"}
-      </span>
-      <span className="text-sm font-medium">{message}</span>
-    </div>
-  );
-}
-
 function LoadingSpinner({ label = "Đang xử lý…" }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12">
@@ -629,9 +609,12 @@ function PlateLookupPanel({
   plateInput,
   onPlateChange,
   onSearch,
+  onCreateWalkIn,
   loading,
   checkedInCount,
   processingCount,
+  walkInReady = false,
+  hasPlate = false,
 }) {
   return (
     <section className="glass-panel soft-shadow flex flex-col overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -674,6 +657,21 @@ function PlateLookupPanel({
               )}
             </button>
           </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-xl border border-dashed border-secondary/40 bg-secondary-container/10 px-3 py-2 text-xs text-on-surface-variant">
+          <span className="material-symbols-outlined text-base text-secondary">info</span>
+          <p>
+            Không tìm thấy biển số?&nbsp;
+            <button
+              type="button"
+              className="font-semibold text-secondary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={onCreateWalkIn}
+              disabled={!walkInReady || !hasPlate}
+            >
+              Tạo walk-in ngay
+            </button>
+            &nbsp;cho khách vãng lai.
+          </p>
         </div>
       </div>
     </section>
@@ -1610,6 +1608,7 @@ function ProcessingVehiclesPanel({
 }
 
 export default function DashboardPage() {
+  const { laneAssignment, user } = useAuth()
   const [staffTasks, setStaffTasks] = useState([]);
   const [plateInput, setPlateInput] = useState("");
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -1620,9 +1619,7 @@ export default function DashboardPage() {
   const [checkingIn, setCheckingIn] = useState(false);
   const [completingId, setCompletingId] = useState(null);
   const [initialLoading, setInitialLoading] = useState(true);
-  const [laneAssignment, setLaneAssignment] = useState(null);
   const [laneOccupancies, setLaneOccupancies] = useState(null);
-  const [toast, setToast] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [extraUsageBooking, setExtraUsageBooking] = useState(null);
   const [extraUsageForm, setExtraUsageForm] = useState({ materialId: "", quantity: "", note: "" });
@@ -1642,15 +1639,22 @@ export default function DashboardPage() {
   const staffTasksRequestRef = useRef(null);
   const latestCameraFramesRef = useRef({ entry: null, exit: null });
 
-  const showToast = useCallback(
-    (message, type = "success") => setToast({ message, type }),
-    [],
+  const toast = useToast()
+
+  const notice = useCallback(
+    (message, type = 'success') => {
+      if (type === 'error') toast.error(message)
+      else if (type === 'warning') toast.warning(message)
+      else if (type === 'info') toast.info(message)
+      else toast.success(message)
+    },
+    [toast],
   );
   const handleVehicleFrameCaptured = useCallback((frame) => {
     if (!frame?.mode || !(frame.imageBlob instanceof Blob)) return;
     latestCameraFramesRef.current[frame.mode] = frame;
   }, []);
-  const barrierController = useBarrierController({ onNotice: showToast });
+  const barrierController = useBarrierController({ onNotice: notice });
   const { executeCommand: executeBarrierCommand } = barrierController;
 
   const markPayOsPaymentCompleted = useCallback((payment = payOsPayment) => {
@@ -1684,8 +1688,8 @@ export default function DashboardPage() {
       status: payment.status ?? "Checked-in",
       finalAmount: Number(payment.amount ?? 0),
     });
-    showToast(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
-  }, [payOsPayment, showToast]);
+    notice(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
+  }, [payOsPayment, notice]);
 
   const verifyPayOsPaymentStatus = useCallback(async (payment = payOsPayment, { silent = false } = {}) => {
     if (!payment?.bookingId) return false;
@@ -1702,12 +1706,12 @@ export default function DashboardPage() {
         return true;
       }
       if (!silent) {
-        showToast("PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau vài giây.", "error");
+        notice("PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau vài giây.", "error");
       }
       return false;
     } catch (err) {
       if (!silent) {
-        showToast(
+        notice(
           err instanceof ApiError
             ? err.message
             : "Không thể kiểm tra trạng thái thanh toán PayOS.",
@@ -1718,7 +1722,7 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setVerifyingPayOsPayment(false);
     }
-  }, [payOsPayment, markPayOsPaymentCompleted, showToast]);
+  }, [payOsPayment, markPayOsPaymentCompleted, notice]);
 
   const loadWalkInServices = useCallback(async (branchId) => {
     setLoadingWalkInServices(true);
@@ -1729,7 +1733,7 @@ export default function DashboardPage() {
       setWalkInServices(list.filter((service) => service.isActive !== false));
     } catch (err) {
       setWalkInServices([]);
-      showToast(
+      notice(
         err instanceof ApiError
           ? err.message
           : "Không tải được danh sách dịch vụ walk-in.",
@@ -1738,7 +1742,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingWalkInServices(false);
     }
-  }, [showToast]);
+  }, [notice]);
 
   const loadVehicleTypes = useCallback(async () => {
     setLoadingVehicleTypes(true);
@@ -1747,11 +1751,11 @@ export default function DashboardPage() {
       setVehicleTypes(Array.isArray(types) ? types : []);
     } catch {
       setVehicleTypes([]);
-      showToast("Không tải được danh sách loại xe.", "error");
+      notice("Không tải được danh sách loại xe.", "error");
     } finally {
       setLoadingVehicleTypes(false);
     }
-  }, [showToast]);
+  }, [notice]);
 
   useEffect(() => {
     if (!payOsPayment?.bookingId) return undefined;
@@ -1876,15 +1880,6 @@ export default function DashboardPage() {
     const controller = new AbortController()
     const initialLoadId = window.setTimeout(() => {
       loadStaffTasks({ signal: controller.signal })
-      fetchStaffLaneAssignment({ signal: controller.signal })
-        .then((a) => {
-          if (!controller.signal.aborted) {
-            setLaneAssignment(a)
-          }
-        })
-        .catch((err) => {
-          if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
-        })
       loadVehicleTypes()
       loadMaterials()
     }, 0)
@@ -2167,7 +2162,7 @@ export default function DashboardPage() {
             : item,
         ),
       );
-      showToast(`Đã gửi phản hồi loại xe ${review.licensePlate} cho AI.`);
+      notice(`Đã gửi phản hồi loại xe ${review.licensePlate} cho AI.`);
     } catch (err) {
       setVehicleReviews((reviews) =>
         reviews.map((item) =>
@@ -2176,12 +2171,12 @@ export default function DashboardPage() {
             : item,
         ),
       );
-      showToast(
+      notice(
         err instanceof ApiError ? err.message : "Không gửi được phản hồi loại xe cho AI.",
         "error",
       );
     }
-  }, [vehicleReviews, showToast]);
+  }, [vehicleReviews, notice]);
 
   const dismissVehicleReview = useCallback((licensePlate) => {
     const normalizedLicensePlate = normalizePlate(licensePlate);
@@ -2265,7 +2260,7 @@ export default function DashboardPage() {
       setWalkInDraft(null);
       setPlateInput("");
       setLookupError("");
-      showToast(`Đã tạo walk-in personal cho xe ${walkInDraft.licensePlate}.`);
+      notice(`Đã tạo walk-in personal cho xe ${walkInDraft.licensePlate}.`);
       await loadStaffTasks();
       if (Number(booking.bookingId)) {
         await applySelectedBooking(booking);
@@ -2284,7 +2279,72 @@ export default function DashboardPage() {
     } finally {
       setCreatingWalkIn(false);
     }
-  }, [walkInDraft, loadStaffTasks, applySelectedBooking, showToast]);
+  }, [walkInDraft, loadStaffTasks, applySelectedBooking, notice]);
+
+  const handleCreateWalkInDraft = useCallback(async () => {
+    const branchId = getBranchId(user);
+    const plate = plateInput.trim().toUpperCase();
+    if (!branchId) {
+      setLookupError(
+        "Chưa xác định được chi nhánh/làn của nhân viên để tạo walk-in.",
+      );
+      return;
+    }
+    if (!plate || !isValidVietnameseLicensePlate(plate)) {
+      setLookupError(
+        "Vui lòng nhập biển số hợp lệ trước khi tạo walk-in cho khách vãng lai.",
+      );
+      return;
+    }
+
+    setSelectedBooking(null);
+    setLookupError(
+      "Tạo walk-in cá nhân. Chọn dịch vụ để tạo check-in cho khách vãng lai.",
+    );
+
+    let walkInCustomer = null;
+    try {
+      const lookup = await smartLookupLicensePlate(plate);
+      if (lookup.customerType === "PreBooked" && lookup.booking) {
+        const booking = normalizeStaffTask(lookup.booking);
+        await applySelectedBooking(booking, {
+          message: plateLookupMessage(booking.status),
+        });
+        return;
+      }
+      if (lookup.customerType === "WalkIn") {
+        walkInCustomer = lookup.walkInCustomer ?? null;
+      }
+    } catch {
+      // Bỏ qua lỗi lookup — vẫn cho phép tạo walk-in từ biển số đã nhập.
+    }
+
+    setWalkInDraft({
+      licensePlate: plate,
+      branchId,
+      serviceIds: [],
+      userId: walkInCustomer?.userId ?? 0,
+      customerName: walkInCustomer?.customerName ?? "",
+      phoneNumber: walkInCustomer?.phoneNumber ?? "",
+      customerTierName: walkInCustomer?.customerTierName,
+      customerTierPoints: walkInCustomer?.customerTierPoints,
+      isVip: walkInCustomer?.isVip === true,
+      vehicleId: walkInCustomer?.vehicleId,
+      vehicleTypeId: walkInCustomer?.vehicleTypeId,
+      paymentMethod: "Cash",
+    });
+
+    try {
+      await loadWalkInServices(branchId);
+    } catch {
+      // loadWalkInServices đã tự thông báo lỗi
+    }
+  }, [
+    plateInput,
+    user,
+    applySelectedBooking,
+    loadWalkInServices,
+  ]);
 
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase();
@@ -2313,7 +2373,7 @@ export default function DashboardPage() {
 
       if (lookup.customerType === "Fleet") {
         setWalkInDraft(null);
-        const branchId = Number(laneAssignment?.branchId);
+        const branchId = getBranchId(user);
         if (!branchId) {
           setSelectedBooking(null);
           setLookupError(
@@ -2330,7 +2390,7 @@ export default function DashboardPage() {
       }
 
       if (lookup.customerType === "WalkIn") {
-        const branchId = Number(laneAssignment?.branchId);
+        const branchId = getBranchId(user);
         setSelectedBooking(null);
         if (!branchId) {
           setWalkInDraft(null);
@@ -2373,7 +2433,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingLookup(false);
     }
-  }, [plateInput, staffTasks, applySelectedBooking, laneAssignment, loadWalkInServices]);
+  }, [plateInput, staffTasks, applySelectedBooking, user, loadWalkInServices]);
 
   const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
     const plate = String(plateText ?? "").trim().toUpperCase();
@@ -2422,7 +2482,7 @@ export default function DashboardPage() {
       const message = `Xe ${plate} đang đứng sai làn (${currentLaneLabel}). Yêu cầu xe chuyển sang ${expectedLaneLabel} rồi quét lại.`;
 
       setLookupError(message);
-      showToast(message, "error");
+      notice(message, "error");
       publishLaneDisplayEvent({
         type: "assistance",
         plate,
@@ -2477,7 +2537,7 @@ export default function DashboardPage() {
             ? `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
             : `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
         setLookupError(message);
-        showToast(message, "error");
+        notice(message, "error");
         return booking;
       }
     };
@@ -2612,7 +2672,7 @@ export default function DashboardPage() {
       await applySelectedBooking(authoritativeBooking);
       publishBookingLaneState(authoritativeBooking);
       const message = getCheckInSuccessMessage(authoritativeBooking);
-      showToast(message);
+      notice(message);
       return { message };
     };
 
@@ -2622,7 +2682,7 @@ export default function DashboardPage() {
         if (recentManualCompletion) {
           const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
           setBarrierAlert({ type: 'manual', message });
-          showToast(message);
+          notice(message);
           return { status: 'needs-action', type: 'warning', message, handled: true };
         }
 
@@ -2659,7 +2719,7 @@ export default function DashboardPage() {
               message,
               booking: completed,
             });
-            showToast(message, barrierWasAcknowledged ? 'success' : 'warning');
+            notice(message, barrierWasAcknowledged ? 'success' : 'warning');
             return {
               status: barrierWasAcknowledged ? 'completed' : 'needs-action',
               type: barrierWasAcknowledged ? 'success' : 'warning',
@@ -2710,7 +2770,7 @@ export default function DashboardPage() {
           setSelectedBooking((booking) =>
             Number(booking?.bookingId) === Number(completed.bookingId) ? null : booking,
           );
-          showToast(message, "success");
+          notice(message, "success");
           await loadStaffTasks();
           return { message, handled: true };
         } catch (checkoutError) {
@@ -2727,7 +2787,7 @@ export default function DashboardPage() {
               : rawMessage;
           setBarrierAlert({ type: 'error', message });
           setLookupError(message);
-          showToast(message, 'error');
+          notice(message, 'error');
           throw checkoutError;
         }
       }
@@ -2773,7 +2833,7 @@ export default function DashboardPage() {
               updated.status === "Pending"
                 ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
                 : getCheckInSuccessMessage(updated);
-            showToast(message);
+            notice(message);
             return { message };
           } catch (checkInError) {
             if (isCheckInScheduleError(checkInError)) {
@@ -2849,7 +2909,7 @@ export default function DashboardPage() {
                 ? `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
                 : `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
             setLookupError(message);
-            showToast(message, "error");
+            notice(message, "error");
           }
         }
 
@@ -2870,7 +2930,7 @@ export default function DashboardPage() {
           fleetBooking.status === "Processing"
             ? `Camera AI đã check-in và tự động bắt đầu rửa xe doanh nghiệp ${plate}.`
             : `Camera AI đã check-in xe doanh nghiệp ${plate} và đang chờ buồng rửa.`;
-        showToast(fleetMessage);
+        notice(fleetMessage);
         return { message: fleetMessage };
       }
 
@@ -2951,7 +3011,7 @@ export default function DashboardPage() {
             : "Không thể check-in xe do không đúng lịch đặt.";
         setWalkInDraft(null);
         setLookupError(message);
-        showToast(message, "error");
+        notice(message, "error");
         publishLaneDisplayEvent({
           type: "assistance",
           plate,
@@ -3000,7 +3060,7 @@ export default function DashboardPage() {
     loadStaffTasks,
     loadWalkInServices,
     recordVehicleRecognition,
-    showToast,
+    notice,
     staffTasks,
     updateVehicleReviewContext,
     updateVehicleReviewType,
@@ -3010,7 +3070,7 @@ export default function DashboardPage() {
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
     if (!canStartWash(selectedBooking)) {
-      showToast(
+      notice(
         !selectedBooking.processingLaneId && !selectedBooking.processingLaneName
           ? "Xe đang chờ được phân làn."
           : "Booking chưa hoàn tất thanh toán.",
@@ -3033,7 +3093,7 @@ export default function DashboardPage() {
           actualDurationMinutes: null,
         };
         setSelectedBooking(processingBooking);
-        showToast(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`);
+        notice(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`);
         setLookupError("");
         await loadStaffTasks();
         return;
@@ -3056,23 +3116,23 @@ export default function DashboardPage() {
       }
       setStaffTasks((prev) => upsertStaffTaskList(prev, processingBooking));
       setSelectedBooking(processingBooking);
-      showToast(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`);
+      notice(`Xe ${processingBooking.licensePlate} bắt đầu rửa.`);
       setLookupError("");
     } catch (err) {
       const msg =
         err instanceof ApiError
           ? err.message
           : "Lỗi khi bắt đầu rửa. Vui lòng thử lại.";
-      showToast(msg, "error");
+      notice(msg, "error");
     } finally {
       setConfirming(false);
     }
-  }, [selectedBooking, loadStaffTasks, showToast]);
+  }, [selectedBooking, loadStaffTasks, notice]);
 
   const handleCheckin = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Pending") return;
     if (!canCheckIn(selectedBooking)) {
-      showToast("Booking chưa hoàn tất thanh toán nên chưa thể check-in.", "error");
+      notice("Booking chưa hoàn tất thanh toán nên chưa thể check-in.", "error");
       publishLaneDisplayEvent({
         type: "payment",
         plate: selectedBooking.licensePlate,
@@ -3109,7 +3169,7 @@ export default function DashboardPage() {
         };
         setSelectedBooking(updated);
         setLookupError("");
-        showToast(
+        notice(
           result.isWaiting
             ? `Xe doanh nghiệp ${updated.licensePlate} đã check-in và đang chờ buồng rửa.`
             : `Xe doanh nghiệp ${updated.licensePlate} đã check-in và được phân vào ${updated.processingLaneName || "buồng rửa"}.`,
@@ -3127,7 +3187,7 @@ export default function DashboardPage() {
       // The button is the manual fallback; a recent camera frame is optional.
       const requiresCameraImage = false;
       if (requiresCameraImage && !checkInImage) {
-        showToast("Chưa có ảnh camera cổng vào mới, không thể check-in.", "error");
+        notice("Chưa có ảnh camera cổng vào mới, không thể check-in.", "error");
         return;
       }
       let checkInResult;
@@ -3141,7 +3201,7 @@ export default function DashboardPage() {
             const message =
               "Staff chưa xác nhận cho xe check-in ngoài giờ. Xe vẫn ở trạng thái chờ check-in.";
             setLookupError(message);
-            showToast(message, "error");
+            notice(message, "error");
             return;
           }
           throw checkInError;
@@ -3195,13 +3255,13 @@ export default function DashboardPage() {
       if (updated) {
         setSelectedBooking(updated);
         publishBookingLaneState(updated);
-        showToast(getCheckInSuccessMessage(updated));
+        notice(getCheckInSuccessMessage(updated));
       } else {
         const message =
           "Backend trả về thành công nhưng booking chưa chuyển sang CheckedIn/Processing. " +
           "Vui lòng kiểm tra lại trạng thái làn trước khi cho xe qua barie.";
         setLookupError(message);
-        showToast(message, "error");
+        notice(message, "error");
       }
     } catch (err) {
       const msg =
@@ -3209,7 +3269,7 @@ export default function DashboardPage() {
           ? err.message
           : "Lỗi khi check-in. Vui lòng thử lại.";
       setLookupError(msg);
-      showToast(msg, "error");
+      notice(msg, "error");
     } finally {
       setCheckingIn(false);
     }
@@ -3218,7 +3278,7 @@ export default function DashboardPage() {
     laneAssignment,
     loadStaffTasks,
     executeBarrierCommand,
-    showToast,
+    notice,
   ]);
 
   const handleComplete = useCallback(
@@ -3244,7 +3304,7 @@ export default function DashboardPage() {
         rememberManualCompletion(task);
         const message = `Xe ${task?.licensePlate ?? bookingId ?? fleetWashLogId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
         setBarrierAlert({ type: "manual", message });
-        showToast(message);
+        notice(message);
         setStaffTasks((prev) =>
           prev.filter(
             (t) =>
@@ -3269,12 +3329,12 @@ export default function DashboardPage() {
           err instanceof ApiError
             ? err.message
             : "Lỗi khi hoàn thành. Vui lòng thử lại.";
-        showToast(msg, "error");
+        notice(msg, "error");
       } finally {
         setCompletingId(null);
       }
     },
-    [selectedBooking, loadStaffTasks, showToast],
+    [selectedBooking, loadStaffTasks, notice],
   );
 
   const handleSkip = useCallback(() => {
@@ -3306,9 +3366,9 @@ export default function DashboardPage() {
       });
       setExtraUsageBooking(null);
       setExtraUsageForm({ materialId: "", quantity: "", note: "" });
-      showToast("Đã gửi yêu cầu vật tư phát sinh.");
+      notice("Đã gửi yêu cầu vật tư phát sinh.");
     } catch (err) {
-      showToast(
+      notice(
         err instanceof ApiError
           ? err.message
           : "Không gửi được yêu cầu vật tư phát sinh.",
@@ -3317,7 +3377,7 @@ export default function DashboardPage() {
     } finally {
       setSubmittingExtraUsage(false);
     }
-  }, [extraUsageBooking, extraUsageForm, submittingExtraUsage, showToast]);
+  }, [extraUsageBooking, extraUsageForm, submittingExtraUsage, notice]);
 
   const handleSelectFromQueue = useCallback(
     async (item) => {
@@ -3331,13 +3391,6 @@ export default function DashboardPage() {
 
   return (
     <div className="relative">
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
       {detailBooking && (
         <StaffBookingDetailModal
           booking={detailBooking}
@@ -3416,9 +3469,12 @@ export default function DashboardPage() {
             plateInput={plateInput}
             onPlateChange={setPlateInput}
             onSearch={handleSearch}
+            onCreateWalkIn={handleCreateWalkInDraft}
             loading={loadingLookup}
             checkedInCount={checkedInQueue.length}
             processingCount={activeWashCount}
+            walkInReady={Boolean(laneAssignment?.branchId)}
+            hasPlate={Boolean(plateInput.trim())}
           />
           {walkInDraft ? (
             <PersonalWalkInPanel

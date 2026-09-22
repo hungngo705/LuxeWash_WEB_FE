@@ -17,10 +17,12 @@ import {
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import DiscountFields from '../../components/admin/shared/DiscountFields'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import TimeRangeField from '../../components/admin/shared/TimeRangeField'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import {
   describeVoucherUsability,
   formatVoucherDailyWindow,
@@ -55,18 +57,20 @@ const emptyWinbackForm = { ...emptyBase, inactiveDays: '', resendAfterDays: '' }
 const emptyVipForm = { ...emptyBase, requiredTierId: '' }
 const emptyWelcomeForm = { ...emptyBase }
 
-const TAB_KEYS = ['welcome', 'birthday', 'winback', 'vip']
+const TAB_KEYS = ['welcome', 'birthday', 'winback', 'vip', 'weather']
 const TAB_LABELS = {
   welcome: 'Chào mừng',
   birthday: 'Sinh Nhật',
   winback: 'Winback',
   vip: 'VIP',
+  weather: 'Thời Tiết',
 }
 const TAB_ICONS = {
   welcome: 'waving_hand',
   birthday: 'cake',
   winback: 'replay',
   vip: 'workspace_premium',
+  weather: 'partly_cloudy_day',
 }
 
 function getCreateFn(tab) {
@@ -75,6 +79,7 @@ function getCreateFn(tab) {
     case 'birthday': return createBirthdayCampaign
     case 'winback': return createWinbackCampaign
     case 'vip': return createVipCampaign
+    case 'weather': return null // Weather campaign do hệ thống tự tạo, không có form BE
     default: return createBirthdayCampaign
   }
 }
@@ -103,6 +108,9 @@ function validateBase(form) {
 }
 
 function validateTab(tab, form) {
+  // Weather campaign do hệ thống tự tạo — không cần validate form
+  if (tab === 'weather') return null
+
   const base = validateBase(form)
   if (base) return base
 
@@ -156,110 +164,78 @@ function BaseFields({ form, setForm, saving, tiers }) {
         <strong className="ml-1 text-on-surface">Mã voucher</strong> bên dưới là mã sẽ cấp cho khách (khác trang Voucher thủ công).
       </div>
 
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          Mã voucher cấp cho khách <span className="text-error">*</span>
-        </span>
-        <input
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 font-mono uppercase placeholder:normal-case"
-          value={form.code}
-          disabled={saving}
-          placeholder="VD: BIRTHDAY20"
-          onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-        />
-      </label>
+      <Input
+        label="Mã voucher cấp cho khách"
+        required
+        placeholder="VD: BIRTHDAY20"
+        value={form.code}
+        disabled={saving}
+        onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+        className="font-mono uppercase placeholder:normal-case"
+      />
 
       <DiscountFields form={form} setForm={setForm} saving={saving} />
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Tổng lượt dùng <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.maxUsages}
-            disabled={saving}
-            placeholder="1000"
-            onChange={(e) => num(setForm, 'maxUsages', e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Lượt/người <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.maxUsagePerUser}
-            disabled={saving}
-            onChange={(e) => num(setForm, 'maxUsagePerUser', e.target.value)}
-          />
-        </label>
+        <Input
+          type="number"
+          min={1}
+          label="Tổng lượt dùng"
+          required
+          placeholder="1000"
+          value={form.maxUsages}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'maxUsages', e.target.value)}
+        />
+        <Input
+          type="number"
+          min={1}
+          label="Lượt/người"
+          required
+          value={form.maxUsagePerUser}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'maxUsagePerUser', e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Thời hạn voucher (ngày) <span className="text-error">*</span>
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={3650}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.expiryDays}
-            disabled={saving}
-            onChange={(e) => num(setForm, 'expiryDays', e.target.value)}
-          />
-          <p className="text-xs text-on-surface-variant">
-            Số ngày voucher có hiệu lực kể từ lúc được cấp cho khách (không phải ngày tạo campaign).
-          </p>
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-            Giá trị đơn tối thiểu (VND)
-          </span>
-          <input
-            type="number"
-            min={0}
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={form.minOrderAmount}
-            disabled={saving}
-            placeholder="0"
-            onChange={(e) => num(setForm, 'minOrderAmount', e.target.value)}
-          />
-        </label>
+        <Input
+          type="number"
+          min={1}
+          max={3650}
+          label="Thời hạn voucher (ngày)"
+          required
+          value={form.expiryDays}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'expiryDays', e.target.value)}
+          helper="Số ngày voucher có hiệu lực kể từ lúc được cấp cho khách (không phải ngày tạo campaign)."
+        />
+        <Input
+          type="number"
+          min={0}
+          label="Giá trị đơn tối thiểu (VND)"
+          placeholder="0"
+          value={form.minOrderAmount}
+          disabled={saving}
+          onChange={(e) => num(setForm, 'minOrderAmount', e.target.value)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-              Thời gian bắt đầu
-            </span>
-            <input
-              type="datetime-local"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.startDate}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-              Thời gian kết thúc
-            </span>
-            <input
-              type="datetime-local"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.endDate}
-              disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
-            />
-          </label>
+        <Input
+          type="datetime-local"
+          label="Thời gian bắt đầu"
+          value={form.startDate}
+          disabled={saving}
+          onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+        />
+        <Input
+          type="datetime-local"
+          label="Thời gian kết thúc"
+          value={form.endDate}
+          disabled={saving}
+          onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+        />
       </div>
 
       <TimeRangeField
@@ -272,19 +248,14 @@ function BaseFields({ form, setForm, saving, tiers }) {
         onEndChange={(value) => setForm((f) => ({ ...f, validEndTime: value }))}
       />
 
-      <label className="block space-y-1">
-        <span className="text-xs font-semibold tracking-wider uppercase text-on-surface-variant">
-          URL ảnh
-        </span>
-        <input
-          type="url"
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-          value={form.imageUrl}
-          disabled={saving}
-          placeholder="https://..."
-          onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-        />
-      </label>
+      <Input
+        type="url"
+        label="URL ảnh"
+        placeholder="https://..."
+        value={form.imageUrl}
+        disabled={saving}
+        onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+      />
     </>
   )
 }
@@ -341,7 +312,7 @@ export default function AdminVoucherCampaignsPage() {
   const [deleting, setDeleting] = useState(null)
   const [toggling, setToggling] = useState(null)
   const [processing, setProcessing] = useState(false)
-  const [toast, setToast] = useState('')
+  const toast = useToast()
   const [deleteTarget, setDeleteTarget] = useState(null)
   const formRefs = useRef({})
   
@@ -373,11 +344,6 @@ export default function AdminVoucherCampaignsPage() {
   }
 
   const [, setForceUpdate] = useState(0)
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
 
   const campaignsRef = useRef([])
 
@@ -434,18 +400,28 @@ export default function AdminVoucherCampaignsPage() {
     const form = formRefs.current[tab]
     if (!form) return
 
+    // Weather campaign do hệ thống tự tạo — không có endpoint POST /admin/vouchers/weather
+    if (tab === 'weather') {
+      toast.info('Campaign thời tiết được hệ thống tự động tạo. Không có form thủ công.')
+      return
+    }
+
     if (saving) return
     const err = validateTab(tab, form)
     if (err) {
-      showToast(err)
+      toast.error(err)
       return
     }
 
     setSaving(true)
     try {
       const createFn = getCreateFn(tab)
+      if (!createFn) {
+        toast.error('Loại campaign này chưa hỗ trợ tạo thủ công.')
+        return
+      }
       await createFn(form)
-      showToast('Tạo chiến dịch thành công!')
+      toast.success('Tạo chiến dịch thành công!')
       formRefs.current[tab] = (() => {
         switch (tab) {
           case 'birthday': return { ...emptyBirthdayForm }
@@ -457,7 +433,7 @@ export default function AdminVoucherCampaignsPage() {
       setForceUpdate((n) => n + 1)
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Tạo chiến dịch thất bại')
+      toast.error(err instanceof ApiError ? err.message : 'Tạo chiến dịch thất bại')
     } finally {
       setSaving(false)
     }
@@ -480,12 +456,12 @@ export default function AdminVoucherCampaignsPage() {
 
     try {
       await updateCampaignActive(voucher, !voucher.isActive)
-      showToast(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
+      toast.success(voucher.isActive ? 'Đã tắt chiến dịch' : 'Đã bật chiến dịch')
       await loadData()
     } catch (err) {
       campaignsRef.current = previousList
       setCampaigns(previousList)
-      showToast(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
+      toast.error(err instanceof ApiError ? err.message : 'Không cập nhật được trạng thái')
     } finally {
       setToggling(null)
     }
@@ -498,14 +474,14 @@ export default function AdminVoucherCampaignsPage() {
       const result = await processVoucherCampaigns()
       const rows = Array.isArray(result) ? result : []
       const granted = rows.reduce((sum, row) => sum + Number(row.grantedCount ?? 0), 0)
-      showToast(
+      toast.success(
         rows.length
           ? `Đã chạy campaign — cấp ${granted} voucher cho khách đủ điều kiện.`
           : 'Đã chạy campaign — không có khách đủ điều kiện hôm nay.',
       )
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không chạy được campaign')
+      toast.error(err instanceof ApiError ? err.message : 'Không chạy được campaign')
     } finally {
       setProcessing(false)
     }
@@ -517,10 +493,10 @@ export default function AdminVoucherCampaignsPage() {
     try {
       await deleteCampaign(deleteTarget)
       setDeleteTarget(null)
-      showToast('Đã xóa chiến dịch')
+      toast.success('Đã xóa chiến dịch')
       await loadData()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được chiến dịch')
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được chiến dịch')
     } finally {
       setDeleting(null)
     }
@@ -531,6 +507,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: 'Tự động cấp voucher cho khách hàng có ngày sinh trùng hôm nay. Mỗi khách chỉ nhận được một lần mỗi năm.',
     winback: 'Tự động cấp voucher để thu hút khách hàng lâu ngày không quay lại sử dụng dịch vụ.',
     vip: 'Tự động cấp voucher cho khách thuộc hạng thành viên bằng hoặc cao hơn hạng được chọn.',
+    weather: 'Danh sách voucher thời tiết do hệ thống tự động tạo khi phát hiện điều kiện thời tiết phù hợp (mưa, nắng nóng…).',
   }
 
   const activeCounts = {
@@ -538,6 +515,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Birthday).length,
     winback: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Winback).length,
     vip: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Vip).length,
+    weather: campaigns.filter((v) => v.campaignType === CAMPAIGN_TYPE.Weather).length,
   }
 
   const TAB_CAMPAIGN_TYPE_MAP = {
@@ -545,6 +523,7 @@ export default function AdminVoucherCampaignsPage() {
     birthday: CAMPAIGN_TYPE.Birthday,
     winback: CAMPAIGN_TYPE.Winback,
     vip: CAMPAIGN_TYPE.Vip,
+    weather: CAMPAIGN_TYPE.Weather,
   }
 
   // Derived state for Filtering & Pagination
@@ -553,10 +532,14 @@ export default function AdminVoucherCampaignsPage() {
     birthday: CAMPAIGN_TYPE.Birthday,
     winback: CAMPAIGN_TYPE.Winback,
     vip: CAMPAIGN_TYPE.Vip,
+    weather: CAMPAIGN_TYPE.Weather,
   }
 
   const filteredCampaigns = campaigns
     .filter(c => {
+      // Lọc theo tab đang active (mỗi tab chỉ hiển thị campaign đúng loại của nó)
+      const activeTabType = tabToCampaignType[activeTab]
+      if (activeTabType != null && Number(c.campaignType) !== Number(activeTabType)) return false
       if (filterType !== 'all' && c.campaignType !== Number(filterType)) return false;
       if (!filterDate) return true;
       if (!c.createdAt && !c.startDate) return true; // fallback
@@ -564,17 +547,80 @@ export default function AdminVoucherCampaignsPage() {
       return target === filterDate;
     })
     .sort((a, b) => b.voucherId - a.voucherId);
-  
+
   const totalPages = Math.ceil(filteredCampaigns.length / pageSize);
   const paginatedCampaigns = filteredCampaigns.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterDate, campaigns.length]);
+  }, [filterDate, activeTab, campaigns.length]);
+
+  const columns = [
+    { key: 'code', label: 'Mã voucher', render: (c) => <span className="font-mono font-medium">{c.code}</span> },
+    {
+      key: 'campaignType',
+      label: 'Loại campaign',
+      render: (c) => <StatusBadge status={CAMPAIGN_TYPE_LABEL[c.campaignType] ?? '—'} />,
+    },
+    { key: 'discount', label: 'Giảm giá', render: (c) => formatVoucherDiscount(c) },
+    {
+      key: 'validity',
+      label: 'Thời gian hiệu lực',
+      tdClassName: 'text-xs text-on-surface-variant',
+      render: (c) => formatVoucherValidityWindow(c),
+    },
+    {
+      key: 'daily',
+      label: 'Thời gian',
+      tdClassName: 'text-xs text-on-surface-variant',
+      render: (c) => formatVoucherDailyWindow(c),
+    },
+    {
+      key: 'expiryDays',
+      label: 'Hạn (ngày)',
+      tdClassName: 'text-on-surface-variant',
+      render: (c) => `${c.expiryDays ?? '—'} (từ lúc cấp)`,
+    },
+    {
+      key: 'status',
+      label: 'Trạng thái',
+      render: (c) => <StatusBadge status={describeVoucherUsability(c)} />,
+    },
+    {
+      key: 'isActive',
+      label: 'Hoạt động',
+      width: '120px',
+      render: (c) => (
+        <Toggle
+          checked={c.isActive}
+          onChange={() => handleToggle(c)}
+          disabled={toggling === c.voucherId}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      label: 'Thao tác',
+      width: '100px',
+      renderActions: (c) => (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
+          onClick={() => setDeleteTarget(c.voucherId)}
+        >
+          <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 0" }}>
+            delete
+          </span>
+          Xóa
+        </button>
+      ),
+    },
+  ]
 
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Khuyến mãi"
         title="Chiến dịch Voucher tự động"
         description="Tạo rule tự động cấp voucher cho khách hàng theo điều kiện"
       />
@@ -593,12 +639,6 @@ export default function AdminVoucherCampaignsPage() {
           Quét và cấp voucher tự động cho khách đủ điều kiện hôm nay.
         </p>
       </div>
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -643,7 +683,28 @@ export default function AdminVoucherCampaignsPage() {
         <p className="text-sm text-on-surface-variant">{tabDescriptions[activeTab]}</p>
       </div>
 
-      {/* ── Create Form ───────────────────────────────────────────────────── */}
+      {/* ── Create Form (or Weather info panel) ───────────────────────────── */}
+      {activeTab === 'weather' ? (
+        <div className="mb-10 glass-panel soft-shadow overflow-hidden rounded-xl border border-secondary/30 bg-secondary-container/10">
+          <div className="border-b border-secondary/20 bg-secondary-container/20 px-6 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold text-on-surface">
+              <span className="material-symbols-outlined text-base text-secondary">partly_cloudy_day</span>
+              Campaign Thời Tiết tự động
+            </h3>
+          </div>
+          <div className="space-y-4 p-6 text-sm text-on-surface-variant">
+            <p>
+              Voucher thời tiết được hệ thống tự động tạo khi AI phát hiện điều kiện thời tiết phù hợp
+              (mưa, nắng nóng…). Manager có thể kích hoạt nhanh tại Bảng điều khiển doanh thu hoặc
+              dùng nút <strong className="text-on-surface">"Chạy campaign hôm nay"</strong> phía trên.
+            </p>
+            <p>
+              Tab này ở chế độ <strong className="text-on-surface">chỉ đọc</strong> — không có form tạo thủ
+              công. Bạn vẫn có thể bật/tắt hoặc xóa từng campaign ở bảng bên phải.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="mb-10 glass-panel soft-shadow overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h3 className="text-sm font-semibold text-on-surface">Tạo chiến dịch mới</h3>
@@ -690,6 +751,7 @@ export default function AdminVoucherCampaignsPage() {
           </div>
         </div>
       </div>
+      )}
       </div>
 
       {/* Right Column: List & Filters */}
@@ -736,72 +798,17 @@ export default function AdminVoucherCampaignsPage() {
           </div>
         </div>
 
-        {loading ? (
-          <p className="p-6 text-sm text-on-surface-variant">Đang tải…</p>
-        ) : campaigns.length === 0 ? (
-          <EmptyState
-            icon="campaign"
-            title="Chưa có chiến dịch nào"
-            description="Tạo chiến dịch mới bằng form bên trên"
+        <div className="flex-1 flex flex-col">
+          <DataTable
+            columns={columns}
+            data={paginatedCampaigns}
+            loading={loading}
+            emptyIcon="campaign"
+            emptyTitle="Chưa có chiến dịch nào"
+            emptyMessage="Tạo chiến dịch mới bằng form bên trên"
+            minWidth="900px"
           />
-        ) : (
-          <div className="overflow-x-auto flex-1">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                  <th className="px-4 py-3">Mã voucher</th>
-                  <th className="px-4 py-3">Loại campaign</th>
-                  <th className="px-4 py-3">Giảm giá</th>
-                  <th className="px-4 py-3">Thời gian hiệu lực</th>
-                  <th className="px-4 py-3">Thời gian</th>
-                  <th className="px-4 py-3">Hạn (ngày)</th>
-                  <th className="px-4 py-3">Trạng thái</th>
-                  <th className="px-4 py-3">Hoạt động</th>
-                  <th className="px-4 py-3">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-outline-variant/60">
-                {paginatedCampaigns.map((c) => (
-                  <tr key={c.voucherId} className="hover:bg-surface-container-low/50">
-                    <td className="px-4 py-3 font-mono font-medium text-on-surface">{c.code}</td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={CAMPAIGN_TYPE_LABEL[c.campaignType] ?? '—'} />
-                    </td>
-                    <td className="px-4 py-3 text-on-surface">{formatVoucherDiscount(c)}</td>
-                    <td className="px-4 py-3 text-xs text-on-surface-variant">
-                      {formatVoucherValidityWindow(c)}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-on-surface-variant">
-                      {formatVoucherDailyWindow(c)}
-                    </td>
-                    <td className="px-4 py-3 text-on-surface-variant">
-                      {c.expiryDays ?? '—'} (từ lúc cấp)
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={describeVoucherUsability(c)} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <Toggle
-                        checked={c.isActive}
-                        onChange={() => handleToggle(c)}
-                        disabled={toggling === c.voucherId}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                        onClick={() => setDeleteTarget(c.voucherId)}
-                      >
-                        Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
         
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-outline-variant bg-surface-container-low px-6 py-3">
@@ -837,6 +844,7 @@ export default function AdminVoucherCampaignsPage() {
         message="Bạn chắc chắn muốn xóa chiến dịch này? Hành động này không thể hoàn tác."
         confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
         variant="danger"
+        loading={Boolean(deleting)}
         onConfirm={handleDelete}
         onCancel={() => !deleting && setDeleteTarget(null)}
       />

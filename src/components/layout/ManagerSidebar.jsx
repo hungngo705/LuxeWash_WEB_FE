@@ -5,12 +5,12 @@ const navItems = [
   { to: '/manager/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
   { to: '/manager/queue', label: 'Điều phối xe', icon: 'local_shipping' },
   { to: '/manager/lanes', label: 'Làn rửa', icon: 'garage' },
+  { to: '/manager/incidents', label: 'Sự cố chi nhánh', icon: 'report_problem' },
   { to: '/manager/time-slots', label: 'Khung giờ', icon: 'schedule' },
   { to: '/manager/staff', label: 'Phân công làn', icon: 'badge' },
   { to: '/manager/shifts', label: 'Ca làm', icon: 'schedule' },
   { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
   { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
-  { to: '/manager/walk-in', label: 'Khách vãng lai', icon: 'directions_car' },
   { to: '/manager/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
 ]
 

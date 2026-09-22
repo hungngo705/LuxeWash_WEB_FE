@@ -78,7 +78,11 @@ export default function HistoryTable({ records, onViewImages }) {
                   <p className="text-xs text-on-surface-variant">{row.vehicleDisplay}</p>
                 </td>
                 <td className="px-4 py-4">
-                  <p className="font-medium text-on-surface">{row.customerName}</p>
+                  <p className="font-medium text-on-surface">
+                    {row.customerName && row.customerName !== '—'
+                      ? row.customerName
+                      : 'Khách vãng lai'}
+                  </p>
                   <p className="text-xs text-on-surface-variant">{row.phoneMasked}</p>
                 </td>
                 <td className="px-4 py-4 text-sm text-on-surface">{row.serviceName}</td>

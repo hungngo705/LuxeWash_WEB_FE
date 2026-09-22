@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { ApiError, changePassword, fetchCurrentUser } from '../../api'
+import { isValidPassword, isValidPhoneNumber, isValidEmail, PASSWORD_ERROR_MESSAGE, PHONE_ERROR_MESSAGE, EMAIL_ERROR_MESSAGE } from '../../utils/validation'
 
 export default function ManagerSettingsPage() {
   const { user, logout, patchUser } = useAuth()
@@ -34,6 +35,14 @@ export default function ManagerSettingsPage() {
 
   const handleSaveProfile = async (e) => {
     e.preventDefault()
+    if (profileForm.phoneNumber.trim() && !isValidPhoneNumber(profileForm.phoneNumber)) {
+      showToast(PHONE_ERROR_MESSAGE)
+      return
+    }
+    if (profileForm.email.trim() && !isValidEmail(profileForm.email)) {
+      showToast(EMAIL_ERROR_MESSAGE)
+      return
+    }
     setSavingProfile(true)
     try {
       const normalized = {
@@ -57,8 +66,8 @@ export default function ManagerSettingsPage() {
       showToast('Mật khẩu mới không khớp.')
       return
     }
-    if (passwordForm.newPassword.length < 6) {
-      showToast('Mật khẩu mới phải có ít nhất 6 ký tự.')
+    if (!isValidPassword(passwordForm.newPassword)) {
+      showToast(PASSWORD_ERROR_MESSAGE)
       return
     }
     setSavingPassword(true)

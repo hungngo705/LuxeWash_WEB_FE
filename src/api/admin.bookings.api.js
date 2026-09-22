@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { getRoleFromToken } from './authRoles'
 
 /**
  * @typedef {{
@@ -227,6 +228,35 @@ export function normalizeAdminBooking(item) {
  */
 export function fetchBookingsByDate(targetDate, options = {}) {
   const params = new URLSearchParams({ targetDate })
+  return apiRequest(`/admin/bookings?${params}`, options)
+}
+
+/**
+ * Lấy booking theo ngày — tự route endpoint theo role của user đang đăng nhập.
+ *
+ * Lý do tồn tại: endpoint `/admin/bookings?targetDate=` được `[Authorize(Roles =
+ * "Admin,Staff")]` ở BE → Manager gọi sẽ nhận 403.
+ *
+ * - Role `Manager`  → `GET /manager/bookings/by-date?targetDate=...`
+ *                      (endpoint này BE đã thêm sau khi spec này được soạn;
+ *                      nếu BE chưa deploy sẽ trả 404 — fallback dùng
+ *                      {@link fetchManagerBookingsByDate} đã được tối ưu cho FE.)
+ * - Role khác       → `GET /admin/bookings?targetDate=...` (giữ nguyên hành vi cũ)
+ *
+ * Lỗi 403 sẽ được `ApiError.isForbidden` ở caller xử lý riêng để hiển thị
+ * thông báo rõ ràng thay vì trả về mảng rỗng.
+ *
+ * @param {string} targetDate ISO date-time (vd `2026-08-28T00:00:00Z`)
+ * @param {{ signal?: AbortSignal }} [options]
+ * @deprecated đối với role Manager — dùng {@link fetchManagerBookingsByDate}
+ *             từ `src/api/manager.api.js` (gọi endpoint `/manager/bookings` có
+ *             sẵn, filter ngày ở FE). Hàm này vẫn giữ cho Admin/Staff pages.
+ */
+export function fetchBookingsByDateForRole(targetDate, options = {}) {
+  const params = new URLSearchParams({ targetDate })
+  if (getRoleFromToken() === 'Manager') {
+    return apiRequest(`/manager/bookings/by-date?${params}`, options)
+  }
   return apiRequest(`/admin/bookings?${params}`, options)
 }
 

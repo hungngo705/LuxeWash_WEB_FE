@@ -7,9 +7,10 @@ import {
   rejectNewVehicleType,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
+import DataTable from '../../components/ui/DataTable'
+import { useToast } from '../../components/ui/Toast'
 import { formatDateTime } from '../../utils/format'
 
 export default function AdminVehicleApprovalsPage() {
@@ -20,12 +21,7 @@ export default function AdminVehicleApprovalsPage() {
   const [rejectTarget, setRejectTarget] = useState(null)
   const [rejectReason, setRejectReason] = useState('')
   const [expandedPlate, setExpandedPlate] = useState(null)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadApprovals = useCallback(async () => {
     setLoading(true)
@@ -58,10 +54,12 @@ export default function AdminVehicleApprovalsPage() {
         payload.customizedTypeName = typeName
       }
       await approveNewVehicleType(item.licensePlate, payload)
-      showToast(`Đã duyệt — loại xe "${typeName || item.vehicleTypeName}" đã được thêm vào hệ thống`)
+      toast.success(
+        `Đã duyệt — loại xe "${typeName || item.vehicleTypeName}" đã được thêm vào hệ thống`,
+      )
       await loadApprovals()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không duyệt được yêu cầu')
+      toast.error(err instanceof ApiError ? err.message : 'Không duyệt được yêu cầu')
     } finally {
       setProcessingPlate(null)
     }
@@ -74,7 +72,7 @@ export default function AdminVehicleApprovalsPage() {
     try {
       await rejectNewVehicleType(rejectTarget)
       setRejectTarget(null)
-      showToast(
+      toast.success(
         rejectReason.trim()
           ? `Đã từ chối yêu cầu. Lý do: ${rejectReason.trim()}`
           : 'Đã từ chối yêu cầu',
@@ -82,7 +80,7 @@ export default function AdminVehicleApprovalsPage() {
       setRejectReason('')
       await loadApprovals()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không từ chối được yêu cầu')
+      toast.error(err instanceof ApiError ? err.message : 'Không từ chối được yêu cầu')
     } finally {
       setProcessingPlate(null)
     }
@@ -91,15 +89,10 @@ export default function AdminVehicleApprovalsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Dịch vụ & Xe"
         title="Duyệt loại xe mới"
         description="Khách hàng đăng ký xe với loại 'Khác' sẽ xuất hiện ở đây. Duyệt để tạo loại xe mới trong hệ thống, hoặc từ chối nếu thông tin không hợp lệ."
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -117,10 +110,13 @@ export default function AdminVehicleApprovalsPage() {
       {loading ? (
         <p className="text-sm text-on-surface-variant">Đang tải yêu cầu chờ duyệt…</p>
       ) : approvals.length === 0 && !loadError ? (
-        <EmptyState
-          icon="pending_actions"
-          title="Không có yêu cầu chờ duyệt"
-          message="Khi khách đăng ký xe mới với loại 'Khác', yêu cầu sẽ xuất hiện ở đây."
+        <DataTable
+          data={[]}
+          loading={false}
+          emptyIcon="pending_actions"
+          emptyTitle="Không có yêu cầu chờ duyệt"
+          emptyMessage="Khi khách đăng ký xe mới với loại 'Khác', yêu cầu sẽ xuất hiện ở đây."
+          columns={[]}
         />
       ) : (
         <div className="space-y-4">
@@ -172,27 +168,45 @@ export default function AdminVehicleApprovalsPage() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary disabled:opacity-50 hover:bg-primary/90 transition-colors"
+                        className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary disabled:opacity-50 hover:bg-primary/90 transition-colors"
                         disabled={Boolean(processingPlate)}
                         onClick={() => handleApprove(item)}
                       >
+                        <span
+                          className="material-symbols-outlined text-[14px]"
+                          style={{ fontVariationSettings: "'FILL' 0" }}
+                        >
+                          check_circle
+                        </span>
                         {isProcessing ? 'Đang xử lý…' : 'Duyệt tạo loại xe'}
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg border border-error/30 px-4 py-2 text-xs font-semibold text-error disabled:opacity-50 hover:bg-error-container/20 transition-colors"
+                        className="inline-flex items-center gap-1 rounded-lg border border-error/30 px-4 py-2 text-xs font-semibold text-error disabled:opacity-50 hover:bg-error-container/20 transition-colors"
                         disabled={Boolean(processingPlate)}
                         onClick={() => setRejectTarget(item.licensePlate)}
                       >
+                        <span
+                          className="material-symbols-outlined text-[14px]"
+                          style={{ fontVariationSettings: "'FILL' 0" }}
+                        >
+                          close
+                        </span>
                         Từ chối
                       </button>
                     </div>
                     {item.registrationPhotoUrl && (
                       <button
                         type="button"
-                        className="text-xs text-primary hover:underline"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                         onClick={() => setExpandedPlate(isExpanded ? null : item.licensePlate)}
                       >
+                        <span
+                          className="material-symbols-outlined text-[14px]"
+                          style={{ fontVariationSettings: "'FILL' 0" }}
+                        >
+                          {isExpanded ? 'visibility_off' : 'visibility'}
+                        </span>
                         {isExpanded ? 'Ẩn ảnh đăng ký' : 'Xem ảnh đăng ký'}
                       </button>
                     )}
@@ -222,6 +236,7 @@ export default function AdminVehicleApprovalsPage() {
 
       <ConfirmDialog
         open={Boolean(rejectTarget)}
+        loading={Boolean(processingPlate)}
         title="Từ chối yêu cầu"
         message={
           <div className="mt-2 space-y-2">

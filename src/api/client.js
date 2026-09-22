@@ -50,9 +50,11 @@ function getErrorMessage(body) {
   return ''
 }
 
+const NON_LOGOUT_ERROR_CODES = ['BRANCH_REQUIRED']
+
 function shouldLogoutOnUnauthorized(body) {
-  const message = getErrorMessage(body).toLowerCase()
-  if (message.includes('branchid') || message.includes('chi nhánh')) {
+  const errorCode = body && typeof body === 'object' && 'errorCode' in body ? body.errorCode : null
+  if (errorCode && NON_LOGOUT_ERROR_CODES.includes(errorCode)) {
     return false
   }
   return true

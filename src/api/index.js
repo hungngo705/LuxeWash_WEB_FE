@@ -31,6 +31,10 @@ export {
   normalizeLaneDisplayState,
 } from './laneDisplay.api'
 
+export { getBranchId, getBranchIdFromToken } from './branchContext'
+
+export { getRoleFromToken } from './authRoles'
+
 export { loginWithCredentials, refreshAccessToken, fetchCurrentUser, updateCurrentUserProfile, changePassword } from './auth.api'
 
 export {
@@ -130,6 +134,8 @@ export {
   fetchUsers,
   fetchUserById,
   fetchUserPointsHistory,
+  fetchUserServiceHistory,
+  fetchUserRoleStats,
   updateUserStatus,
   syncUserPoints,
   normalizeListUser,
@@ -144,6 +150,7 @@ export {
 
 export {
   fetchBookingsByDate,
+  fetchBookingsByDateForRole,
   fetchBookingsByLicensePlate,
   searchBookingsByLicensePlate,
   smartLookupLicensePlate,
@@ -190,6 +197,7 @@ export {
 
 export {
   fetchManagerBookings,
+  fetchManagerBookingsByDate,
   fetchManagerStaffs,
   checkinAssignBooking,
   markManagerBookingNoShow,
@@ -203,6 +211,16 @@ export {
 } from './manager.lanes.api'
 
 export {
+  previewIncident,
+  createIncident,
+  listIncidents,
+  getIncident,
+  getIncidentImpact,
+  extendIncident,
+  resolveIncident,
+} from './manager.incidents.api'
+
+export {
   fetchManagerTimeSlots,
   createManagerTimeSlot,
   updateManagerTimeSlot,
@@ -213,6 +231,7 @@ export {
   createManagerStaff,
   normalizeManagerStaff,
   fetchBranchEmployeesSummary,
+  fetchAllBranchesEmployeesSummary,
 } from './manager.employees.api'
 
 export {
@@ -280,6 +299,7 @@ export {
   fetchAdminInventoryStocks,
   fetchAdminMaterialUnits,
   fetchAdminMaterials,
+  fetchAllServiceMaterials,
   fetchBranchInventorySetting,
   fetchConditionMultipliers,
   fetchMaterialUnits,

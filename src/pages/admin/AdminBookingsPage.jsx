@@ -19,11 +19,13 @@ import {
   updateBookingCondition,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import WashTelemetry, { WashDurationBadge } from '../../components/shared/WashTelemetry'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 import { formatVnd } from '../../utils/format'
 
 const STATUS_OPTIONS = ['All', 'Pending', 'Checked-in', 'Processing', 'Completed', 'Cancelled', 'No-show']
@@ -93,17 +95,12 @@ export default function AdminBookingsPage() {
     condition: 2,
   })
   const [conditionLoading, setConditionLoading] = useState(false)
-  const [toast, setToast] = useState('')
   const [plateQuery, setPlateQuery] = useState('')
   const [plateResults, setPlateResults] = useState([])
   const [plateLoading, setPlateLoading] = useState(false)
   const [plateStatus, setPlateStatus] = useState('Checked-in')
   const [plateActionLoading, setPlateActionLoading] = useState(false)
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const branchIdNum = Number(selectedBranchId)
   const selectedBranchName =
@@ -158,11 +155,11 @@ export default function AdminBookingsPage() {
     setActionLoading(true)
     try {
       await fn()
-      showToast(successMessage)
+      toast.success(successMessage)
       setDetailBooking(null)
       await loadBookings()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không thực hiện được thao tác')
+      toast.error(err instanceof ApiError ? err.message : 'Không thực hiện được thao tác')
     } finally {
       setActionLoading(false)
     }
@@ -175,7 +172,7 @@ export default function AdminBookingsPage() {
     try {
       await updateBookingStatus(cancelTarget, 'Cancelled')
       setCancelTarget(null)
-      showToast(
+      toast.success(
         cancelReason.trim()
           ? `Đã hủy booking #${cancelTarget}. Lý do: ${cancelReason.trim()}`
           : `Đã hủy booking #${cancelTarget}`,
@@ -184,7 +181,7 @@ export default function AdminBookingsPage() {
       setDetailBooking(null)
       await loadBookings()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không hủy được booking')
+      toast.error(err instanceof ApiError ? err.message : 'Không hủy được booking')
     } finally {
       setCancelling(false)
     }
@@ -194,13 +191,13 @@ export default function AdminBookingsPage() {
     if (!forceCancelForm.reason.trim() || forceCancelling) return
 
     if (!branchIdNum) {
-      showToast('Chọn chi nhánh trước khi hủy hàng loạt')
+      toast.warning('Chọn chi nhánh trước khi hủy hàng loạt')
       return
     }
 
     const timeSlotId = Number(forceCancelForm.timeSlotId)
     if (!timeSlotId) {
-      showToast('Chọn khung giờ cần hủy hàng loạt')
+      toast.warning('Chọn khung giờ cần hủy hàng loạt')
       return
     }
 
@@ -214,10 +211,10 @@ export default function AdminBookingsPage() {
       })
       setForceCancelOpen(false)
       setForceCancelForm({ timeSlotId: '', reason: '' })
-      showToast('Đã hủy hàng loạt booking trong khung giờ')
+      toast.success('Đã hủy hàng loạt booking trong khung giờ')
       await loadBookings()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không force-cancel được')
+      toast.error(err instanceof ApiError ? err.message : 'Không force-cancel được')
     } finally {
       setForceCancelling(false)
     }
@@ -244,11 +241,11 @@ export default function AdminBookingsPage() {
     setConditionLoading(true)
     try {
       await updateBookingCondition(conditionForm.bookingId, Number(conditionForm.condition))
-      showToast(`Đã cập nhật tình trạng xe: ${CONDITION_LABELS[conditionForm.condition]}`)
+      toast.success(`Đã cập nhật tình trạng xe: ${CONDITION_LABELS[conditionForm.condition]}`)
       setConditionForm({ bookingId: null, condition: 2 })
       setDetailBooking(null)
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Lỗi khi cập nhật tình trạng xe.')
+      toast.error(err instanceof ApiError ? err.message : 'Lỗi khi cập nhật tình trạng xe.')
     } finally {
       setConditionLoading(false)
     }
@@ -291,14 +288,14 @@ export default function AdminBookingsPage() {
       setPlateResults(items)
 
       if (!items.length) {
-        showToast('Không tìm thấy booking cho biển số này')
+        toast.warning('Không tìm thấy booking cho biển số này')
       } else if (!onSelectedDate.length && otherDates.length) {
-        showToast(
+        toast.info(
           `Tìm thấy ${items.length} booking — không có lịch trong ngày ${dateFilter}`,
         )
       }
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không tra cứu được theo biển số')
+      toast.error(err instanceof ApiError ? err.message : 'Không tra cứu được theo biển số')
     } finally {
       setPlateLoading(false)
     }
@@ -312,11 +309,11 @@ export default function AdminBookingsPage() {
     try {
       const apiPlate = normalizePlateQuery(plate)
       await updateBookingStatusByLicensePlate(apiPlate, plateStatus)
-      showToast('Đã cập nhật trạng thái theo biển số')
+      toast.success('Đã cập nhật trạng thái theo biển số')
       await searchByPlate()
       if (branchIdNum) await loadBookings()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không đổi trạng thái được')
+      toast.error(err instanceof ApiError ? err.message : 'Không đổi trạng thái được')
     } finally {
       setPlateActionLoading(false)
     }
@@ -325,79 +322,87 @@ export default function AdminBookingsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Vận hành"
         title="Lịch đặt"
         description="Chọn chi nhánh để xem và thao tác lịch đặt theo ngày"
         actionLabel="Hủy hàng loạt (slot)"
+        actionIcon="event_busy"
         onAction={() => {
           if (!branchIdNum) {
-            showToast('Chọn chi nhánh trước')
+            toast.warning('Chọn chi nhánh trước')
             return
           }
           setForceCancelOpen(true)
         }}
       />
 
-      <div className="glass-panel soft-shadow mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-        <label className="block max-w-md space-y-1 text-sm">
-          <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-            Chi nhánh thao tác
-          </span>
-          <select
-            className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={selectedBranchId}
-            onChange={(e) => setSelectedBranchId(e.target.value)}
-          >
-            <option value="">— Chọn chi nhánh —</option>
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-                {b.isActive === false ? ' (Inactive)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+      <div className="lw-card mb-6 rounded-xl p-5">
+        <Input
+          label="Chi nhánh thao tác"
+          value={selectedBranchId}
+          onChange={(e) => setSelectedBranchId(e.target.value)}
+          iconLeft="store"
+          className="max-w-md"
+          // Render select through Input children — but Input renders <input>. So use raw select below.
+        >
+        </Input>
+        <select
+          className="mt-2 w-full max-w-md rounded-lg border border-outline-variant bg-white px-3.5 py-2 text-sm text-on-surface focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
+          value={selectedBranchId}
+          onChange={(e) => setSelectedBranchId(e.target.value)}
+        >
+          <option value="">— Chọn chi nhánh —</option>
+          {branches.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+              {b.isActive === false ? ' (Inactive)' : ''}
+            </option>
+          ))}
+        </select>
         {selectedBranchId ? (
-          <p className="mt-2 text-sm text-on-surface-variant">
+          <p className="mt-3 text-sm text-on-surface-variant">
             Đang thao tác tại: <strong className="text-on-surface">{selectedBranchName}</strong>
           </p>
         ) : (
-          <p className="mt-2 text-sm text-on-surface-variant">
+          <p className="mt-3 text-sm text-on-surface-variant">
             Chọn chi nhánh để xem danh sách theo ngày hoặc hủy hàng loạt. Tra cứu biển số
             hoạt động không cần chọn chi nhánh.
           </p>
         )}
       </div>
 
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
-
-      <div className="glass-panel soft-shadow mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+      <div className="lw-card mb-6 rounded-xl p-5">
         <h2 className="mb-3 text-sm font-semibold text-on-surface">Tra cứu theo biển số</h2>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-sm">
-            <span className="text-on-surface-variant">Biển số</span>
-            <input
-              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 uppercase"
-              value={plateQuery}
-              onChange={(e) => setPlateQuery(e.target.value)}
-              placeholder="51F-123.45"
-            />
-          </label>
+          <Input
+            label="Biển số"
+            value={plateQuery}
+            onChange={(e) => setPlateQuery(e.target.value)}
+            placeholder="51F-123.45"
+            className="min-w-[200px] flex-1"
+          />
           <button
             type="button"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 self-end rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-on-primary transition-all hover:bg-primary/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={plateLoading || !plateQuery.trim()}
             onClick={searchByPlate}
           >
+            {plateLoading && (
+              <span
+                className="material-symbols-outlined lw-spin text-[16px]"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                progress_activity
+              </span>
+            )}
             {plateLoading ? 'Đang tìm…' : 'Tra cứu'}
           </button>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-on-surface-variant">Đổi trạng thái (booking gần nhất hôm nay)</span>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-[11px] font-semibold tracking-wider text-on-surface-variant uppercase">
+              Đổi trạng thái
+            </span>
             <select
-              className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              className="rounded-lg border border-outline-variant bg-white px-3.5 py-2 text-sm text-on-surface focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
               value={plateStatus}
               disabled={plateActionLoading}
               onChange={(e) => setPlateStatus(e.target.value)}
@@ -411,10 +416,18 @@ export default function AdminBookingsPage() {
           </label>
           <button
             type="button"
-            className="rounded-lg border border-primary px-4 py-2 text-sm font-medium text-primary disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 self-end rounded-lg border border-primary px-4 py-2.5 text-sm font-semibold text-primary transition-all hover:bg-primary-container/30 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={plateActionLoading || !plateQuery.trim()}
             onClick={applyPlateStatus}
           >
+            {plateActionLoading && (
+              <span
+                className="material-symbols-outlined lw-spin text-[16px]"
+                style={{ fontVariationSettings: "'FILL' 1" }}
+              >
+                progress_activity
+              </span>
+            )}
             {plateActionLoading ? 'Đang xử lý…' : 'Áp dụng'}
           </button>
         </div>
@@ -424,7 +437,7 @@ export default function AdminBookingsPage() {
               <li key={b.bookingId}>
                 <button
                   type="button"
-                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-outline-variant/60 px-3 py-2 text-left transition-colors hover:bg-surface-container-low"
+                  className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-outline-variant/60 bg-white px-3 py-2 text-left transition-all hover:border-primary/30 hover:bg-primary/5"
                   onClick={() => setDetailBooking(b)}
                 >
                   <span className="font-medium text-on-surface">#{b.bookingId}</span>
@@ -438,7 +451,7 @@ export default function AdminBookingsPage() {
                   </span>
                   <span className="text-on-surface-variant">{formatVnd(b.finalAmount)}</span>
                   {b.scheduledDate !== dateFilter && (
-                    <span className="text-xs text-tertiary-container">Khác ngày đang chọn</span>
+                    <span className="text-xs text-tertiary">Khác ngày đang chọn</span>
                   )}
                 </button>
               </li>
@@ -452,7 +465,7 @@ export default function AdminBookingsPage() {
           <span className="text-on-surface-variant">Ngày:</span>
           <input
             type="date"
-            className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+            className="rounded-lg border border-outline-variant bg-white px-3 py-2 text-on-surface focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
           />
@@ -462,10 +475,10 @@ export default function AdminBookingsPage() {
             <button
               key={status}
               type="button"
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-all active:scale-95 ${
                 statusFilter === status
-                  ? 'bg-primary text-on-primary'
-                  : 'border border-outline-variant text-on-surface-variant hover:bg-surface-variant'
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'border border-outline-variant bg-white text-on-surface-variant hover:bg-surface-variant'
               }`}
               onClick={() => setStatusFilter(status)}
             >
@@ -476,11 +489,11 @@ export default function AdminBookingsPage() {
       </div>
 
       {loadError && (
-        <div className="mb-4 flex flex-col gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
           <button
             type="button"
-            className="rounded-lg border border-error/30 px-3 py-1.5 text-sm font-medium text-error hover:bg-error-container/20"
+            className="rounded-lg border border-error/40 px-3 py-1.5 text-sm font-medium text-error transition-colors hover:bg-error-container/40"
             onClick={loadBookings}
           >
             Thử lại
@@ -489,79 +502,112 @@ export default function AdminBookingsPage() {
       )}
 
       {!selectedBranchId ? (
-        <EmptyState
-          icon="store"
-          title="Chọn chi nhánh"
-          message="Chọn chi nhánh ở trên để tải và thao tác lịch đặt theo ngày."
+        <DataTable
+          data={[]}
+          loading={false}
+          emptyIcon="store"
+          emptyTitle="Chọn chi nhánh"
+          emptyMessage="Chọn chi nhánh ở trên để tải và thao tác lịch đặt theo ngày."
+          columns={[]}
         />
-      ) : loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải booking…</p>
-      ) : filtered.length === 0 && !loadError ? (
-        <EmptyState icon="calendar_month" title="Không có booking" />
       ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">Booking ID</th>
-                <th className="px-4 py-3">Biển số</th>
-                <th className="px-4 py-3">Khách</th>
-                <th className="px-4 py-3">Dịch vụ</th>
-                <th className="px-4 py-3">Slot/Giờ</th>
-                <th className="px-4 py-3">Tier</th>
-                <th className="px-4 py-3">Trạng thái</th>
-                <th className="px-4 py-3">Thanh toán</th>
-                <th className="px-4 py-3">Số tiền</th>
-                <th className="px-4 py-3">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {filtered.map((booking) => (
-                <tr key={booking.bookingId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 font-medium text-on-surface">#{booking.bookingId}</td>
-                  <td className="px-4 py-3 text-on-surface">{booking.licensePlate}</td>
-                  <td className="px-4 py-3 text-on-surface">{booking.customerName}</td>
-                  <td className="px-4 py-3 text-on-surface-variant">{booking.serviceName}</td>
-                  <td className="px-4 py-3">
-                    <p className="text-on-surface">{booking.slotLabel}</p>
-                    <p className="text-xs text-on-surface-variant">{booking.scheduledDate}</p>
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">{booking.rankName}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={booking.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={booking.paymentStatus ?? 'Unpaid'} />
-                  </td>
-                  <td className="px-4 py-3 text-on-surface">
-                    <div>{formatVnd(booking.finalAmount)}</div>
-                    <WashDurationBadge booking={booking} className="mt-2" />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
-                        onClick={() => setDetailBooking(booking)}
-                      >
-                        Chi tiết
-                      </button>
-                      {canChangeStatus(booking.status) && (
-                        <button
-                          type="button"
-                          className="rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
-                          onClick={() => setCancelTarget(booking.bookingId)}
-                        >
-                          Hủy
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={filtered}
+          loading={loading}
+          minWidth="1080px"
+          emptyIcon="calendar_month"
+          emptyTitle="Không có booking"
+          columns={[
+            {
+              key: 'bookingId',
+              label: 'Booking ID',
+              width: '110px',
+              render: (row) => <span className="font-medium">#{row.bookingId}</span>,
+            },
+            {
+              key: 'licensePlate',
+              label: 'Biển số',
+              render: (row) => (
+                <span className="font-semibold tracking-wide text-primary">{row.licensePlate}</span>
+              ),
+            },
+            {
+              key: 'customerName',
+              label: 'Khách',
+              render: (row) => row.customerName,
+            },
+            {
+              key: 'serviceName',
+              label: 'Dịch vụ',
+              render: (row) => row.serviceName,
+              tdClassName: 'text-on-surface-variant',
+            },
+            {
+              key: 'slot',
+              label: 'Slot/Giờ',
+              render: (row) => (
+                <div>
+                  <p className="text-on-surface">{row.slotLabel}</p>
+                  <p className="text-xs text-on-surface-variant">{row.scheduledDate}</p>
+                </div>
+              ),
+            },
+            {
+              key: 'rankName',
+              label: 'Tier',
+              render: (row) => row.rankName,
+            },
+            {
+              key: 'status',
+              label: 'Trạng thái',
+              width: '140px',
+              render: (row) => <StatusBadge status={row.status} />,
+            },
+            {
+              key: 'paymentStatus',
+              label: 'Thanh toán',
+              width: '140px',
+              render: (row) => <StatusBadge status={row.paymentStatus ?? 'Unpaid'} />,
+            },
+            {
+              key: 'finalAmount',
+              label: 'Số tiền',
+              width: '160px',
+              render: (row) => (
+                <div>
+                  <div>{formatVnd(row.finalAmount)}</div>
+                  <WashDurationBadge booking={row} className="mt-2" />
+                </div>
+              ),
+            },
+            {
+              key: 'actions',
+              label: 'Thao tác',
+              width: '140px',
+              align: 'right',
+              renderActions: (row) => (
+                <div className="flex justify-end gap-1">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary-container/30"
+                    onClick={() => setDetailBooking(row)}
+                  >
+                    Chi tiết
+                  </button>
+                  {canChangeStatus(row.status) && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-error transition-colors hover:bg-error-container/30"
+                      onClick={() => setCancelTarget(row.bookingId)}
+                    >
+                      Hủy
+                    </button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
       )}
 
       <FormModal
@@ -902,3 +948,4 @@ export default function AdminBookingsPage() {
     </div>
   )
 }
+

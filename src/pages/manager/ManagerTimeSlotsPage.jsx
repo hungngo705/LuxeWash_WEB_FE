@@ -8,9 +8,11 @@ import {
   updateManagerTimeSlot,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
+import DataTable from '../../components/ui/DataTable'
+import Input from '../../components/ui/Input'
+import { useToast } from '../../components/ui/Toast'
 
 const emptyForm = {
   startTime: '07:00',
@@ -35,12 +37,7 @@ export default function ManagerTimeSlotsPage() {
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
-  const [toast, setToast] = useState('')
-
-  const showToast = (msg) => {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2500)
-  }
+  const toast = useToast()
 
   const loadSlots = useCallback(async () => {
     setLoading(true)
@@ -80,7 +77,7 @@ export default function ManagerTimeSlotsPage() {
 
     const validationError = validateForm(form)
     if (validationError) {
-      showToast(validationError)
+      toast.warning(validationError)
       return
     }
 
@@ -94,15 +91,15 @@ export default function ManagerTimeSlotsPage() {
     try {
       if (editingId) {
         await updateManagerTimeSlot(editingId, payload)
-        showToast('Đã cập nhật khung giờ')
+        toast.success('Đã cập nhật khung giờ')
       } else {
         await createManagerTimeSlot(payload)
-        showToast('Đã thêm khung giờ mới')
+        toast.success('Đã thêm khung giờ mới')
       }
       setModalOpen(false)
       await loadSlots()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không lưu được khung giờ')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được khung giờ')
     } finally {
       setSaving(false)
     }
@@ -115,10 +112,10 @@ export default function ManagerTimeSlotsPage() {
     try {
       await deleteManagerTimeSlot(deleteTarget.slotId)
       setDeleteTarget(null)
-      showToast('Đã xóa khung giờ')
+      toast.success('Đã xóa khung giờ')
       await loadSlots()
     } catch (err) {
-      showToast(err instanceof ApiError ? err.message : 'Không xóa được khung giờ')
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được khung giờ')
     } finally {
       setDeleting(false)
     }
@@ -127,18 +124,13 @@ export default function ManagerTimeSlotsPage() {
   return (
     <div className="w-full">
       <PageHeader
+        eyebrow="Cấu hình chi nhánh"
         title="Khung giờ đặt lịch"
         description="Cấu hình khung giờ phục vụ tại chi nhánh của bạn"
         actionLabel="Thêm khung giờ"
         actionIcon="schedule"
         onAction={openCreate}
       />
-
-      {toast && (
-        <p className="mb-4 rounded-lg border border-primary/30 bg-primary-container/20 px-4 py-2 text-sm text-primary">
-          {toast}
-        </p>
-      )}
 
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
@@ -149,57 +141,79 @@ export default function ManagerTimeSlotsPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-sm text-on-surface-variant">Đang tải...</p>
-      ) : slots.length === 0 && !loadError ? (
-        <EmptyState
-          icon="schedule"
-          title="Chưa có khung giờ"
-          description="Thêm khung giờ để khách hàng có thể đặt lịch."
-        />
-      ) : (
-        <div className="glass-panel soft-shadow overflow-x-auto rounded-xl border border-outline-variant bg-surface-container-lowest">
-          <table className="w-full min-w-[600px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Thời gian bắt đầu</th>
-                <th className="px-4 py-3">Thời gian kết thúc</th>
-                <th className="px-4 py-3">Sức chứa</th>
-                <th className="px-4 py-3 text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-outline-variant/60">
-              {slots.map((slot) => (
-                <tr key={slot.slotId} className="hover:bg-surface-container-low/50">
-                  <td className="px-4 py-3 text-on-surface-variant">#{slot.slotId}</td>
-                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.startTime)}</td>
-                  <td className="px-4 py-3 text-on-surface">{toTimeInputValue(slot.endTime)}</td>
-                  <td className="px-4 py-3 text-on-surface">{slot.maxCapacity}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 font-medium text-primary hover:bg-primary-container/20"
-                        onClick={() => openEdit(slot)}
-                      >
-                        Sửa
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 font-medium text-error hover:bg-error-container/20"
-                        onClick={() => setDeleteTarget(slot)}
-                      >
-                        Xóa
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        data={slots}
+        loading={loading}
+        minWidth="640px"
+        emptyIcon="schedule"
+        emptyTitle="Chưa có khung giờ"
+        emptyMessage="Thêm khung giờ để khách hàng có thể đặt lịch."
+        columns={[
+          {
+            key: 'id',
+            label: 'ID',
+            width: '80px',
+            render: (row) => (
+              <span className="font-mono text-on-surface-variant">#{row.slotId}</span>
+            ),
+          },
+          {
+            key: 'startTime',
+            label: 'Thời gian bắt đầu',
+            render: (row) => (
+              <span className="text-on-surface">{toTimeInputValue(row.startTime)}</span>
+            ),
+          },
+          {
+            key: 'endTime',
+            label: 'Thời gian kết thúc',
+            render: (row) => (
+              <span className="text-on-surface">{toTimeInputValue(row.endTime)}</span>
+            ),
+          },
+          {
+            key: 'maxCapacity',
+            label: 'Sức chứa',
+            render: (row) => <span className="text-on-surface">{row.maxCapacity}</span>,
+          },
+          {
+            key: 'actions',
+            label: 'Thao tác',
+            width: '160px',
+            align: 'right',
+            renderActions: (row) => (
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-primary transition-colors hover:bg-primary-container/20"
+                  onClick={() => openEdit(row)}
+                >
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    style={{ fontVariationSettings: "'FILL' 0" }}
+                  >
+                    edit
+                  </span>
+                  Sửa
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-error transition-colors hover:bg-error-container/20"
+                  onClick={() => setDeleteTarget(row)}
+                >
+                  <span
+                    className="material-symbols-outlined text-[14px]"
+                    style={{ fontVariationSettings: "'FILL' 0" }}
+                  >
+                    delete
+                  </span>
+                  Xóa
+                </button>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <FormModal
         open={modalOpen}
@@ -215,38 +229,32 @@ export default function ManagerTimeSlotsPage() {
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Thời gian bắt đầu</span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.startTime}
-                disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs font-semibold uppercase text-on-surface-variant">Thời gian kết thúc</span>
-              <input
-                type="time"
-                className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-                value={form.endTime}
-                disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
-              />
-            </label>
-          </div>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Sức chứa (xe)</span>
-            <input
-              type="number"
-              min="1"
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-              value={form.maxCapacity}
+            <Input
+              label="Thời gian bắt đầu"
+              type="time"
+              value={form.startTime}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
+              onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))}
+              iconLeft="schedule"
             />
-          </label>
+            <Input
+              label="Thời gian kết thúc"
+              type="time"
+              value={form.endTime}
+              disabled={saving}
+              onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))}
+              iconLeft="schedule"
+            />
+          </div>
+          <Input
+            label="Sức chứa (xe)"
+            type="number"
+            min="1"
+            value={form.maxCapacity}
+            disabled={saving}
+            onChange={(e) => setForm((f) => ({ ...f, maxCapacity: Number(e.target.value) }))}
+            iconLeft="group"
+          />
         </div>
       </FormModal>
 
@@ -261,6 +269,7 @@ export default function ManagerTimeSlotsPage() {
         confirmLabel={deleting ? 'Đang xóa...' : 'Xóa'}
         variant="danger"
         onConfirm={handleDelete}
+        loading={deleting}
         onCancel={() => !deleting && setDeleteTarget(null)}
       />
     </div>
