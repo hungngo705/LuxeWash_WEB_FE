@@ -4,6 +4,7 @@ import {
   CAMPAIGN_TYPE,
   CAMPAIGN_TYPE_LABEL,
   createBirthdayCampaign,
+  createWelcomeCampaign,
   createVipCampaign,
   createWinbackCampaign,
   deleteCampaign,
@@ -53,7 +54,7 @@ const emptyBase = {
 }
 
 const emptyBirthdayForm = { ...emptyBase }
-const emptyWinbackForm = { ...emptyBase, inactiveDays: '', resendAfterDays: '' }
+const emptyWinbackForm = { ...emptyBase, inactiveDays: '30', resendAfterDays: '30' }
 const emptyVipForm = { ...emptyBase, requiredTierId: '' }
 const emptyWelcomeForm = { ...emptyBase }
 
@@ -115,9 +116,12 @@ function validateTab(tab, form) {
   if (base) return base
 
   if (tab === 'winback') {
-    if (!form.inactiveDays || Number(form.inactiveDays) < 1) return 'Số ngày không hoạt động phải lớn hơn 0'
-    if (!form.resendAfterDays || Number(form.resendAfterDays) < 1) return 'Số ngày gửi lại phải lớn hơn 0'
-    if (Number(form.resendAfterDays) > Number(form.inactiveDays)) return 'Số ngày gửi lại không nên lớn hơn số ngày không hoạt động'
+    if (!form.inactiveDays || Number(form.inactiveDays) < 1 || Number(form.inactiveDays) > 3650) {
+      return 'Số ngày không hoạt động phải từ 1 đến 3650'
+    }
+    if (!form.resendAfterDays || Number(form.resendAfterDays) < 1 || Number(form.resendAfterDays) > 3650) {
+      return 'Khoảng cách gửi lại phải từ 1 đến 3650 ngày'
+    }
   }
   if (tab === 'vip') {
     if (!form.requiredTierId) return 'Vui lòng chọn hạng thành viên tối thiểu'
@@ -263,9 +267,33 @@ function BaseFields({ form, setForm, saving, tiers }) {
 function TabSpecificFields({ tab, form, setForm, saving, tiers }) {
   if (tab === 'winback') {
     return (
-      <div className="grid grid-cols-1 gap-4">
-        <p className="text-sm text-on-surface-variant italic">
-          Ghi chú: Thuật toán AI sẽ tự động tính toán nguy cơ rời bỏ (Churn Rate) của từng khách hàng và phát voucher này để kéo họ quay lại gara. Bạn chỉ cần thiết lập giá trị giảm giá và thời hạn ở bên trên.
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input
+            type="number"
+            min={1}
+            max={3650}
+            label="Không hoạt động trong (ngày)"
+            required
+            value={form.inactiveDays}
+            disabled={saving}
+            onChange={(e) => num(setForm, 'inactiveDays', e.target.value)}
+            helper="Cấp voucher khi lần sử dụng dịch vụ gần nhất đã quá số ngày này."
+          />
+          <Input
+            type="number"
+            min={1}
+            max={3650}
+            label="Khoảng cách gửi lại (ngày)"
+            required
+            value={form.resendAfterDays}
+            disabled={saving}
+            onChange={(e) => num(setForm, 'resendAfterDays', e.target.value)}
+            helper="Nếu khách vẫn chưa quay lại, chỉ cấp lại sau khoảng thời gian này."
+          />
+        </div>
+        <p className="text-sm text-on-surface-variant">
+          Hệ thống quét khách đang hoạt động theo lần sử dụng dịch vụ gần nhất và tự động cấp voucher khi đủ điều kiện.
         </p>
       </div>
     )
@@ -424,6 +452,7 @@ export default function AdminVoucherCampaignsPage() {
       toast.success('Tạo chiến dịch thành công!')
       formRefs.current[tab] = (() => {
         switch (tab) {
+          case 'welcome': return { ...emptyWelcomeForm }
           case 'birthday': return { ...emptyBirthdayForm }
           case 'winback': return { ...emptyWinbackForm }
           case 'vip': return { ...emptyVipForm }
