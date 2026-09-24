@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ApiError,
   fetchUserById,
@@ -88,6 +88,21 @@ export default function AdminUsersPage() {
     setToast(msg)
     setTimeout(() => setToast(''), 2500)
   }
+
+  // BE soft-delete xe (IsDeleted=true) → ẩn hoàn toàn khỏi UI Admin.
+  // Bám theo plan: không cho toggle hiện lại, không cho restore.
+  const activeVehicles = useMemo(
+    () => (selectedUser?.vehicles ?? []).filter((v) => !v.isDeleted),
+    [selectedUser?.vehicles],
+  )
+
+  // Lịch sử các xe đã bị soft-delete (IsDeleted=true). Hiển thị trong tab riêng;
+  // tab "Thông tin" chỉ liệt kê activeVehicles nên tab này là nguồn duy nhất để
+  // admin truy vết những biển số từng thuộc tài khoản này.
+  const deletedVehicles = useMemo(
+    () => (selectedUser?.vehicles ?? []).filter((v) => v.isDeleted),
+    [selectedUser?.vehicles],
+  )
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350)
@@ -411,6 +426,7 @@ export default function AdminUsersPage() {
                   { key: 'info', label: 'Thông tin' },
                   { key: 'points', label: 'Lịch sử điểm' },
                   { key: 'services', label: 'Lịch sử dịch vụ' },
+                  { key: 'deleted-vehicles', label: 'Lịch sử xe đã xóa' },
                 ].map((tab) => (
                   <button
                     key={tab.key}
@@ -460,21 +476,14 @@ export default function AdminUsersPage() {
                       {selectedUser.promotionPoint != null && (
                         <div>
                           <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                            Điểm khuyến mãi
+                            Số dư ví
                           </dt>
                           <dd className="text-on-surface">
                             {selectedUser.promotionPoint.toLocaleString('vi-VN')}
                           </dd>
                         </div>
                       )}
-                      {selectedUser.churnScore != null && (
-                        <div>
-                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                            Churn score
-                          </dt>
-                          <dd className="text-on-surface">{selectedUser.churnScore}</dd>
-                        </div>
-                      )}
+                      
                       {selectedUser.lastVisitDate && (
                         <div>
                           <dt className="text-xs font-semibold text-on-surface-variant uppercase">
@@ -483,13 +492,13 @@ export default function AdminUsersPage() {
                           <dd className="text-on-surface">{selectedUser.lastVisitDate}</dd>
                         </div>
                       )}
-                      {selectedUser.vehicles?.length > 0 && (
+                      {activeVehicles.length > 0 && (
                         <div>
                           <dt className="mb-2 text-xs font-semibold text-on-surface-variant uppercase">
-                            Xe ({selectedUser.vehicles.length})
+                            Xe ({activeVehicles.length})
                           </dt>
                           <dd className="space-y-1">
-                            {selectedUser.vehicles.map((v) => (
+                            {activeVehicles.map((v) => (
                               <div
                                 key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
                                 className="rounded-lg bg-surface-container-low px-3 py-2"
@@ -632,6 +641,45 @@ export default function AdminUsersPage() {
                             </div>
                           )
                         })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {detailTab === 'deleted-vehicles' && (
+                  <div className="space-y-2">
+                    <h4 className="font-sora text-base font-semibold text-on-surface">
+                      Lịch sử xe đã xóa ({deletedVehicles.length})
+                    </h4>
+                    {detailLoading ? (
+                      <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
+                        Đang tải…
+                      </div>
+                    ) : deletedVehicles.length === 0 ? (
+                      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant py-8 text-center text-on-surface-variant">
+                        <span className="material-symbols-outlined text-3xl opacity-50">history</span>
+                        <p className="text-sm">Khách hàng chưa từng xóa xe nào.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {deletedVehicles.map((v) => (
+                          <div
+                            key={v.licensePlate || `${v.vehicleType}-${v.displayName}`}
+                            className="rounded-xl border border-outline-variant bg-surface-container-lowest p-3"
+                          >
+                            <p className="font-medium text-on-surface">
+                              {v.licensePlate || '—'}
+                              <span className="ml-2 text-xs font-normal text-on-surface-variant">
+                                (đã xóa)
+                              </span>
+                            </p>
+                            {(v.vehicleType || v.vehicleTypeName) && (
+                              <p className="text-sm text-on-surface-variant">
+                                {v.vehicleType || v.vehicleTypeName}
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

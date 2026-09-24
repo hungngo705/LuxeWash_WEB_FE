@@ -86,6 +86,9 @@ export function normalizeUserVehicle(vehicle) {
     vehicleType: typeLabel ? String(typeLabel) : '',
     vehicleTypeName: typeLabel ? String(typeLabel) : '',
     displayName: String(vehicle.displayName ?? vehicle.vehicleDisplayName ?? '').trim(),
+    // BE mới trả về `IsDeleted` cho soft-delete; fallback cả camelCase.
+    // Mặc định false nên nếu BE chưa trả field thì vẫn hiển thị như cũ.
+    isDeleted: vehicle.isDeleted === true || vehicle.IsDeleted === true,
   }
 }
 
