@@ -1,8 +1,10 @@
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
 export default function ManagerTopBar({ title = 'Manager Console' }) {
   const { user } = useAuth()
   const manager = user
+  const navigate = useNavigate()
 
   return (
     <header className="fixed top-0 right-0 left-64 z-40 h-16 border-b border-outline-variant bg-surface-container-lowest">
@@ -13,7 +15,12 @@ export default function ManagerTopBar({ title = 'Manager Console' }) {
             Manager
           </span>
           <div className="mx-1 h-6 w-px bg-outline-variant" />
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/manager/settings')}
+            className="flex items-center gap-3 rounded-full pr-2 cursor-pointer transition-opacity hover:opacity-80"
+            aria-label="Mở trang Cài đặt"
+          >
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium text-on-surface">{manager?.fullName}</p>
               <p className="text-xs text-on-surface-variant">{manager?.email ?? manager?.phoneNumber}</p>
@@ -25,7 +32,7 @@ export default function ManagerTopBar({ title = 'Manager Console' }) {
                 src={manager.avatar}
               />
             )}
-          </div>
+          </button>
         </div>
       </div>
     </header>

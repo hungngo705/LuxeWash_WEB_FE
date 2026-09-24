@@ -4,17 +4,86 @@ import HistoryTable from '../components/history/HistoryTable'
 import HistoryToolbar from '../components/history/HistoryToolbar'
 import {
   fetchStaffServiceHistory,
+  fetchBookingsByDate,
   formatPaymentMethodLabel,
   formatStaffStationLabel,
   toApiTargetDate,
+  asBookingList,
+  normalizeStaffTask,
+  enrichStaffTasks,
 } from '../api'
 import { ApiError } from '../api/client'
 import { useAuth } from '../context/AuthContext'
+
+const PERIOD_OPTIONS = [
+  { id: 'day', label: 'Ngày' },
+  { id: 'week', label: 'Tuần' },
+  { id: 'month', label: 'Tháng' },
+]
+
+const STAFF_HISTORY_STATUSES = new Set(['Completed', 'Cancelled', 'No-show'])
 
 function todayDateValue() {
   const now = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+/**
+ * Tính date range từ period + ngày reference.
+ * @param {'day'|'week'|'month'} period
+ * @param {string} dayValue  YYYY-MM-DD
+ * @returns {{ from: string, to: string }}
+ */
+function computeDateRange(period, dayValue) {
+  const d = new Date(dayValue + 'T00:00:00')
+  switch (period) {
+    case 'day':
+      return { from: dayValue, to: dayValue }
+    case 'week': {
+      const dayOfWeek = d.getDay() // 0=CN, 1=Mon
+      const monday = new Date(d)
+      monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7))
+      const sunday = new Date(monday)
+      sunday.setDate(monday.getDate() + 6)
+      const pad2 = (n) => String(n).padStart(2, '0')
+      return {
+        from: `${monday.getFullYear()}-${pad2(monday.getMonth() + 1)}-${pad2(monday.getDate())}`,
+        to: `${sunday.getFullYear()}-${pad2(sunday.getMonth() + 1)}-${pad2(sunday.getDate())}`,
+      }
+    }
+    case 'month': {
+      const first = new Date(d.getFullYear(), d.getMonth(), 1)
+      const last = new Date(d.getFullYear(), d.getMonth() + 1, 0)
+      const pad2 = (n) => String(n).padStart(2, '0')
+      return {
+        from: `${first.getFullYear()}-${pad2(first.getMonth() + 1)}-${pad2(first.getDate())}`,
+        to: `${last.getFullYear()}-${pad2(last.getMonth() + 1)}-${pad2(last.getDate())}`,
+      }
+    }
+    default:
+      return { from: dayValue, to: dayValue }
+  }
+}
+
+/**
+ * Lấy danh sách tất cả ngày trong range [from, to].
+ * @param {string} from  YYYY-MM-DD
+ * @param {string} to    YYYY-MM-DD
+ * @returns {string[]}   Mảng YYYY-MM-DD
+ */
+function getDatesInRange(from, to) {
+  const dates = []
+  const cur = new Date(from + 'T00:00:00')
+  const end = new Date(to + 'T00:00:00')
+  while (cur <= end) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
+    dates.push(`${y}-${m}-${d}`)
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
 }
 
 function formatCompletedDisplay(isoString) {
@@ -148,6 +217,7 @@ export default function HistoryPage() {
   const [allRecords, setAllRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
+  const [periodFilter, setPeriodFilter] = useState('day') // 'day' | 'week' | 'month'
   const [dateFilter, setDateFilter] = useState(todayDateValue)
   const [laneLabel, setLaneLabel] = useState('')
   const [bookingFilter, setBookingFilter] = useState('all')
@@ -165,8 +235,42 @@ export default function HistoryPage() {
     setLoading(true)
     setFetchError('')
     try {
-      const tasks = await fetchStaffServiceHistory(toApiTargetDate(dateFilter), {})
-      setAllRecords(tasks.map(mapHistoryRecord))
+      const { from, to } = computeDateRange(periodFilter, dateFilter)
+      const dates = getDatesInRange(from, to)
+
+      if (dates.length === 1) {
+        // Single day — use existing optimized path
+        const tasks = await fetchStaffServiceHistory(toApiTargetDate(dates[0]), {
+          signal: null,
+        })
+        setAllRecords(tasks.map(mapHistoryRecord))
+      } else {
+        // Multi-day — batch fetch per day, deduplicate by bookingId, then enrich
+        const allBookings = []
+        for (const date of dates) {
+          try {
+            const apiDate = toApiTargetDate(date)
+            const data = await fetchBookingsByDate(apiDate, {})
+            const list = asBookingList(data)
+            allBookings.push(...list)
+          } catch {
+            // skip failed days silently
+          }
+        }
+        // Deduplicate by bookingId
+        const seen = new Set()
+        const unique = allBookings.filter((b) => {
+          const id = b.bookingId ?? b.id
+          if (seen.has(id)) return false
+          seen.add(id)
+          return true
+        })
+        const filtered = unique
+          .map((item) => normalizeStaffTask(item))
+          .filter((b) => STAFF_HISTORY_STATUSES.has(b.status))
+        const tasks = await enrichStaffTasks(filtered, { bookingsByDate: unique })
+        setAllRecords(tasks.map(mapHistoryRecord))
+      }
     } catch (err) {
       setFetchError(
         err instanceof ApiError && err.isForbidden
@@ -176,14 +280,14 @@ export default function HistoryPage() {
     } finally {
       setLoading(false)
     }
-  }, [dateFilter])
+  }, [dateFilter, periodFilter])
 
   useEffect(() => {
     const loadTimer = window.setTimeout(() => {
       void refetch()
     }, 0)
     return () => window.clearTimeout(loadTimer)
-  }, [refetch])
+  }, [refetch, periodFilter])
 
   const filtered = useMemo(() => {
     return allRecords.filter((r) => {
@@ -218,15 +322,37 @@ export default function HistoryPage() {
             Hoàn thành / Đã hủy / Vắng mặt theo ngày
           </p>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-on-surface-variant">Ngày:</span>
-          <input
-            type="date"
-            className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-          />
-        </label>
+        <div className="flex flex-col gap-2 sm:items-end">
+          {/* Segment control: Ngày / Tuần / Tháng */}
+          <div className="flex rounded-xl border border-outline-variant bg-surface-container-lowest p-1">
+            {PERIOD_OPTIONS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPeriodFilter(p.id)}
+                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                  periodFilter === p.id
+                    ? 'bg-primary text-on-primary'
+                    : 'text-on-surface-variant hover:bg-surface-variant'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {/* Date picker — chỉ hiện khi chọn Ngày */}
+          {periodFilter === 'day' && (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-on-surface-variant">Ngày:</span>
+              <input
+                type="date"
+                className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+              />
+            </label>
+          )}
+        </div>
       </div>
 
       {fetchError ? (
