@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ApiError } from '../../api'
 import { fetchManagerBookingsByDate } from '../../api/manager.api'
 import { fetchManagerTimeSlots } from '../../api/manager.timeSlots.api'
@@ -220,6 +221,7 @@ export default function ManagerBookingsPage() {
         title="Lịch đặt"
         description="Lịch tuần tại chi nhánh. Bấm vào ngày hoặc ô khung giờ để xem sổ thông tin booking trong ngày."
         actionIcon="calendar_month"
+        secondary={<Link to="/manager/incidents" className="rounded-lg border border-outline-variant px-4 py-2.5 text-sm font-semibold text-primary hover:bg-surface-variant">Xem sự cố ảnh hưởng lịch</Link>}
       />
 
       <div className="mb-4">
