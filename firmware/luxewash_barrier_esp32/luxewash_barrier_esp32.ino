@@ -25,9 +25,9 @@
 #endif
 
 namespace Config {
-constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 19;
+constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 13;
 constexpr uint8_t ENTRY_VIP_SERVO_PIN = 25;
-constexpr uint8_t EXIT_SERVO_PIN = 23;
+constexpr uint8_t EXIT_SERVO_PIN = 33;
 constexpr uint8_t ENTRY_REGULAR_SENSOR_PIN = 26;
 constexpr uint8_t ENTRY_VIP_SENSOR_PIN = 32;
 constexpr uint8_t EXIT_SENSOR_PIN = 27;

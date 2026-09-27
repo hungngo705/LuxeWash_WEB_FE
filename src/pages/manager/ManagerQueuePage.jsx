@@ -122,11 +122,13 @@ export default function ManagerQueuePage() {
   const assignableLanes = useMemo(() => {
     const bookingType = String(assignTarget?.bookingType ?? '').toLowerCase()
     const isBusinessBooking = bookingType === 'business' || bookingType === 'fleet'
-    return lanes.filter(
-      (lane) =>
-        lane.isActive !== false &&
-        Boolean(lane.isBusinessLane) === isBusinessBooking,
-    )
+    return lanes
+      .filter((lane) => lane.isActive !== false)
+      .sort((left, right) => {
+        const leftPreferred = Boolean(left.isBusinessLane) === isBusinessBooking
+        const rightPreferred = Boolean(right.isBusinessLane) === isBusinessBooking
+        return Number(rightPreferred) - Number(leftPreferred)
+      })
   }, [assignTarget, lanes])
 
   const handleAssignLane = async () => {
@@ -398,6 +400,9 @@ export default function ManagerQueuePage() {
                 >
                   <span className="material-symbols-outlined text-lg">garage</span>
                   <p className="mt-1 font-semibold">{lane.name}</p>
+                  <p className="mt-0.5 text-xs font-normal opacity-75">
+                    {lane.isBusinessLane ? 'Làn Business' : 'Làn thường'}
+                  </p>
                 </button>
               ))}
             </div>
