@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LiveLprFeed from "../components/dashboard/LiveLprFeed";
 import BarrierDevicePanel from "../components/dashboard/BarrierDevicePanel";
 import StaffBookingDetailModal from "../components/dashboard/StaffBookingDetailModal";
-import WashTelemetry, { WashDurationBadge } from "../components/shared/WashTelemetry";
+import WashTelemetry, {
+  WashDurationBadge,
+} from "../components/shared/WashTelemetry";
 import TierBadge from "../components/shared/TierBadge";
 import LaneAssignmentBadge from "../components/shared/LaneAssignmentBadge";
 import {
@@ -37,7 +39,7 @@ import {
   submitVehicleVisionFeedback,
   updateStaffBookingStatus,
 } from "../api";
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from "../context/AuthContext";
 import { formatDateTime, formatVnd } from "../utils/format";
 import {
   isValidVietnameseLicensePlate,
@@ -51,8 +53,8 @@ import {
   hasAssignedLane,
 } from "../utils/laneAssignment";
 import useBarrierController from "../hooks/useBarrierController";
-import DataTable from '../components/ui/DataTable';
-import { useToast } from '../components/ui/Toast';
+import DataTable from "../components/ui/DataTable";
+import { useToast } from "../components/ui/Toast";
 import {
   BARRIER_GATES,
   gateFromBarrierId,
@@ -72,9 +74,7 @@ const CHECKIN_TIME_CONFIRMATION_DECLINED =
   "BOOKING_CHECKIN_TIME_CONFIRMATION_DECLINED";
 
 function getApiErrorCode(error) {
-  return String(
-    error?.payload?.errorCode ?? error?.payload?.code ?? "",
-  ).trim();
+  return String(error?.payload?.errorCode ?? error?.payload?.code ?? "").trim();
 }
 
 function isCheckInScheduleError(error) {
@@ -98,36 +98,38 @@ function createFleetLookupBooking(licensePlate, fleetVehicle = {}) {
     fleetVehicle.vehicleTypeName ??
     fleetVehicle.vehicleType ??
     fleetVehicle.VehicleTypeName ??
-    fleetVehicle.VehicleType
-  const brand = fleetVehicle.brand ?? fleetVehicle.Brand
-  const model = fleetVehicle.model ?? fleetVehicle.Model
-  const vehicleDisplayName = [brand, model].filter(Boolean).join(' ')
+    fleetVehicle.VehicleType;
+  const brand = fleetVehicle.brand ?? fleetVehicle.Brand;
+  const model = fleetVehicle.model ?? fleetVehicle.Model;
+  const vehicleDisplayName = [brand, model].filter(Boolean).join(" ");
 
   return {
     bookingId: null,
-    fleetVehicleId: Number(
-      fleetVehicle.fleetVehicleId ?? fleetVehicle.FleetVehicleId ?? 0,
-    ) || null,
+    fleetVehicleId:
+      Number(fleetVehicle.fleetVehicleId ?? fleetVehicle.FleetVehicleId ?? 0) ||
+      null,
     isFleetLookup: true,
-    status: 'Pending',
+    status: "Pending",
     licensePlate,
     customerName:
       fleetVehicle.companyName ??
       fleetVehicle.CompanyName ??
-      'Khách hàng doanh nghiệp',
+      "Khách hàng doanh nghiệp",
     phoneMasked:
-      fleetVehicle.businessPhoneNumber ?? fleetVehicle.BusinessPhoneNumber ?? '',
-    driverName: fleetVehicle.driverName ?? fleetVehicle.DriverName ?? '',
+      fleetVehicle.businessPhoneNumber ??
+      fleetVehicle.BusinessPhoneNumber ??
+      "",
+    driverName: fleetVehicle.driverName ?? fleetVehicle.DriverName ?? "",
     vehicleType,
     vehicleDisplayName,
-    serviceName: 'Dịch vụ Fleet (walk-in)',
-    serviceNames: ['Dịch vụ Fleet (walk-in)'],
-    bookingType: 'Fleet',
-    rankName: 'Business account',
-    paymentMethod: 'Business account',
-    paymentStatus: 'Completed',
+    serviceName: "Dịch vụ Fleet (walk-in)",
+    serviceNames: ["Dịch vụ Fleet (walk-in)"],
+    bookingType: "Fleet",
+    rankName: "Business account",
+    paymentMethod: "Business account",
+    paymentStatus: "Completed",
     finalAmount: 0,
-  }
+  };
 }
 
 const MANUAL_COMPLETION_STORAGE_KEY = "luxewash:manual-completions";
@@ -173,14 +175,16 @@ function rememberManualCompletion(booking) {
     );
     window.localStorage.setItem(
       MANUAL_COMPLETION_STORAGE_KEY,
-      JSON.stringify([
-        {
-          licensePlate,
-          bookingId: booking?.bookingId,
-          completedAt: Date.now(),
-        },
-        ...remaining,
-      ].slice(0, 20)),
+      JSON.stringify(
+        [
+          {
+            licensePlate,
+            bookingId: booking?.bookingId,
+            completedAt: Date.now(),
+          },
+          ...remaining,
+        ].slice(0, 20),
+      ),
     );
   } catch {
     // The fallback still completes the booking even if browser storage is unavailable.
@@ -204,7 +208,9 @@ function getPayOsCallbackUrl(path) {
 }
 
 function isPaidPaymentStatus(status) {
-  const normalized = String(status ?? "").trim().toLowerCase();
+  const normalized = String(status ?? "")
+    .trim()
+    .toLowerCase();
   return ["completed", "paid", "success", "succeeded"].includes(normalized);
 }
 
@@ -347,12 +353,9 @@ function getBookingStatusLabel(status) {
 
 function StatusBadge({ status }) {
   const styles = {
-    Pending:
-      "border-tertiary/40 bg-tertiary/10 text-tertiary",
-    "Checked-in":
-      "border-primary/40 bg-primary/10 text-primary",
-    Processing:
-      "border-secondary/40 bg-secondary/10 text-secondary",
+    Pending: "border-tertiary/40 bg-tertiary/10 text-tertiary",
+    "Checked-in": "border-primary/40 bg-primary/10 text-primary",
+    Processing: "border-secondary/40 bg-secondary/10 text-secondary",
     Completed:
       "border-outline-variant bg-surface-variant text-on-surface-variant",
   };
@@ -376,7 +379,9 @@ function isVipQueueCustomer(customer) {
   const tierPoints = Number(customer?.customerTierPoints);
   if (Number.isFinite(tierPoints) && tierPoints >= 5000) return true;
 
-  const tierName = String(customer?.rankName ?? customer?.customerTierName ?? "")
+  const tierName = String(
+    customer?.rankName ?? customer?.customerTierName ?? "",
+  )
     .trim()
     .toLowerCase();
   return ["gold", "platinum", "diamond"].some((tier) =>
@@ -393,7 +398,9 @@ function resolveEntryBarrierGate({ barrierId, queueLaneType, customer } = {}) {
     return backendGate;
   }
   if (queueLaneType) return gateFromQueueLaneType(queueLaneType);
-  return gateFromQueueLaneType(isVipQueueCustomer(customer) ? "vip" : "regular");
+  return gateFromQueueLaneType(
+    isVipQueueCustomer(customer) ? "vip" : "regular",
+  );
 }
 
 function wasBarrierCommandAccepted(result) {
@@ -412,12 +419,14 @@ function PaymentStatusBadge({ status }) {
     Pending: "border-tertiary/40 bg-tertiary/10 text-tertiary",
     Unpaid: "border-tertiary/40 bg-tertiary/10 text-tertiary",
     Failed: "border-error-container/40 bg-error-container/20 text-error",
-    Refunded: "border-outline-variant bg-surface-variant text-on-surface-variant",
+    Refunded:
+      "border-outline-variant bg-surface-variant text-on-surface-variant",
   };
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-        map[normalized] ?? "border-outline-variant bg-surface-variant text-on-surface-variant"
+        map[normalized] ??
+        "border-outline-variant bg-surface-variant text-on-surface-variant"
       }`}
     >
       <span className="material-symbols-outlined text-[14px]">payments</span>
@@ -447,7 +456,8 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
               Thanh toán PayOS
             </h3>
             <p className="text-xs text-on-surface-variant">
-              {payment.licensePlate} - Booking #{payment.bookingId || "-"} - {formatVnd(payment.amount)}
+              {payment.licensePlate} - Booking #{payment.bookingId || "-"} -{" "}
+              {formatVnd(payment.amount)}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -468,7 +478,9 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
               target="_blank"
               rel="noreferrer"
             >
-              <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+              <span className="material-symbols-outlined text-[16px]">
+                open_in_new
+              </span>
               Mở tab
             </a>
             <button
@@ -495,9 +507,20 @@ function PayOsQrModal({ payment, onClose, onPaid, verifying = false }) {
   );
 }
 
-function ExtraMaterialUsageModal({ booking, form, materials, saving, onChange, onClose, onSubmit }) {
+function ExtraMaterialUsageModal({
+  booking,
+  form,
+  materials,
+  saving,
+  onChange,
+  onClose,
+  onSubmit,
+}) {
   const selectedMaterial = useMemo(
-    () => materials.find((material) => Number(material.materialId) === Number(form.materialId)),
+    () =>
+      materials.find(
+        (material) => Number(material.materialId) === Number(form.materialId),
+      ),
     [form.materialId, materials],
   );
   const canSubmit = Boolean(form.materialId && Number(form.quantity) > 0);
@@ -510,7 +533,9 @@ function ExtraMaterialUsageModal({ booking, form, materials, saving, onChange, o
         <div className="flex items-start justify-between gap-4 border-b border-outline-variant bg-surface-container-low p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-container/15 text-primary">
-              <span className="material-symbols-outlined text-[22px]">inventory_2</span>
+              <span className="material-symbols-outlined text-[22px]">
+                inventory_2
+              </span>
             </span>
             <div>
               <h3 className="font-sora text-lg font-semibold text-on-surface">
@@ -566,7 +591,9 @@ function ExtraMaterialUsageModal({ booking, form, materials, saving, onChange, o
               disabled={saving}
             />
             <span className="block rounded-lg bg-primary-container/10 px-3 py-2 text-xs text-primary">
-              {selectedMaterial?.unit ? `Đơn vị tính: ${selectedMaterial.unit}` : "Chọn vật tư để xem đơn vị tính"}
+              {selectedMaterial?.unit
+                ? `Đơn vị tính: ${selectedMaterial.unit}`
+                : "Chọn vật tư để xem đơn vị tính"}
             </span>
           </label>
           <label className="block space-y-1.5">
@@ -595,7 +622,9 @@ function ExtraMaterialUsageModal({ booking, form, materials, saving, onChange, o
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
               disabled={saving || !canSubmit}
             >
-              <span className="material-symbols-outlined text-[18px]">send</span>
+              <span className="material-symbols-outlined text-[18px]">
+                send
+              </span>
               {saving ? "Đang gửi..." : "Gửi yêu cầu"}
             </button>
           </div>
@@ -657,21 +686,6 @@ function PlateLookupPanel({
               )}
             </button>
           </div>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl border border-dashed border-secondary/40 bg-secondary-container/10 px-3 py-2 text-xs text-on-surface-variant">
-          <span className="material-symbols-outlined text-base text-secondary">info</span>
-          <p>
-            Không tìm thấy biển số?&nbsp;
-            <button
-              type="button"
-              className="font-semibold text-secondary underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={onCreateWalkIn}
-              disabled={!walkInReady || !hasPlate}
-            >
-              Tạo walk-in ngay
-            </button>
-            &nbsp;cho khách vãng lai.
-          </p>
         </div>
       </div>
     </section>
@@ -785,9 +799,12 @@ function QueueLaneColumn({
 
 function isPayOsConfigurationError(err) {
   if (!(err instanceof ApiError)) return false;
-  const payload = err.payload && typeof err.payload === "object" ? err.payload : {};
+  const payload =
+    err.payload && typeof err.payload === "object" ? err.payload : {};
   const details = String(payload.details ?? payload.Details ?? "");
-  return `${err.message} ${details}`.toLowerCase().includes("payos configuration is missing");
+  return `${err.message} ${details}`
+    .toLowerCase()
+    .includes("payos configuration is missing");
 }
 
 function getVehicleTypeId(type) {
@@ -826,15 +843,19 @@ function findVehicleTypeIdByName(vehicleTypes, vehicleTypeName) {
 }
 
 function isFallbackVehicleType(type) {
-  return String(type?.name ?? type?.vehicleTypeName ?? "")
-    .trim()
-    .toLowerCase() === "khác";
+  return (
+    String(type?.name ?? type?.vehicleTypeName ?? "")
+      .trim()
+      .toLowerCase() === "khác"
+  );
 }
 
 function getServicePriceForVehicleType(service, vehicleTypeId) {
   if (!vehicleTypeId || !Array.isArray(service?.prices)) return null;
   return (
-    service.prices.find((price) => Number(price.vehicleTypeId) === Number(vehicleTypeId)) ?? null
+    service.prices.find(
+      (price) => Number(price.vehicleTypeId) === Number(vehicleTypeId),
+    ) ?? null
   );
 }
 
@@ -909,7 +930,9 @@ function PersonalWalkInPanel({
               {draft.customerName || `Customer #${draft.userId}`}
             </p>
             {draft.phoneNumber && (
-              <p className="text-sm text-on-surface-variant">{draft.phoneNumber}</p>
+              <p className="text-sm text-on-surface-variant">
+                {draft.phoneNumber}
+              </p>
             )}
           </div>
         ) : (
@@ -927,7 +950,9 @@ function PersonalWalkInPanel({
           <p className="text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
             Thanh toán
           </p>
-          <div className={`mt-3 grid gap-2 ${paymentOptions.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}>
+          <div
+            className={`mt-3 grid gap-2 ${paymentOptions.length > 2 ? "grid-cols-3" : "grid-cols-2"}`}
+          >
             {paymentOptions.map((option) => {
               const selected = draft.paymentMethod === option.value;
               return (
@@ -942,7 +967,9 @@ function PersonalWalkInPanel({
                   onClick={() => onPaymentMethodChange(option.value)}
                 >
                   <span className="material-symbols-outlined text-[18px]">
-                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
+                    {selected
+                      ? "radio_button_checked"
+                      : "radio_button_unchecked"}
                   </span>
                   {option.label}
                 </button>
@@ -964,15 +991,17 @@ function PersonalWalkInPanel({
             <option value="">
               {loadingVehicleTypes ? "Đang tải loại xe..." : "Chọn loại xe"}
             </option>
-            {vehicleTypes.filter((type) => !isFallbackVehicleType(type)).map((type) => {
-              const id = getVehicleTypeId(type);
-              if (!id) return null;
-              return (
-                <option key={id} value={id}>
-                  {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
-                </option>
-              );
-            })}
+            {vehicleTypes
+              .filter((type) => !isFallbackVehicleType(type))
+              .map((type) => {
+                const id = getVehicleTypeId(type);
+                if (!id) return null;
+                return (
+                  <option key={id} value={id}>
+                    {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
+                  </option>
+                );
+              })}
           </select>
         </div>
 
@@ -989,13 +1018,19 @@ function PersonalWalkInPanel({
             {services.map((service) => {
               const serviceId = Number(service.serviceId ?? service.id);
               const selected = draft.serviceIds.includes(serviceId);
-              const selectedPrice = getServicePriceForVehicleType(service, selectedVehicleTypeId);
-              const disabledByVehicleType = selectedVehicleTypeId > 0 && !selectedPrice;
+              const selectedPrice = getServicePriceForVehicleType(
+                service,
+                selectedVehicleTypeId,
+              );
+              const disabledByVehicleType =
+                selectedVehicleTypeId > 0 && !selectedPrice;
               const minPrice =
                 Array.isArray(service.prices) && service.prices.length > 0
                   ? Math.min(...service.prices.map((p) => Number(p.price) || 0))
                   : 0;
-              const displayPrice = selectedPrice ? Number(selectedPrice.price) || 0 : minPrice;
+              const displayPrice = selectedPrice
+                ? Number(selectedPrice.price) || 0
+                : minPrice;
 
               return (
                 <button
@@ -1006,14 +1041,16 @@ function PersonalWalkInPanel({
                       ? "border-secondary bg-secondary-container/25"
                       : disabledByVehicleType
                         ? "border-outline-variant bg-surface-container-low opacity-50"
-                      : "border-outline-variant bg-surface-container-low hover:border-secondary/50"
+                        : "border-outline-variant bg-surface-container-low hover:border-secondary/50"
                   }`}
                   disabled={disabledByVehicleType}
                   onClick={() => onToggleService(serviceId)}
                 >
                   <div className="min-w-0">
                     <p className="font-semibold text-on-surface">
-                      {service.serviceName ?? service.name ?? `Dịch vụ ${serviceId}`}
+                      {service.serviceName ??
+                        service.name ??
+                        `Dịch vụ ${serviceId}`}
                     </p>
                     {service.description && (
                       <p className="mt-0.5 line-clamp-2 text-xs text-on-surface-variant">
@@ -1022,7 +1059,9 @@ function PersonalWalkInPanel({
                     )}
                     {displayPrice > 0 && (
                       <p className="mt-1 text-sm font-semibold text-primary">
-                        {selectedPrice ? formatVnd(displayPrice) : `từ ${formatVnd(displayPrice)}`}
+                        {selectedPrice
+                          ? formatVnd(displayPrice)
+                          : `từ ${formatVnd(displayPrice)}`}
                       </p>
                     )}
                     {disabledByVehicleType && (
@@ -1036,21 +1075,24 @@ function PersonalWalkInPanel({
                       selected ? "text-secondary" : "text-outline"
                     }`}
                   >
-                    {selected ? "radio_button_checked" : "radio_button_unchecked"}
+                    {selected
+                      ? "radio_button_checked"
+                      : "radio_button_unchecked"}
                   </span>
                 </button>
               );
             })}
           </div>
         )}
-
       </div>
       <div className="shrink-0 border-t border-outline-variant bg-surface-container-lowest p-4">
         <button
           type="button"
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-semibold text-on-secondary transition-colors hover:bg-secondary/90 disabled:opacity-60"
           onClick={onSubmit}
-          disabled={creating || loadingServices || draft.serviceIds.length === 0}
+          disabled={
+            creating || loadingServices || draft.serviceIds.length === 0
+          }
         >
           {creating ? (
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-on-secondary/30 border-t-on-secondary" />
@@ -1069,14 +1111,17 @@ function hasVehicleReviewCorrection(review) {
   const predictedVehicleTypeId = Number(review.predictedVehicleTypeId) || 0;
   return (
     selectedVehicleTypeId > 0 &&
-    (!predictedVehicleTypeId || selectedVehicleTypeId !== predictedVehicleTypeId)
+    (!predictedVehicleTypeId ||
+      selectedVehicleTypeId !== predictedVehicleTypeId)
   );
 }
 
 function VehicleReviewAutoDismiss({ review, onDismiss }) {
   const confidence = Number(review.confidence);
   const normalizedConfidence =
-    Number.isFinite(confidence) && confidence <= 1 ? confidence * 100 : confidence;
+    Number.isFinite(confidence) && confidence <= 1
+      ? confidence * 100
+      : confidence;
   const isFullConfidence =
     Number.isFinite(normalizedConfidence) && normalizedConfidence >= 100;
   const doesNotNeedFeedback =
@@ -1084,9 +1129,7 @@ function VehicleReviewAutoDismiss({ review, onDismiss }) {
     (Number(review.predictedVehicleTypeId) > 0 &&
       !hasVehicleReviewCorrection(review));
   const shouldAutoDismiss =
-    review.feedbackStatus === "idle" &&
-    isFullConfidence &&
-    doesNotNeedFeedback;
+    review.feedbackStatus === "idle" && isFullConfidence && doesNotNeedFeedback;
 
   useEffect(() => {
     if (!shouldAutoDismiss) return undefined;
@@ -1118,7 +1161,9 @@ function VehicleRecognitionReviewPanel({
     <section className="glass-panel soft-shadow mb-4 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant bg-surface-container-low px-4 py-3">
         <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-secondary">neurology</span>
+          <span className="material-symbols-outlined text-secondary">
+            neurology
+          </span>
           <div>
             <h2 className="font-sora text-lg font-semibold text-on-surface">
               Kiểm tra loại xe nhận diện
@@ -1135,7 +1180,8 @@ function VehicleRecognitionReviewPanel({
 
       <div className="grid gap-3 p-4 lg:grid-cols-2 xl:grid-cols-3">
         {validReviews.map((review) => {
-          const selectedVehicleTypeId = Number(review.selectedVehicleTypeId) || 0;
+          const selectedVehicleTypeId =
+            Number(review.selectedVehicleTypeId) || 0;
           const hasCorrection = hasVehicleReviewCorrection(review);
           const confidence = Number(review.confidence);
           const confidenceLabel = Number.isFinite(confidence)
@@ -1181,13 +1227,17 @@ function VehicleRecognitionReviewPanel({
                   onClick={() => onDismiss(review.licensePlate)}
                   disabled={review.feedbackStatus === "submitting"}
                 >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    close
+                  </span>
                 </button>
               </div>
 
               {review.isOverriddenByHistory ? (
                 <p className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-700">
-                  <span className="material-symbols-outlined text-[17px]">verified</span>
+                  <span className="material-symbols-outlined text-[17px]">
+                    verified
+                  </span>
                   Đã đối chiếu theo biển số, không cần gửi feedback.
                 </p>
               ) : (
@@ -1198,18 +1248,27 @@ function VehicleRecognitionReviewPanel({
                     </span>
                     <select
                       className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm font-medium text-on-surface outline-none focus:border-secondary disabled:opacity-60"
-                      value={selectedVehicleTypeId ? String(selectedVehicleTypeId) : ""}
+                      value={
+                        selectedVehicleTypeId
+                          ? String(selectedVehicleTypeId)
+                          : ""
+                      }
                       disabled={
                         loadingVehicleTypes ||
                         review.feedbackStatus === "submitting" ||
                         review.feedbackStatus === "submitted"
                       }
                       onChange={(event) =>
-                        onVehicleTypeChange(review.licensePlate, event.target.value)
+                        onVehicleTypeChange(
+                          review.licensePlate,
+                          event.target.value,
+                        )
                       }
                     >
                       <option value="">
-                        {loadingVehicleTypes ? "Đang tải loại xe..." : "Chọn loại xe đúng"}
+                        {loadingVehicleTypes
+                          ? "Đang tải loại xe..."
+                          : "Chọn loại xe đúng"}
                       </option>
                       {vehicleTypes
                         .filter((type) => !isFallbackVehicleType(type))
@@ -1218,7 +1277,9 @@ function VehicleRecognitionReviewPanel({
                           if (!id) return null;
                           return (
                             <option key={id} value={id}>
-                              {type.name ?? type.vehicleTypeName ?? `Loại xe ${id}`}
+                              {type.name ??
+                                type.vehicleTypeName ??
+                                `Loại xe ${id}`}
                             </option>
                           );
                         })}
@@ -1253,7 +1314,8 @@ function VehicleRecognitionReviewPanel({
 
                   {review.feedbackStatus === "error" && (
                     <p className="mt-2 text-xs font-semibold text-error">
-                      Gửi feedback thất bại. Kiểm tra kết nối rồi bấm xác nhận lại.
+                      Gửi feedback thất bại. Kiểm tra kết nối rồi bấm xác nhận
+                      lại.
                     </p>
                   )}
                 </>
@@ -1357,7 +1419,10 @@ function CustomerInfoPanel({
               {safeText(booking.phoneMasked, "Chưa có SĐT")}
             </p>
           </div>
-          <RankBadge rankName={booking.rankName} tierPoints={booking.customerTierPoints} />
+          <RankBadge
+            rankName={booking.rankName}
+            tierPoints={booking.customerTierPoints}
+          />
         </div>
 
         <div className="flex items-center justify-between">
@@ -1367,7 +1432,7 @@ function CustomerInfoPanel({
               ? `#${booking.bookingId}`
               : booking.fleetVehicleId
                 ? `Fleet #${booking.fleetVehicleId}`
-                : '—'}
+                : "—"}
           </span>
         </div>
 
@@ -1433,13 +1498,15 @@ function CustomerInfoPanel({
             </p>
             <p className="text-sm font-medium text-on-surface">
               {safeText(
-                getPaymentMethodDisplay(booking.paymentMethod, booking.paymentStatus),
+                getPaymentMethodDisplay(
+                  booking.paymentMethod,
+                  booking.paymentStatus,
+                ),
                 "Chưa chọn",
               )}
             </p>
           </div>
         </div>
-
       </div>
       <div className="shrink-0 border-t border-outline-variant bg-surface-container-lowest p-4">
         <div className="flex gap-3">
@@ -1452,7 +1519,8 @@ function CustomerInfoPanel({
               title={
                 !booking.processingLaneId && !booking.processingLaneName
                   ? "Xe đang chờ được phân làn"
-                  : !isPaidPaymentStatus(booking.paymentStatus) && Number(booking.finalAmount) > 0
+                  : !isPaidPaymentStatus(booking.paymentStatus) &&
+                      Number(booking.finalAmount) > 0
                     ? "Booking chưa hoàn tất thanh toán"
                     : undefined
               }
@@ -1474,7 +1542,9 @@ function CustomerInfoPanel({
                 className="flex items-center justify-center gap-2 rounded-xl border border-primary/35 bg-primary/10 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/20"
                 onClick={() => onReportExtraUsage(booking)}
               >
-                <span className="material-symbols-outlined text-[18px]">inventory_2</span>
+                <span className="material-symbols-outlined text-[18px]">
+                  inventory_2
+                </span>
                 Báo vật tư phát sinh
               </button>
             </div>
@@ -1485,7 +1555,9 @@ function CustomerInfoPanel({
               className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold tracking-wide text-on-primary uppercase shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
               onClick={onCheckin}
               disabled={confirming || checkingIn || !canCheckinNow}
-              title={!canCheckinNow ? "Booking chưa hoàn tất thanh toán" : undefined}
+              title={
+                !canCheckinNow ? "Booking chưa hoàn tất thanh toán" : undefined
+              }
             >
               {checkingIn ? (
                 <>
@@ -1573,19 +1645,22 @@ function ProcessingVehiclesPanel({
                 <div className="space-y-1">
                   <LaneAssignmentBadge booking={v} className="mb-2" />
                   <p className="text-sm font-medium text-on-surface">
-                    {v.customerName || (v.fleetWashLogId ? "Xe doanh nghiệp" : "—")}
+                    {v.customerName ||
+                      (v.fleetWashLogId ? "Xe doanh nghiệp" : "—")}
                   </p>
                   <p className="text-sm text-on-surface-variant">
-                    {v.serviceName || (v.fleetWashLogId ? "Dịch vụ Fleet" : "—")}
+                    {v.serviceName ||
+                      (v.fleetWashLogId ? "Dịch vụ Fleet" : "—")}
                   </p>
                   <p className="text-xs text-on-surface-variant">
-                    {getPaymentMethodDisplay(v.paymentMethod, v.paymentStatus)} ·{" "}
-                    {formatVnd(v.finalAmount)}
+                    {getPaymentMethodDisplay(v.paymentMethod, v.paymentStatus)}{" "}
+                    · {formatVnd(v.finalAmount)}
                   </p>
                   <WashDurationBadge booking={v} className="mt-2" />
                 </div>
               </button>
-              {v.status === "Processing" && (v.bookingId || v.fleetWashLogId) ? (
+              {v.status === "Processing" &&
+              (v.bookingId || v.fleetWashLogId) ? (
                 <button
                   type="button"
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-center text-xs font-semibold tracking-wide text-amber-700 uppercase transition-colors hover:bg-amber-500/20 disabled:opacity-50"
@@ -1593,7 +1668,9 @@ function ProcessingVehiclesPanel({
                   disabled={completingId === getProcessingVehicleKey(v)}
                   title="Chỉ dùng khi camera cổng ra không nhận diện được biển số"
                 >
-                  <span className="material-symbols-outlined text-[17px]">warning</span>
+                  <span className="material-symbols-outlined text-[17px]">
+                    warning
+                  </span>
                   {completingId === getProcessingVehicleKey(v)
                     ? "Đang xử lý…"
                     : "Hoàn thành thủ công"}
@@ -1608,7 +1685,7 @@ function ProcessingVehiclesPanel({
 }
 
 export default function DashboardPage() {
-  const { laneAssignment, user } = useAuth()
+  const { laneAssignment, user } = useAuth();
   const [staffTasks, setStaffTasks] = useState([]);
   const [plateInput, setPlateInput] = useState("");
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -1622,7 +1699,11 @@ export default function DashboardPage() {
   const [laneOccupancies, setLaneOccupancies] = useState(null);
   const [materials, setMaterials] = useState([]);
   const [extraUsageBooking, setExtraUsageBooking] = useState(null);
-  const [extraUsageForm, setExtraUsageForm] = useState({ materialId: "", quantity: "", note: "" });
+  const [extraUsageForm, setExtraUsageForm] = useState({
+    materialId: "",
+    quantity: "",
+    note: "",
+  });
   const [submittingExtraUsage, setSubmittingExtraUsage] = useState(false);
   const [walkInDraft, setWalkInDraft] = useState(null);
   const [walkInServices, setWalkInServices] = useState([]);
@@ -1639,14 +1720,14 @@ export default function DashboardPage() {
   const staffTasksRequestRef = useRef(null);
   const latestCameraFramesRef = useRef({ entry: null, exit: null });
 
-  const toast = useToast()
+  const toast = useToast();
 
   const notice = useCallback(
-    (message, type = 'success') => {
-      if (type === 'error') toast.error(message)
-      else if (type === 'warning') toast.warning(message)
-      else if (type === 'info') toast.info(message)
-      else toast.success(message)
+    (message, type = "success") => {
+      if (type === "error") toast.error(message);
+      else if (type === "warning") toast.warning(message);
+      else if (type === "info") toast.info(message);
+      else toast.success(message);
     },
     [toast],
   );
@@ -1657,92 +1738,106 @@ export default function DashboardPage() {
   const barrierController = useBarrierController({ onNotice: notice });
   const { executeCommand: executeBarrierCommand } = barrierController;
 
-  const markPayOsPaymentCompleted = useCallback((payment = payOsPayment) => {
-    if (!payment?.bookingId) {
+  const markPayOsPaymentCompleted = useCallback(
+    (payment = payOsPayment) => {
+      if (!payment?.bookingId) {
+        setPayOsPayment(null);
+        return;
+      }
+      const paidPatch = {
+        bookingId: Number(payment.bookingId),
+        paymentMethod: "PayOS",
+        paymentStatus: "Completed",
+        processingLaneId: payment.processingLaneId ?? undefined,
+        processingLaneName: payment.processingLaneName ?? undefined,
+      };
+      setSelectedBooking((booking) =>
+        Number(booking?.bookingId) === Number(payment.bookingId)
+          ? { ...booking, ...paidPatch }
+          : booking,
+      );
+      setStaffTasks((tasks) =>
+        tasks.map((task) =>
+          Number(task.bookingId) === Number(payment.bookingId)
+            ? { ...task, ...paidPatch }
+            : task,
+        ),
+      );
       setPayOsPayment(null);
-      return;
-    }
-    const paidPatch = {
-      bookingId: Number(payment.bookingId),
-      paymentMethod: "PayOS",
-      paymentStatus: "Completed",
-      processingLaneId: payment.processingLaneId ?? undefined,
-      processingLaneName: payment.processingLaneName ?? undefined,
-    };
-    setSelectedBooking((booking) =>
-      Number(booking?.bookingId) === Number(payment.bookingId)
-        ? { ...booking, ...paidPatch }
-        : booking,
-    );
-    setStaffTasks((tasks) =>
-      tasks.map((task) =>
-        Number(task.bookingId) === Number(payment.bookingId)
-          ? { ...task, ...paidPatch }
-          : task,
-      ),
-    );
-    setPayOsPayment(null);
-    publishBookingLaneState({
-      ...payment,
-      ...paidPatch,
-      status: payment.status ?? "Checked-in",
-      finalAmount: Number(payment.amount ?? 0),
-    });
-    notice(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
-  }, [payOsPayment, notice]);
+      publishBookingLaneState({
+        ...payment,
+        ...paidPatch,
+        status: payment.status ?? "Checked-in",
+        finalAmount: Number(payment.amount ?? 0),
+      });
+      notice(`Đã ghi nhận thanh toán PayOS cho booking #${payment.bookingId}.`);
+    },
+    [payOsPayment, notice],
+  );
 
-  const verifyPayOsPaymentStatus = useCallback(async (payment = payOsPayment, { silent = false } = {}) => {
-    if (!payment?.bookingId) return false;
-    if (!silent) setVerifyingPayOsPayment(true);
-    try {
-      const status = await fetchBookingPaymentStatus(payment.bookingId);
-      if (isPaidPaymentStatus(status?.paymentStatus)) {
-        markPayOsPaymentCompleted({
-          ...payment,
-          amount: Number(status?.amount ?? payment.amount ?? 0),
-          processingLaneId: status?.processingLaneId,
-          processingLaneName: status?.processingLaneName,
-        });
-        return true;
+  const verifyPayOsPaymentStatus = useCallback(
+    async (payment = payOsPayment, { silent = false } = {}) => {
+      if (!payment?.bookingId) return false;
+      if (!silent) setVerifyingPayOsPayment(true);
+      try {
+        const status = await fetchBookingPaymentStatus(payment.bookingId);
+        if (isPaidPaymentStatus(status?.paymentStatus)) {
+          markPayOsPaymentCompleted({
+            ...payment,
+            amount: Number(status?.amount ?? payment.amount ?? 0),
+            processingLaneId: status?.processingLaneId,
+            processingLaneName: status?.processingLaneName,
+          });
+          return true;
+        }
+        if (!silent) {
+          notice(
+            "PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau vài giây.",
+            "error",
+          );
+        }
+        return false;
+      } catch (err) {
+        if (!silent) {
+          notice(
+            err instanceof ApiError
+              ? err.message
+              : "Không thể kiểm tra trạng thái thanh toán PayOS.",
+            "error",
+          );
+        }
+        return false;
+      } finally {
+        if (!silent) setVerifyingPayOsPayment(false);
       }
-      if (!silent) {
-        notice("PayOS chưa xác nhận thanh toán. Vui lòng thử lại sau vài giây.", "error");
-      }
-      return false;
-    } catch (err) {
-      if (!silent) {
+    },
+    [payOsPayment, markPayOsPaymentCompleted, notice],
+  );
+
+  const loadWalkInServices = useCallback(
+    async (branchId) => {
+      setLoadingWalkInServices(true);
+      try {
+        const query = branchId
+          ? `?branchId=${encodeURIComponent(branchId)}`
+          : "";
+        const data = await apiRequest(`/services${query}`);
+        const list = Array.isArray(data) ? data : [];
+        setWalkInServices(list.filter((service) => service.isActive !== false));
+      } catch (err) {
+        setWalkInServices([]);
         notice(
           err instanceof ApiError
             ? err.message
-            : "Không thể kiểm tra trạng thái thanh toán PayOS.",
+            : "Không tải được danh sách dịch vụ walk-in.",
           "error",
         );
+      } finally {
+        setLoadingWalkInServices(false);
       }
-      return false;
-    } finally {
-      if (!silent) setVerifyingPayOsPayment(false);
-    }
-  }, [payOsPayment, markPayOsPaymentCompleted, notice]);
-
-  const loadWalkInServices = useCallback(async (branchId) => {
-    setLoadingWalkInServices(true);
-    try {
-      const query = branchId ? `?branchId=${encodeURIComponent(branchId)}` : "";
-      const data = await apiRequest(`/services${query}`);
-      const list = Array.isArray(data) ? data : [];
-      setWalkInServices(list.filter((service) => service.isActive !== false));
-    } catch (err) {
-      setWalkInServices([]);
-      notice(
-        err instanceof ApiError
-          ? err.message
-          : "Không tải được danh sách dịch vụ walk-in.",
-        "error",
-      );
-    } finally {
-      setLoadingWalkInServices(false);
-    }
-  }, [notice]);
+    },
+    [notice],
+  );
 
   const loadVehicleTypes = useCallback(async () => {
     setLoadingVehicleTypes(true);
@@ -1790,120 +1885,124 @@ export default function DashboardPage() {
 
   const loadStaffTasks = useCallback(({ signal } = {}) => {
     // Reuse an active refresh so a slow backend cannot create overlapping 30s polls.
-    if (staffTasksRequestRef.current) return staffTasksRequestRef.current
+    if (staffTasksRequestRef.current) return staffTasksRequestRef.current;
 
-    let request
+    let request;
     request = (async () => {
       try {
         const occupanciesPromise = fetchStaffLaneOccupancies({ signal })
           .then((occupancies) => {
-            if (!signal?.aborted) setLaneOccupancies(occupancies)
+            if (!signal?.aborted) setLaneOccupancies(occupancies);
           })
           .catch((err) => {
-            if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
-            console.warn('Failed to load lane occupancies:', err)
-          })
-        const data = await fetchStaffTasks({ signal })
-        if (signal?.aborted) return
+            if (err?.name === "AbortError" || err?.name === "CanceledError")
+              return;
+            console.warn("Failed to load lane occupancies:", err);
+          });
+        const data = await fetchStaffTasks({ signal });
+        if (signal?.aborted) return;
 
         // The tasks endpoint already contains everything needed to paint the queues.
         // Render it immediately; optional customer/payment enrichment continues below.
-        setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data))
+        setStaffTasks((prev) => mergeStaffTasksFromApi(prev, data));
         setSelectedBooking((current) => {
-          if (!current?.bookingId) return current
+          if (!current?.bookingId) return current;
           const fresh = data.find(
             (task) => Number(task.bookingId) === Number(current.bookingId),
-          )
-          return fresh ? { ...current, ...fresh } : current
-        })
-        setInitialLoading(false)
+          );
+          return fresh ? { ...current, ...fresh } : current;
+        });
+        setInitialLoading(false);
 
-        const enriched = await enrichStaffTasks(data, { signal })
-        if (signal?.aborted) return
+        const enriched = await enrichStaffTasks(data, { signal });
+        if (signal?.aborted) return;
         const nextSnapshot = new Map(
           enriched.map((task) => [
             Number(task.bookingId),
-            `${task.status}|${task.processingLaneId ?? ''}|${task.processingLaneName ?? ''}`,
+            `${task.status}|${task.processingLaneId ?? ""}|${task.processingLaneName ?? ""}`,
           ]),
-        )
+        );
         if (taskLaneSnapshotRef.current) {
           for (const task of enriched) {
-            const previous = taskLaneSnapshotRef.current.get(Number(task.bookingId))
-            const current = nextSnapshot.get(Number(task.bookingId))
+            const previous = taskLaneSnapshotRef.current.get(
+              Number(task.bookingId),
+            );
+            const current = nextSnapshot.get(Number(task.bookingId));
             if (
               previous !== current &&
               hasAssignedLane(task) &&
               ["assigned", "processing"].includes(getLaneAssignmentState(task))
             ) {
-              publishBookingLaneState(task)
+              publishBookingLaneState(task);
             }
           }
         }
-        taskLaneSnapshotRef.current = nextSnapshot
-        setStaffTasks((prev) => mergeStaffTasksFromApi(prev, enriched))
+        taskLaneSnapshotRef.current = nextSnapshot;
+        setStaffTasks((prev) => mergeStaffTasksFromApi(prev, enriched));
         setSelectedBooking((current) => {
-          if (!current?.bookingId) return current
+          if (!current?.bookingId) return current;
           const fresh = enriched.find(
             (task) => Number(task.bookingId) === Number(current.bookingId),
-          )
-          return fresh ? { ...current, ...fresh } : current
-        })
-        await occupanciesPromise
-        return enriched
+          );
+          return fresh ? { ...current, ...fresh } : current;
+        });
+        await occupanciesPromise;
+        return enriched;
       } catch (err) {
-        if (err?.name === 'AbortError' || err?.name === 'CanceledError') return
-        console.warn('Failed to load staff tasks:', err)
-        return []
+        if (err?.name === "AbortError" || err?.name === "CanceledError") return;
+        console.warn("Failed to load staff tasks:", err);
+        return [];
       } finally {
-        if (!signal?.aborted) setInitialLoading(false)
+        if (!signal?.aborted) setInitialLoading(false);
         if (staffTasksRequestRef.current === request) {
-          staffTasksRequestRef.current = null
+          staffTasksRequestRef.current = null;
         }
       }
-    })()
+    })();
 
-    staffTasksRequestRef.current = request
-    return request
-  }, [])
+    staffTasksRequestRef.current = request;
+    return request;
+  }, []);
 
   const loadMaterials = useCallback(async () => {
     try {
-      const data = await fetchMaterials()
-      setMaterials(Array.isArray(data) ? data : [])
+      const data = await fetchMaterials();
+      setMaterials(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.warn('Failed to load materials:', err)
-      setMaterials([])
+      console.warn("Failed to load materials:", err);
+      setMaterials([]);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    const controller = new AbortController()
+    const controller = new AbortController();
     const initialLoadId = window.setTimeout(() => {
-      loadStaffTasks({ signal: controller.signal })
-      loadVehicleTypes()
-      loadMaterials()
-    }, 0)
+      loadStaffTasks({ signal: controller.signal });
+      loadVehicleTypes();
+      loadMaterials();
+    }, 0);
 
     const interval = setInterval(() => {
-      loadStaffTasks({ signal: controller.signal })
-    }, 30_000)
+      loadStaffTasks({ signal: controller.signal });
+    }, 30_000);
     return () => {
-      controller.abort()
-      window.clearTimeout(initialLoadId)
-      clearInterval(interval)
-    }
-  }, [loadMaterials, loadStaffTasks, loadVehicleTypes])
+      controller.abort();
+      window.clearTimeout(initialLoadId);
+      clearInterval(interval);
+    };
+  }, [loadMaterials, loadStaffTasks, loadVehicleTypes]);
 
   useEffect(() => {
-    publishLaneDisplayHeartbeat()
-    const heartbeat = setInterval(publishLaneDisplayHeartbeat, 10_000)
-    return () => clearInterval(heartbeat)
-  }, [])
+    publishLaneDisplayHeartbeat();
+    const heartbeat = setInterval(publishLaneDisplayHeartbeat, 10_000);
+    return () => clearInterval(heartbeat);
+  }, []);
 
   const checkedInQueue = useMemo(
     () =>
       staffTasks.filter(
-        (booking) => booking.status === "Checked-in" && !hasAssignedLane(booking),
+        (booking) =>
+          booking.status === "Checked-in" && !hasAssignedLane(booking),
       ),
     [staffTasks],
   );
@@ -1917,7 +2016,8 @@ export default function DashboardPage() {
       if (
         selectedBooking?.status === "Processing" &&
         !fromTasks.some(
-          (task) => Number(task.bookingId) === Number(selectedBooking.bookingId),
+          (task) =>
+            Number(task.bookingId) === Number(selectedBooking.bookingId),
         )
       ) {
         return [...fromTasks, selectedBooking];
@@ -1933,7 +2033,9 @@ export default function DashboardPage() {
             )
           : null) ??
         staffTasks.find(
-          (task) => normalizePlate(task.licensePlate) === normalizePlate(occupancy.licensePlate),
+          (task) =>
+            normalizePlate(task.licensePlate) ===
+            normalizePlate(occupancy.licensePlate),
         );
       const selected =
         occupancy.bookingId &&
@@ -2019,7 +2121,10 @@ export default function DashboardPage() {
     setWalkInDraft((draft) => {
       if (!draft) return draft;
       const id = Number(serviceId);
-      return { ...draft, serviceIds: draft.serviceIds.includes(id) ? [] : [id] };
+      return {
+        ...draft,
+        serviceIds: draft.serviceIds.includes(id) ? [] : [id],
+      };
     });
   }, []);
 
@@ -2027,71 +2132,79 @@ export default function DashboardPage() {
     setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod } : draft));
   }, []);
 
-  const recordVehicleRecognition = useCallback((licensePlate, meta = {}) => {
-    if (meta?.operationMode === "exit") return;
+  const recordVehicleRecognition = useCallback(
+    (licensePlate, meta = {}) => {
+      if (meta?.operationMode === "exit") return;
 
-    const recognition = meta?.vehicleRecognition;
-    const primaryResult = recognition?.primaryResult;
-    if (!meta?.imageBlob || !primaryResult) return;
+      const recognition = meta?.vehicleRecognition;
+      const primaryResult = recognition?.primaryResult;
+      if (!meta?.imageBlob || !primaryResult) return;
 
-    const validLicensePlate = normalizeVietnameseLicensePlate(licensePlate);
-    if (!validLicensePlate) return;
+      const validLicensePlate = normalizeVietnameseLicensePlate(licensePlate);
+      if (!validLicensePlate) return;
 
-    const normalizedLicensePlate = normalizePlate(validLicensePlate);
-    const suppressUntil = Number(
-      dismissedVehicleReviewUntilRef.current.get(normalizedLicensePlate),
-    );
-    if (suppressUntil > Date.now()) return;
-    dismissedVehicleReviewUntilRef.current.delete(normalizedLicensePlate);
-
-    const predictedVehicleTypeId = findVehicleTypeIdByName(
-      vehicleTypes,
-      primaryResult.vehicleType,
-    );
-
-    setVehicleReviews((reviews) => {
-      const existing = reviews.find(
-        (review) => normalizePlate(review.licensePlate) === normalizedLicensePlate,
+      const normalizedLicensePlate = normalizePlate(validLicensePlate);
+      const suppressUntil = Number(
+        dismissedVehicleReviewUntilRef.current.get(normalizedLicensePlate),
       );
-      const keepLockedReview = ["submitting", "submitted"].includes(
-        existing?.feedbackStatus,
-      );
-      const nextReview = keepLockedReview
-        ? existing
-        : {
-            ...existing,
-            licensePlate: validLicensePlate,
-            imageBlob: meta.imageBlob,
-            predictedVehicleTypeId,
-            predictedVehicleTypeName: primaryResult.vehicleType || "",
-            predictedBrand: primaryResult.predictedBrand,
-            predictedModel: primaryResult.predictedModel,
-            confidence: primaryResult.confidence,
-            isOverriddenByHistory: Boolean(recognition.isOverriddenByHistory),
-            selectedVehicleTypeId:
-              existing?.selectedVehicleTypeId ?? predictedVehicleTypeId,
-            feedbackStatus: "idle",
-          };
+      if (suppressUntil > Date.now()) return;
+      dismissedVehicleReviewUntilRef.current.delete(normalizedLicensePlate);
 
-      return [
-        nextReview,
-        ...reviews.filter(
-          (review) => normalizePlate(review.licensePlate) !== normalizedLicensePlate,
+      const predictedVehicleTypeId = findVehicleTypeIdByName(
+        vehicleTypes,
+        primaryResult.vehicleType,
+      );
+
+      setVehicleReviews((reviews) => {
+        const existing = reviews.find(
+          (review) =>
+            normalizePlate(review.licensePlate) === normalizedLicensePlate,
+        );
+        const keepLockedReview = ["submitting", "submitted"].includes(
+          existing?.feedbackStatus,
+        );
+        const nextReview = keepLockedReview
+          ? existing
+          : {
+              ...existing,
+              licensePlate: validLicensePlate,
+              imageBlob: meta.imageBlob,
+              predictedVehicleTypeId,
+              predictedVehicleTypeName: primaryResult.vehicleType || "",
+              predictedBrand: primaryResult.predictedBrand,
+              predictedModel: primaryResult.predictedModel,
+              confidence: primaryResult.confidence,
+              isOverriddenByHistory: Boolean(recognition.isOverriddenByHistory),
+              selectedVehicleTypeId:
+                existing?.selectedVehicleTypeId ?? predictedVehicleTypeId,
+              feedbackStatus: "idle",
+            };
+
+        return [
+          nextReview,
+          ...reviews.filter(
+            (review) =>
+              normalizePlate(review.licensePlate) !== normalizedLicensePlate,
+          ),
+        ].slice(0, 6);
+      });
+    },
+    [vehicleTypes],
+  );
+
+  const updateVehicleReviewContext = useCallback(
+    (licensePlate, customerType) => {
+      const normalizedLicensePlate = normalizePlate(licensePlate);
+      setVehicleReviews((reviews) =>
+        reviews.map((review) =>
+          normalizePlate(review.licensePlate) === normalizedLicensePlate
+            ? { ...review, customerType }
+            : review,
         ),
-      ].slice(0, 6);
-    });
-  }, [vehicleTypes]);
-
-  const updateVehicleReviewContext = useCallback((licensePlate, customerType) => {
-    const normalizedLicensePlate = normalizePlate(licensePlate);
-    setVehicleReviews((reviews) =>
-      reviews.map((review) =>
-        normalizePlate(review.licensePlate) === normalizedLicensePlate
-          ? { ...review, customerType }
-          : review,
-      ),
-    );
-  }, []);
+      );
+    },
+    [],
+  );
 
   const updateVehicleReviewType = useCallback((licensePlate, vehicleTypeId) => {
     const normalizedLicensePlate = normalizePlate(licensePlate);
@@ -2104,7 +2217,9 @@ export default function DashboardPage() {
               ...review,
               selectedVehicleTypeId: nextVehicleTypeId,
               feedbackStatus:
-                review.feedbackStatus === "error" ? "idle" : review.feedbackStatus,
+                review.feedbackStatus === "error"
+                  ? "idle"
+                  : review.feedbackStatus,
             }
           : review,
       ),
@@ -2121,62 +2236,69 @@ export default function DashboardPage() {
     );
   }, []);
 
-  const confirmVehicleReview = useCallback(async (licensePlate) => {
-    const normalizedLicensePlate = normalizePlate(licensePlate);
-    const review = vehicleReviews.find(
-      (item) => normalizePlate(item.licensePlate) === normalizedLicensePlate,
-    );
-    if (!review || review.isOverriddenByHistory) return;
+  const confirmVehicleReview = useCallback(
+    async (licensePlate) => {
+      const normalizedLicensePlate = normalizePlate(licensePlate);
+      const review = vehicleReviews.find(
+        (item) => normalizePlate(item.licensePlate) === normalizedLicensePlate,
+      );
+      if (!review || review.isOverriddenByHistory) return;
 
-    const actualVehicleTypeId = Number(review.selectedVehicleTypeId);
-    const predictedVehicleTypeId = Number(review.predictedVehicleTypeId) || undefined;
-    const hasCorrection =
-      actualVehicleTypeId > 0 &&
-      (!predictedVehicleTypeId || actualVehicleTypeId !== predictedVehicleTypeId);
-    if (!hasCorrection || !review.imageBlob) return;
+      const actualVehicleTypeId = Number(review.selectedVehicleTypeId);
+      const predictedVehicleTypeId =
+        Number(review.predictedVehicleTypeId) || undefined;
+      const hasCorrection =
+        actualVehicleTypeId > 0 &&
+        (!predictedVehicleTypeId ||
+          actualVehicleTypeId !== predictedVehicleTypeId);
+      if (!hasCorrection || !review.imageBlob) return;
 
-    setVehicleReviews((reviews) =>
-      reviews.map((item) =>
-        normalizePlate(item.licensePlate) === normalizedLicensePlate
-          ? { ...item, feedbackStatus: "submitting" }
-          : item,
-      ),
-    );
-
-    try {
-      const feedback = await submitVehicleVisionFeedback({
-        imageBlob: review.imageBlob,
-        licensePlate: review.licensePlate,
-        predictedVehicleTypeId,
-        actualVehicleTypeId,
-      });
       setVehicleReviews((reviews) =>
         reviews.map((item) =>
           normalizePlate(item.licensePlate) === normalizedLicensePlate
-            ? {
-                ...item,
-                feedbackStatus: "submitted",
-                feedbackId: feedback.feedbackId,
-                feedbackImageUrl: feedback.imageUrl,
-              }
+            ? { ...item, feedbackStatus: "submitting" }
             : item,
         ),
       );
-      notice(`Đã gửi phản hồi loại xe ${review.licensePlate} cho AI.`);
-    } catch (err) {
-      setVehicleReviews((reviews) =>
-        reviews.map((item) =>
-          normalizePlate(item.licensePlate) === normalizedLicensePlate
-            ? { ...item, feedbackStatus: "error" }
-            : item,
-        ),
-      );
-      notice(
-        err instanceof ApiError ? err.message : "Không gửi được phản hồi loại xe cho AI.",
-        "error",
-      );
-    }
-  }, [vehicleReviews, notice]);
+
+      try {
+        const feedback = await submitVehicleVisionFeedback({
+          imageBlob: review.imageBlob,
+          licensePlate: review.licensePlate,
+          predictedVehicleTypeId,
+          actualVehicleTypeId,
+        });
+        setVehicleReviews((reviews) =>
+          reviews.map((item) =>
+            normalizePlate(item.licensePlate) === normalizedLicensePlate
+              ? {
+                  ...item,
+                  feedbackStatus: "submitted",
+                  feedbackId: feedback.feedbackId,
+                  feedbackImageUrl: feedback.imageUrl,
+                }
+              : item,
+          ),
+        );
+        notice(`Đã gửi phản hồi loại xe ${review.licensePlate} cho AI.`);
+      } catch (err) {
+        setVehicleReviews((reviews) =>
+          reviews.map((item) =>
+            normalizePlate(item.licensePlate) === normalizedLicensePlate
+              ? { ...item, feedbackStatus: "error" }
+              : item,
+          ),
+        );
+        notice(
+          err instanceof ApiError
+            ? err.message
+            : "Không gửi được phản hồi loại xe cho AI.",
+          "error",
+        );
+      }
+    },
+    [vehicleReviews, notice],
+  );
 
   const dismissVehicleReview = useCallback((licensePlate) => {
     const normalizedLicensePlate = normalizePlate(licensePlate);
@@ -2186,21 +2308,27 @@ export default function DashboardPage() {
     );
     setVehicleReviews((reviews) =>
       reviews.filter(
-        (review) => normalizePlate(review.licensePlate) !== normalizedLicensePlate,
+        (review) =>
+          normalizePlate(review.licensePlate) !== normalizedLicensePlate,
       ),
     );
   }, []);
 
-  const updateWalkInVehicleType = useCallback((vehicleTypeId) => {
-    if (!walkInDraft?.licensePlate) return;
-    updateVehicleReviewType(walkInDraft.licensePlate, vehicleTypeId);
-  }, [updateVehicleReviewType, walkInDraft]);
+  const updateWalkInVehicleType = useCallback(
+    (vehicleTypeId) => {
+      if (!walkInDraft?.licensePlate) return;
+      updateVehicleReviewType(walkInDraft.licensePlate, vehicleTypeId);
+    },
+    [updateVehicleReviewType, walkInDraft],
+  );
 
   const handleCreatePersonalWalkIn = useCallback(async () => {
     if (!walkInDraft) return;
     const branchId = Number(walkInDraft.branchId);
     if (!branchId) {
-      setLookupError("Chưa xác định được chi nhánh của nhân viên để tạo walk-in.");
+      setLookupError(
+        "Chưa xác định được chi nhánh của nhân viên để tạo walk-in.",
+      );
       return;
     }
     if (walkInDraft.serviceIds.length === 0) {
@@ -2220,7 +2348,10 @@ export default function DashboardPage() {
         licensePlate: walkInDraft.licensePlate,
         serviceIds: walkInDraft.serviceIds.map(Number),
         userId: Number(walkInDraft.userId) > 0 ? Number(walkInDraft.userId) : 0,
-        vehicleId: Number(walkInDraft.vehicleId) > 0 ? Number(walkInDraft.vehicleId) : undefined,
+        vehicleId:
+          Number(walkInDraft.vehicleId) > 0
+            ? Number(walkInDraft.vehicleId)
+            : undefined,
         vehicleTypeId: Number(walkInDraft.vehicleTypeId),
         pointsToUse: 0,
         paymentMethod: walkInDraft.paymentMethod,
@@ -2236,7 +2367,8 @@ export default function DashboardPage() {
             ? normalizedBooking.rankName
             : walkInDraft.customerTierName || "—",
         customerTierPoints:
-          normalizedBooking.customerTierPoints ?? walkInDraft.customerTierPoints,
+          normalizedBooking.customerTierPoints ??
+          walkInDraft.customerTierPoints,
         isVip: normalizedBooking.isVip === true || walkInDraft.isVip === true,
         paymentMethod: walkInDraft.paymentMethod,
         paymentStatus: isPendingPayOs ? "Pending" : "Completed",
@@ -2267,8 +2399,12 @@ export default function DashboardPage() {
       }
     } catch (err) {
       if (isPayOsConfigurationError(err)) {
-        setWalkInDraft((draft) => (draft ? { ...draft, paymentMethod: "Cash" } : draft));
-        setLookupError("PayOS chưa được cấu hình trên backend. Vui lòng chọn Tiền mặt để tạo walk-in.");
+        setWalkInDraft((draft) =>
+          draft ? { ...draft, paymentMethod: "Cash" } : draft,
+        );
+        setLookupError(
+          "PayOS chưa được cấu hình trên backend. Vui lòng chọn Tiền mặt để tạo walk-in.",
+        );
         return;
       }
       setLookupError(
@@ -2339,12 +2475,7 @@ export default function DashboardPage() {
     } catch {
       // loadWalkInServices đã tự thông báo lỗi
     }
-  }, [
-    plateInput,
-    user,
-    applySelectedBooking,
-    loadWalkInServices,
-  ]);
+  }, [plateInput, user, applySelectedBooking, loadWalkInServices]);
 
   const handleSearch = useCallback(async () => {
     const plate = plateInput.trim().toUpperCase();
@@ -2382,7 +2513,9 @@ export default function DashboardPage() {
           return;
         }
 
-        setSelectedBooking(createFleetLookupBooking(plate, lookup.fleetVehicle));
+        setSelectedBooking(
+          createFleetLookupBooking(plate, lookup.fleetVehicle),
+        );
         setLookupError(
           `Đã tìm thấy xe doanh nghiệp ${plate}. Bấm “Check-in ngay” để tiếp nhận và phân buồng rửa.`,
         );
@@ -2428,139 +2561,211 @@ export default function DashboardPage() {
       setLookupError("Không xác định được loại khách hàng cho biển số này.");
     } catch (err) {
       setWalkInDraft(null);
-      setLookupError(err instanceof ApiError ? err.message : "Không thể tra cứu. Vui lòng thử lại.");
+      setLookupError(
+        err instanceof ApiError
+          ? err.message
+          : "Không thể tra cứu. Vui lòng thử lại.",
+      );
       setSelectedBooking(null);
     } finally {
       setLoadingLookup(false);
     }
   }, [plateInput, staffTasks, applySelectedBooking, user, loadWalkInServices]);
 
-  const handleCameraPlateDetected = useCallback(async (plateText, meta = {}) => {
-    const plate = String(plateText ?? "").trim().toUpperCase();
-    if (!plate) {
+  const handleCameraPlateDetected = useCallback(
+    async (plateText, meta = {}) => {
+      const plate = String(plateText ?? "")
+        .trim()
+        .toUpperCase();
+      if (!plate) {
+        if (meta?.operationMode !== "exit") {
+          publishLaneDisplayEvent({ type: "error" });
+        }
+        return {
+          status: "needs-action",
+          type: "error",
+          message: "Camera chưa đọc được biển số.",
+        };
+      }
+
+      setPlateInput(plate);
+      setLookupError("");
+      setBarrierAlert(null);
+      setLoadingLookup(true);
+
       if (meta?.operationMode !== "exit") {
-        publishLaneDisplayEvent({ type: "error" });
-      }
-      return {
-        status: "needs-action",
-        type: "error",
-        message: "Camera chưa đọc được biển số.",
-      };
-    }
-
-    setPlateInput(plate);
-    setLookupError("");
-    setBarrierAlert(null);
-    setLoadingLookup(true);
-
-    if (meta?.operationMode !== "exit") {
-      recordVehicleRecognition(plate, meta);
-      publishLaneDisplayEvent({ type: "reading", plate });
-    }
-
-    let queueLaneValidated =
-      meta?.operationMode === "exit" || !meta?.queueLaneType;
-
-    const validatePhysicalQueueLane = (customer) => {
-      if (queueLaneValidated) return null;
-
-      const customerIsVip = isVipQueueCustomer(customer);
-      const expectedLaneType = customerIsVip ? "vip" : "regular";
-      if (meta.queueLaneType === expectedLaneType) {
-        queueLaneValidated = true;
-        return null;
+        recordVehicleRecognition(plate, meta);
+        publishLaneDisplayEvent({ type: "reading", plate });
       }
 
-      const currentLaneLabel =
-        meta.queueLaneType === "vip" ? "làn VIP" : "làn thường";
-      const expectedLaneLabel =
-        expectedLaneType === "vip" ? "làn VIP" : "làn thường";
-      const laneCorrectionTitle =
-        expectedLaneType === "vip"
-          ? "VUI LÒNG CHUYỂN SANG LÀN VIP"
-          : "VUI LÒNG CHUYỂN SANG LÀN THƯỜNG";
-      const message = `Xe ${plate} đang đứng sai làn (${currentLaneLabel}). Yêu cầu xe chuyển sang ${expectedLaneLabel} rồi quét lại.`;
+      let queueLaneValidated =
+        meta?.operationMode === "exit" || !meta?.queueLaneType;
 
-      setLookupError(message);
-      notice(message, "error");
-      publishLaneDisplayEvent({
-        type: "assistance",
-        plate,
-        title: laneCorrectionTitle,
-        reasonCode: "wrong_queue_lane",
-      });
+      const validatePhysicalQueueLane = (customer) => {
+        if (queueLaneValidated) return null;
 
-      return {
-        status: "needs-action",
-        type: "error",
-        message,
-      };
-    };
+        const customerIsVip = isVipQueueCustomer(customer);
+        const expectedLaneType = customerIsVip ? "vip" : "regular";
+        if (meta.queueLaneType === expectedLaneType) {
+          queueLaneValidated = true;
+          return null;
+        }
 
-    const syncFreshBooking = async (booking) => {
-      const freshTasks = await loadStaffTasks();
-      const updated = Array.isArray(freshTasks)
-        ? freshTasks.find((task) => Number(task.bookingId) === Number(booking.bookingId))
-        : null;
-      const next = updated ?? booking;
-      await applySelectedBooking(next);
-      return next;
-    };
+        const currentLaneLabel =
+          meta.queueLaneType === "vip" ? "làn VIP" : "làn thường";
+        const expectedLaneLabel =
+          expectedLaneType === "vip" ? "làn VIP" : "làn thường";
+        const laneCorrectionTitle =
+          expectedLaneType === "vip"
+            ? "VUI LÒNG CHUYỂN SANG LÀN VIP"
+            : "VUI LÒNG CHUYỂN SANG LÀN THƯỜNG";
+        const message = `Xe ${plate} đang đứng sai làn (${currentLaneLabel}). Yêu cầu xe chuyển sang ${expectedLaneLabel} rồi quét lại.`;
 
-    const autoStartCameraBooking = async (booking) => {
-      if (
-        booking?.status !== "Checked-in" ||
-        !hasAssignedLane(booking) ||
-        !Number(booking?.bookingId)
-      ) {
-        return booking;
-      }
-
-      if (!canStartWash(booking)) {
-        return booking;
-      }
-
-      try {
-        await updateStaffBookingStatus(booking.bookingId, "Processing");
-        const processingBooking = await syncFreshBooking({
-          ...booking,
-          status: "Processing",
-          processingStartTime: new Date().toISOString(),
-          completedTime: null,
-          actualDurationMinutes: null,
-        });
-        publishBookingLaneState(processingBooking);
-        return processingBooking;
-      } catch (startError) {
-        const message =
-          startError instanceof ApiError
-            ? `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
-            : `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
         setLookupError(message);
         notice(message, "error");
-        return booking;
-      }
-    };
+        publishLaneDisplayEvent({
+          type: "assistance",
+          plate,
+          title: laneCorrectionTitle,
+          reasonCode: "wrong_queue_lane",
+        });
 
-    const checkInBooking = async (booking) => {
-      let next = booking;
+        return {
+          status: "needs-action",
+          type: "error",
+          message,
+        };
+      };
 
-      if (next.status === "Pending") {
-        if (!(meta.imageBlob instanceof Blob)) {
-          throw new ApiError("Chưa có ảnh camera cổng vào, không thể check-in.", 400);
+      const syncFreshBooking = async (booking) => {
+        const freshTasks = await loadStaffTasks();
+        const updated = Array.isArray(freshTasks)
+          ? freshTasks.find(
+              (task) => Number(task.bookingId) === Number(booking.bookingId),
+            )
+          : null;
+        const next = updated ?? booking;
+        await applySelectedBooking(next);
+        return next;
+      };
+
+      const autoStartCameraBooking = async (booking) => {
+        if (
+          booking?.status !== "Checked-in" ||
+          !hasAssignedLane(booking) ||
+          !Number(booking?.bookingId)
+        ) {
+          return booking;
         }
-        if (!canCheckIn(next)) {
-          await applySelectedBooking(next);
-          publishLaneDisplayEvent({
-            type: "payment",
-            plate: next.licensePlate || plate,
-            bookingId: next.bookingId,
-          });
-          return next;
+
+        if (!canStartWash(booking)) {
+          return booking;
         }
-        let checkInResult;
+
         try {
-          checkInResult = await staffCheckinBooking(next.bookingId, {
+          await updateStaffBookingStatus(booking.bookingId, "Processing");
+          const processingBooking = await syncFreshBooking({
+            ...booking,
+            status: "Processing",
+            processingStartTime: new Date().toISOString(),
+            completedTime: null,
+            actualDurationMinutes: null,
+          });
+          publishBookingLaneState(processingBooking);
+          return processingBooking;
+        } catch (startError) {
+          const message =
+            startError instanceof ApiError
+              ? `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
+              : `Xe ${booking.licensePlate || plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
+          setLookupError(message);
+          notice(message, "error");
+          return booking;
+        }
+      };
+
+      const checkInBooking = async (booking) => {
+        let next = booking;
+
+        if (next.status === "Pending") {
+          if (!(meta.imageBlob instanceof Blob)) {
+            throw new ApiError(
+              "Chưa có ảnh camera cổng vào, không thể check-in.",
+              400,
+            );
+          }
+          if (!canCheckIn(next)) {
+            await applySelectedBooking(next);
+            publishLaneDisplayEvent({
+              type: "payment",
+              plate: next.licensePlate || plate,
+              bookingId: next.bookingId,
+            });
+            return next;
+          }
+          let checkInResult;
+          try {
+            checkInResult = await staffCheckinBooking(next.bookingId, {
+              checkInImage: meta.imageBlob,
+            });
+          } catch (checkInError) {
+            if (!confirmOutsideScheduledCheckIn(checkInError)) {
+              if (
+                getApiErrorCode(checkInError) === CHECKIN_OUTSIDE_TIME_ERROR
+              ) {
+                throw new ApiError(
+                  "Staff chưa xác nhận cho xe check-in ngoài giờ.",
+                  409,
+                  { errorCode: CHECKIN_TIME_CONFIRMATION_DECLINED },
+                );
+              }
+              throw checkInError;
+            }
+            checkInResult = await staffCheckinBooking(next.bookingId, {
+              checkInImage: meta.imageBlob,
+              allowOutsideScheduledTime: true,
+            });
+          }
+          if (checkInResult.isAssigned && checkInResult.barrierCommandId) {
+            const entryGate = resolveEntryBarrierGate({
+              barrierId: checkInResult.barrierId,
+              queueLaneType: meta.queueLaneType,
+              customer: next,
+            });
+            const opened = await executeBarrierCommand({
+              gate: entryGate,
+              commandId: checkInResult.barrierCommandId,
+              licensePlate: checkInResult.licensePlate || next.licensePlate,
+              expiresAt: checkInResult.barrierCommandExpiresAt,
+              source: "staff-check-in",
+            })
+              .then(wasBarrierCommandAccepted)
+              .catch(() => false);
+            if (!opened) {
+              setBarrierAlert({
+                type: "error",
+                message: `Xe ${checkInResult.licensePlate || next.licensePlate} đã check-in nhưng ESP32 chưa mở được barie ${getBarrierGateLabel(entryGate)}.`,
+              });
+            }
+          }
+          const admittedBooking = mergeStaffCheckInResult(
+            next,
+            checkInResult,
+          ) ?? { ...next, status: "Checked-in" };
+          next = await syncFreshBooking(admittedBooking);
+        } else {
+          next = await syncFreshBooking(next);
+        }
+
+        next = await autoStartCameraBooking(next);
+        publishBookingLaneState(next);
+        return next;
+      };
+
+      const fallbackCameraCheckIn = async () => {
+        let cameraBooking;
+        try {
+          cameraBooking = await cameraCheckInByPlate(plate, {
             checkInImage: meta.imageBlob,
           });
         } catch (checkInError) {
@@ -2574,498 +2779,494 @@ export default function DashboardPage() {
             }
             throw checkInError;
           }
-          checkInResult = await staffCheckinBooking(next.bookingId, {
+          cameraBooking = await cameraCheckInByPlate(plate, {
             checkInImage: meta.imageBlob,
             allowOutsideScheduledTime: true,
           });
         }
-        if (checkInResult.isAssigned && checkInResult.barrierCommandId) {
+        if (cameraBooking.barrierCommandId) {
           const entryGate = resolveEntryBarrierGate({
-            barrierId: checkInResult.barrierId,
+            barrierId: cameraBooking.barrierId,
             queueLaneType: meta.queueLaneType,
-            customer: next,
+            customer: cameraBooking,
           });
           const opened = await executeBarrierCommand({
             gate: entryGate,
-            commandId: checkInResult.barrierCommandId,
-            licensePlate: checkInResult.licensePlate || next.licensePlate,
-            expiresAt: checkInResult.barrierCommandExpiresAt,
-            source: "staff-check-in",
-          }).then(wasBarrierCommandAccepted).catch(() => false);
+            commandId: cameraBooking.barrierCommandId,
+            licensePlate: cameraBooking.licensePlate || plate,
+            expiresAt: cameraBooking.barrierCommandExpiresAt,
+            source: "camera-check-in",
+          })
+            .then(wasBarrierCommandAccepted)
+            .catch(() => false);
           if (!opened) {
             setBarrierAlert({
               type: "error",
-              message: `Xe ${checkInResult.licensePlate || next.licensePlate} đã check-in nhưng ESP32 chưa mở được barie ${getBarrierGateLabel(entryGate)}.`,
+              message: `Xe ${cameraBooking.licensePlate || plate} đã check-in nhưng ESP32 chưa mở được barie ${getBarrierGateLabel(entryGate)}.`,
             });
           }
         }
-        const admittedBooking =
-          mergeStaffCheckInResult(next, checkInResult) ??
-          { ...next, status: "Checked-in" };
-        next = await syncFreshBooking(admittedBooking);
-      } else {
-        next = await syncFreshBooking(next);
-      }
+        const freshTasks = await loadStaffTasks();
+        const freshBooking = Array.isArray(freshTasks)
+          ? (freshTasks.find(
+              (task) =>
+                Number(task.bookingId) === Number(cameraBooking.bookingId),
+            ) ??
+            freshTasks.find(
+              (task) =>
+                normalizePlate(task?.licensePlate ?? task?.plateNumber) ===
+                normalizePlate(plate),
+            ))
+          : null;
+        const authoritativeBooking = await autoStartCameraBooking(
+          freshBooking ?? cameraBooking,
+        );
+        await applySelectedBooking(authoritativeBooking);
+        publishBookingLaneState(authoritativeBooking);
+        const message = getCheckInSuccessMessage(authoritativeBooking);
+        notice(message);
+        return { message };
+      };
 
-      next = await autoStartCameraBooking(next);
-      publishBookingLaneState(next);
-      return next;
-    };
-
-    const fallbackCameraCheckIn = async () => {
-      let cameraBooking;
       try {
-        cameraBooking = await cameraCheckInByPlate(plate, {
-          checkInImage: meta.imageBlob,
-        });
-      } catch (checkInError) {
-        if (!confirmOutsideScheduledCheckIn(checkInError)) {
-          if (getApiErrorCode(checkInError) === CHECKIN_OUTSIDE_TIME_ERROR) {
-            throw new ApiError(
-              "Staff chưa xác nhận cho xe check-in ngoài giờ.",
-              409,
-              { errorCode: CHECKIN_TIME_CONFIRMATION_DECLINED },
-            );
-          }
-          throw checkInError;
-        }
-        cameraBooking = await cameraCheckInByPlate(plate, {
-          checkInImage: meta.imageBlob,
-          allowOutsideScheduledTime: true,
-        });
-      }
-      if (cameraBooking.barrierCommandId) {
-        const entryGate = resolveEntryBarrierGate({
-          barrierId: cameraBooking.barrierId,
-          queueLaneType: meta.queueLaneType,
-          customer: cameraBooking,
-        });
-        const opened = await executeBarrierCommand({
-          gate: entryGate,
-          commandId: cameraBooking.barrierCommandId,
-          licensePlate: cameraBooking.licensePlate || plate,
-          expiresAt: cameraBooking.barrierCommandExpiresAt,
-          source: "camera-check-in",
-        }).then(wasBarrierCommandAccepted).catch(() => false);
-        if (!opened) {
-          setBarrierAlert({
-            type: "error",
-            message: `Xe ${cameraBooking.licensePlate || plate} đã check-in nhưng ESP32 chưa mở được barie ${getBarrierGateLabel(entryGate)}.`,
-          });
-        }
-      }
-      const freshTasks = await loadStaffTasks();
-      const freshBooking = Array.isArray(freshTasks)
-        ? freshTasks.find(
-            (task) =>
-              Number(task.bookingId) === Number(cameraBooking.bookingId),
-          ) ??
-          freshTasks.find(
-            (task) =>
-              normalizePlate(task?.licensePlate ?? task?.plateNumber) ===
-              normalizePlate(plate),
-          )
-        : null;
-      const authoritativeBooking = await autoStartCameraBooking(
-        freshBooking ?? cameraBooking,
-      );
-      await applySelectedBooking(authoritativeBooking);
-      publishBookingLaneState(authoritativeBooking);
-      const message = getCheckInSuccessMessage(authoritativeBooking);
-      notice(message);
-      return { message };
-    };
-
-    try {
-      if (meta?.operationMode === 'exit') {
-        const recentManualCompletion = findRecentManualCompletion(plate);
-        if (recentManualCompletion) {
-          const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
-          setBarrierAlert({ type: 'manual', message });
-          notice(message);
-          return { status: 'needs-action', type: 'warning', message, handled: true };
-        }
-
-        try {
-          if (!(meta.imageBlob instanceof Blob)) {
-            throw new ApiError(
-              "Chưa có ảnh camera cổng ra, không thể hoàn tất lượt rửa.",
-              400,
-            );
-          }
-          const completed = await cameraCheckOutByPlate(plate, {
-            checkOutImage: meta.imageBlob,
-          });
-          if (completed.isDuplicate) {
-            if (latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob) {
-              latestCameraFramesRef.current.exit = null;
-            }
-
-            const commandStatus = String(completed.barrierCommandStatus ?? '').trim().toLowerCase();
-            const barrierWasAcknowledged =
-              commandStatus === 'completed' || commandStatus === 'acknowledged';
-            const commandExpired =
-              commandStatus === 'expired' ||
-              (completed.barrierCommandExpiresAt &&
-                Date.parse(completed.barrierCommandExpiresAt) <= Date.now());
-            const message = barrierWasAcknowledged
-              ? `Xe ${plate} đã hoàn tất dịch vụ trước đó và ESP32 đã xác nhận lệnh mở barie.`
-              : commandExpired
-                ? `Xe ${plate} đã hoàn tất dịch vụ trước đó; lệnh mở barie đã hết hạn nên hệ thống không gửi lại tự động.`
-                : `Xe ${plate} đã hoàn tất dịch vụ trước đó — bỏ qua lần quét trùng.`;
-
-            setBarrierAlert({
-              type: barrierWasAcknowledged ? 'success' : 'manual',
-              message,
-              booking: completed,
-            });
-            notice(message, barrierWasAcknowledged ? 'success' : 'warning');
+        if (meta?.operationMode === "exit") {
+          const recentManualCompletion = findRecentManualCompletion(plate);
+          if (recentManualCompletion) {
+            const message = `Xe ${plate} đã hoàn thành thủ công — Staff cần mở barie cổng ra bằng điều khiển thủ công.`;
+            setBarrierAlert({ type: "manual", message });
+            notice(message);
             return {
-              status: barrierWasAcknowledged ? 'completed' : 'needs-action',
-              type: barrierWasAcknowledged ? 'success' : 'warning',
+              status: "needs-action",
+              type: "warning",
               message,
               handled: true,
             };
           }
 
-          const exitCommandId =
-            completed.exitBarrierCommandId ?? completed.barrierCommandId;
-          let barrierOpened = null;
-          if (exitCommandId) {
-            const exitGate = gateFromBarrierId(completed.barrierId) ?? BARRIER_GATES.EXIT;
-            barrierOpened = await executeBarrierCommand({
-              gate: exitGate,
-              commandId: exitCommandId,
-              licensePlate: completed.licensePlate || plate,
-              expiresAt: completed.barrierCommandExpiresAt,
-              source: "camera-check-out",
-            }).then(wasBarrierCommandAccepted).catch(() => false);
-          }
-          if (latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob) {
-            latestCameraFramesRef.current.exit = null;
-          }
-          const duration = Number(completed.actualDurationMinutes);
-          const durationLabel = Number.isFinite(duration) && duration > 0
-            ? ` (${duration} phút)`
-            : '';
-          const message = barrierOpened === true
-            ? `Xe ${plate} hoàn tất dịch vụ${durationLabel} — ESP32 đã nhận lệnh mở barie.`
-            : barrierOpened === false
-              ? `Xe ${plate} hoàn tất dịch vụ${durationLabel} nhưng ESP32 chưa mở được barie.`
-              : `Xe ${plate} hoàn tất dịch vụ${durationLabel} — đang chờ lệnh realtime mở barie.`;
-          setBarrierAlert({
-            type: barrierOpened === true ? 'success' : barrierOpened === false ? 'error' : 'manual',
-            message,
-            booking: completed,
-          });
-          setStaffTasks((tasks) =>
-            tasks.filter((task) => Number(task.bookingId) !== Number(completed.bookingId)),
-          );
-          setLaneOccupancies((current) =>
-            current?.filter(
-              (occupancy) =>
-                normalizePlate(occupancy.licensePlate) !== normalizePlate(plate),
-            ) ?? current,
-          );
-          setSelectedBooking((booking) =>
-            Number(booking?.bookingId) === Number(completed.bookingId) ? null : booking,
-          );
-          notice(message, "success");
-          await loadStaffTasks();
-          return { message, handled: true };
-        } catch (checkoutError) {
-          const rawMessage = checkoutError instanceof ApiError
-            ? checkoutError.message
-            : 'Không thể check-out xe tại cổng ra.';
-          const normalizedMessage = rawMessage.toLowerCase();
-          const unpaid = normalizedMessage.includes('unpaid') || normalizedMessage.includes('chưa thanh toán');
-          const notFound = normalizedMessage.includes('no active wash session') || normalizedMessage.includes('not found');
-          const message = unpaid
-            ? `Xe ${plate} chưa thanh toán — barie giữ đóng.`
-            : notFound
-              ? `Không tìm thấy lượt rửa đang hoạt động cho xe ${plate}.`
-              : rawMessage;
-          setBarrierAlert({ type: 'error', message });
-          setLookupError(message);
-          notice(message, 'error');
-          throw checkoutError;
-        }
-      }
-
-      const normalized = normalizePlate(plate);
-      const existing = staffTasks.find(
-        (task) => normalizePlate(task.licensePlate) === normalized,
-      );
-
-      if (existing) {
-        updateVehicleReviewContext(plate, "Booking");
-        const laneMismatch = validatePhysicalQueueLane(existing);
-        if (laneMismatch) {
-          await applySelectedBooking(existing, {
-            message: laneMismatch.message,
-          });
-          return laneMismatch;
-        }
-        const updated = await checkInBooking(existing);
-        return {
-          status: updated.status === "Pending" ? "needs-action" : undefined,
-          message: `${plate} đang ở hàng đợi Staff (${getBookingStatusLabel(updated.status)}).`,
-        };
-      }
-
-      const lookup = await smartLookupLicensePlate(plate);
-      updateVehicleReviewContext(plate, lookup.customerType);
-
-      if (lookup.customerType === "PreBooked" && lookup.booking) {
-        const booking = normalizeStaffTask(lookup.booking);
-        const laneMismatch = validatePhysicalQueueLane(booking);
-        if (laneMismatch) {
-          await applySelectedBooking(booking, {
-            message: laneMismatch.message,
-          });
-          return laneMismatch;
-        }
-
-        if (booking.status === "Pending") {
           try {
-            const updated = await checkInBooking(booking);
-            const message =
-              updated.status === "Pending"
-                ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
-                : getCheckInSuccessMessage(updated);
-            notice(message);
-            return { message };
-          } catch (checkInError) {
-            if (isCheckInScheduleError(checkInError)) {
-              throw checkInError;
+            if (!(meta.imageBlob instanceof Blob)) {
+              throw new ApiError(
+                "Chưa có ảnh camera cổng ra, không thể hoàn tất lượt rửa.",
+                400,
+              );
             }
-            return fallbackCameraCheckIn();
-          }
-        }
+            const completed = await cameraCheckOutByPlate(plate, {
+              checkOutImage: meta.imageBlob,
+            });
+            if (completed.isDuplicate) {
+              if (
+                latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob
+              ) {
+                latestCameraFramesRef.current.exit = null;
+              }
 
-        const updatedBooking = await autoStartCameraBooking(booking);
-        await applySelectedBooking(updatedBooking, {
-          message: plateLookupMessage(updatedBooking.status),
-        });
-        publishBookingLaneState(updatedBooking);
+              const commandStatus = String(completed.barrierCommandStatus ?? "")
+                .trim()
+                .toLowerCase();
+              const barrierWasAcknowledged =
+                commandStatus === "completed" ||
+                commandStatus === "acknowledged";
+              const commandExpired =
+                commandStatus === "expired" ||
+                (completed.barrierCommandExpiresAt &&
+                  Date.parse(completed.barrierCommandExpiresAt) <= Date.now());
+              const message = barrierWasAcknowledged
+                ? `Xe ${plate} đã hoàn tất dịch vụ trước đó và ESP32 đã xác nhận lệnh mở barie.`
+                : commandExpired
+                  ? `Xe ${plate} đã hoàn tất dịch vụ trước đó; lệnh mở barie đã hết hạn nên hệ thống không gửi lại tự động.`
+                  : `Xe ${plate} đã hoàn tất dịch vụ trước đó — bỏ qua lần quét trùng.`;
 
-        return {
-          status:
-            updatedBooking.status === "Checked-in" || updatedBooking.status === "Processing"
-              ? undefined
-              : "needs-action",
-          message: `Booking #${updatedBooking.bookingId} đang ở trạng thái ${getBookingStatusLabel(updatedBooking.status)}.`,
-        };
-      }
+              setBarrierAlert({
+                type: barrierWasAcknowledged ? "success" : "manual",
+                message,
+                booking: completed,
+              });
+              notice(message, barrierWasAcknowledged ? "success" : "warning");
+              return {
+                status: barrierWasAcknowledged ? "completed" : "needs-action",
+                type: barrierWasAcknowledged ? "success" : "warning",
+                message,
+                handled: true,
+              };
+            }
 
-      if (lookup.customerType === "Fleet") {
-        const laneMismatch = validatePhysicalQueueLane(lookup);
-        if (laneMismatch) return laneMismatch;
-
-        const branchId = Number(laneAssignment?.branchId);
-        setWalkInDraft(null);
-        setSelectedBooking(null);
-
-        if (!branchId) {
-          const message = "Đã nhận diện xe doanh nghiệp nhưng chưa xác định được chi nhánh Staff.";
-          setLookupError(message);
-          publishLaneDisplayEvent({ type: "error", plate });
-          return { status: "needs-action", type: "error", message };
-        }
-
-        const fleetResult = await fleetWalkIn({ licensePlate: plate, branchId });
-        const fleetAssigned =
-          !fleetResult?.isWaiting &&
-          Boolean(fleetResult?.laneId || fleetResult?.laneName);
-        let fleetBooking = {
-          ...createFleetLookupBooking(plate, lookup.fleetVehicle),
-          isFleetLookup: false,
-          bookingId: fleetResult?.bookingId ?? null,
-          fleetWashLogId: fleetResult?.fleetWashLogId,
-          fleetVehicleId:
-            fleetResult?.fleetVehicleId ?? lookup.fleetVehicle?.fleetVehicleId,
-          driverName:
-            fleetResult?.driverName ?? lookup.fleetVehicle?.driverName ?? "",
-          status: "Checked-in",
-          scheduledTime: fleetResult?.checkInTime ?? new Date().toISOString(),
-          processingLaneId: fleetResult?.laneId ?? null,
-          processingLaneName: fleetResult?.laneName ?? null,
-        };
-
-        if (fleetAssigned && fleetBooking.fleetWashLogId) {
-          try {
-            await fleetStartProcessing(
-              fleetBooking.fleetWashLogId,
-              fleetBooking.processingLaneId,
-            );
-            fleetBooking = {
-              ...fleetBooking,
-              status: "Processing",
-              processingStartTime: new Date().toISOString(),
-            };
-          } catch (startError) {
+            const exitCommandId =
+              completed.exitBarrierCommandId ?? completed.barrierCommandId;
+            let barrierOpened = null;
+            if (exitCommandId) {
+              const exitGate =
+                gateFromBarrierId(completed.barrierId) ?? BARRIER_GATES.EXIT;
+              barrierOpened = await executeBarrierCommand({
+                gate: exitGate,
+                commandId: exitCommandId,
+                licensePlate: completed.licensePlate || plate,
+                expiresAt: completed.barrierCommandExpiresAt,
+                source: "camera-check-out",
+              })
+                .then(wasBarrierCommandAccepted)
+                .catch(() => false);
+            }
+            if (
+              latestCameraFramesRef.current.exit?.imageBlob === meta.imageBlob
+            ) {
+              latestCameraFramesRef.current.exit = null;
+            }
+            const duration = Number(completed.actualDurationMinutes);
+            const durationLabel =
+              Number.isFinite(duration) && duration > 0
+                ? ` (${duration} phút)`
+                : "";
             const message =
-              startError instanceof ApiError
-                ? `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
-                : `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
+              barrierOpened === true
+                ? `Xe ${plate} hoàn tất dịch vụ${durationLabel} — ESP32 đã nhận lệnh mở barie.`
+                : barrierOpened === false
+                  ? `Xe ${plate} hoàn tất dịch vụ${durationLabel} nhưng ESP32 chưa mở được barie.`
+                  : `Xe ${plate} hoàn tất dịch vụ${durationLabel} — đang chờ lệnh realtime mở barie.`;
+            setBarrierAlert({
+              type:
+                barrierOpened === true
+                  ? "success"
+                  : barrierOpened === false
+                    ? "error"
+                    : "manual",
+              message,
+              booking: completed,
+            });
+            setStaffTasks((tasks) =>
+              tasks.filter(
+                (task) =>
+                  Number(task.bookingId) !== Number(completed.bookingId),
+              ),
+            );
+            setLaneOccupancies(
+              (current) =>
+                current?.filter(
+                  (occupancy) =>
+                    normalizePlate(occupancy.licensePlate) !==
+                    normalizePlate(plate),
+                ) ?? current,
+            );
+            setSelectedBooking((booking) =>
+              Number(booking?.bookingId) === Number(completed.bookingId)
+                ? null
+                : booking,
+            );
+            notice(message, "success");
+            await loadStaffTasks();
+            return { message, handled: true };
+          } catch (checkoutError) {
+            const rawMessage =
+              checkoutError instanceof ApiError
+                ? checkoutError.message
+                : "Không thể check-out xe tại cổng ra.";
+            const normalizedMessage = rawMessage.toLowerCase();
+            const unpaid =
+              normalizedMessage.includes("unpaid") ||
+              normalizedMessage.includes("chưa thanh toán");
+            const notFound =
+              normalizedMessage.includes("no active wash session") ||
+              normalizedMessage.includes("not found");
+            const message = unpaid
+              ? `Xe ${plate} chưa thanh toán — barie giữ đóng.`
+              : notFound
+                ? `Không tìm thấy lượt rửa đang hoạt động cho xe ${plate}.`
+                : rawMessage;
+            setBarrierAlert({ type: "error", message });
             setLookupError(message);
             notice(message, "error");
+            throw checkoutError;
           }
         }
 
-        setSelectedBooking(fleetBooking);
-        await loadStaffTasks();
-        if (fleetAssigned) {
-          publishLaneDisplayEvent({
-            type: "assigned",
-            plate,
-            bookingId: fleetResult?.bookingId ?? fleetResult?.fleetWashLogId,
-            laneId: fleetResult?.laneId,
-            laneName: fleetResult?.laneName,
-          });
-        } else {
-          publishLaneDisplayEvent({ type: "waiting", plate });
-        }
-        const fleetMessage =
-          fleetBooking.status === "Processing"
-            ? `Camera AI đã check-in và tự động bắt đầu rửa xe doanh nghiệp ${plate}.`
-            : `Camera AI đã check-in xe doanh nghiệp ${plate} và đang chờ buồng rửa.`;
-        notice(fleetMessage);
-        return { message: fleetMessage };
-      }
-
-      if (lookup.customerType === "WalkIn") {
-        const laneMismatch = validatePhysicalQueueLane({
-          ...lookup,
-          ...lookup.walkInCustomer,
-        });
-        if (laneMismatch) return laneMismatch;
-
-        const branchId = Number(laneAssignment?.branchId);
-        setSelectedBooking(null);
-
-        if (!branchId) {
-          const message = "Đã nhận diện khách vãng lai nhưng chưa xác định được chi nhánh Staff.";
-          setWalkInDraft(null);
-          setLookupError(message);
-          publishLaneDisplayEvent({ type: "error", plate });
-          return { status: "needs-action", type: "error", message };
-        }
-
-        const vehicleRecognition = meta?.vehicleRecognition;
-        const primaryVisionResult = vehicleRecognition?.primaryResult;
-        const predictedVehicleTypeId = findVehicleTypeIdByName(
-          vehicleTypes,
-          primaryVisionResult?.vehicleType,
+        const normalized = normalizePlate(plate);
+        const existing = staffTasks.find(
+          (task) => normalizePlate(task.licensePlate) === normalized,
         );
-        const storedVehicleTypeId =
-          Number(lookup.walkInCustomer?.vehicleTypeId) || undefined;
-        const selectedVehicleTypeId =
-          storedVehicleTypeId ?? predictedVehicleTypeId;
 
-        setWalkInDraft({
-          licensePlate: plate,
-          branchId,
-          serviceIds: [],
-          userId: lookup.walkInCustomer?.userId ?? 0,
-          customerName: lookup.walkInCustomer?.customerName ?? "",
-          phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
-          customerTierName: lookup.walkInCustomer?.customerTierName,
-          customerTierPoints: lookup.walkInCustomer?.customerTierPoints,
-          isVip: lookup.walkInCustomer?.isVip === true,
-          vehicleId: lookup.walkInCustomer?.vehicleId,
-          vehicleTypeId: selectedVehicleTypeId,
-          paymentMethod: "Cash",
-        });
-        if (selectedVehicleTypeId) {
-          updateVehicleReviewType(plate, selectedVehicleTypeId);
+        if (existing) {
+          updateVehicleReviewContext(plate, "Booking");
+          const laneMismatch = validatePhysicalQueueLane(existing);
+          if (laneMismatch) {
+            await applySelectedBooking(existing, {
+              message: laneMismatch.message,
+            });
+            return laneMismatch;
+          }
+          const updated = await checkInBooking(existing);
+          return {
+            status: updated.status === "Pending" ? "needs-action" : undefined,
+            message: `${plate} đang ở hàng đợi Staff (${getBookingStatusLabel(updated.status)}).`,
+          };
         }
-        setLookupError("Camera đã nhận diện khách vãng lai cá nhân. Chọn dịch vụ để tạo check-in.");
-        publishLaneDisplayEvent({
-          type: "assistance",
-          plate,
-          title: "NHÂN VIÊN ĐANG ĐẾN HỖ TRỢ",
-          reasonCode: lookup.walkInCustomer?.userId
-            ? "customer_without_booking"
-            : "walk_in_assistance",
-          message: lookup.walkInCustomer?.userId
-            ? "Quý khách chưa có lịch rửa hôm nay."
-            : "Nhân viên sẽ hỗ trợ tạo lượt rửa cho quý khách",
-        });
-        await loadWalkInServices(branchId);
-        return { status: "needs-action", message: `Đã nhận diện khách vãng lai: ${plate}.` };
-      }
 
-      const message = "Tra cứu biển số từ camera không trả về loại khách được hỗ trợ.";
-      setSelectedBooking(null);
-      setWalkInDraft(null);
-      setLookupError(message);
-      publishLaneDisplayEvent({ type: "error", plate });
-      return { status: "needs-action", type: "error", message };
-    } catch (err) {
-      if (meta?.operationMode === 'exit') throw err;
-      if (isCheckInScheduleError(err)) {
+        const lookup = await smartLookupLicensePlate(plate);
+        updateVehicleReviewContext(plate, lookup.customerType);
+
+        if (lookup.customerType === "PreBooked" && lookup.booking) {
+          const booking = normalizeStaffTask(lookup.booking);
+          const laneMismatch = validatePhysicalQueueLane(booking);
+          if (laneMismatch) {
+            await applySelectedBooking(booking, {
+              message: laneMismatch.message,
+            });
+            return laneMismatch;
+          }
+
+          if (booking.status === "Pending") {
+            try {
+              const updated = await checkInBooking(booking);
+              const message =
+                updated.status === "Pending"
+                  ? `Xe ${plate} chưa hoàn tất thanh toán nên chưa thể check-in.`
+                  : getCheckInSuccessMessage(updated);
+              notice(message);
+              return { message };
+            } catch (checkInError) {
+              if (isCheckInScheduleError(checkInError)) {
+                throw checkInError;
+              }
+              return fallbackCameraCheckIn();
+            }
+          }
+
+          const updatedBooking = await autoStartCameraBooking(booking);
+          await applySelectedBooking(updatedBooking, {
+            message: plateLookupMessage(updatedBooking.status),
+          });
+          publishBookingLaneState(updatedBooking);
+
+          return {
+            status:
+              updatedBooking.status === "Checked-in" ||
+              updatedBooking.status === "Processing"
+                ? undefined
+                : "needs-action",
+            message: `Booking #${updatedBooking.bookingId} đang ở trạng thái ${getBookingStatusLabel(updatedBooking.status)}.`,
+          };
+        }
+
+        if (lookup.customerType === "Fleet") {
+          const laneMismatch = validatePhysicalQueueLane(lookup);
+          if (laneMismatch) return laneMismatch;
+
+          const branchId = Number(laneAssignment?.branchId);
+          setWalkInDraft(null);
+          setSelectedBooking(null);
+
+          if (!branchId) {
+            const message =
+              "Đã nhận diện xe doanh nghiệp nhưng chưa xác định được chi nhánh Staff.";
+            setLookupError(message);
+            publishLaneDisplayEvent({ type: "error", plate });
+            return { status: "needs-action", type: "error", message };
+          }
+
+          const fleetResult = await fleetWalkIn({
+            licensePlate: plate,
+            branchId,
+          });
+          const fleetAssigned =
+            !fleetResult?.isWaiting &&
+            Boolean(fleetResult?.laneId || fleetResult?.laneName);
+          let fleetBooking = {
+            ...createFleetLookupBooking(plate, lookup.fleetVehicle),
+            isFleetLookup: false,
+            bookingId: fleetResult?.bookingId ?? null,
+            fleetWashLogId: fleetResult?.fleetWashLogId,
+            fleetVehicleId:
+              fleetResult?.fleetVehicleId ??
+              lookup.fleetVehicle?.fleetVehicleId,
+            driverName:
+              fleetResult?.driverName ?? lookup.fleetVehicle?.driverName ?? "",
+            status: "Checked-in",
+            scheduledTime: fleetResult?.checkInTime ?? new Date().toISOString(),
+            processingLaneId: fleetResult?.laneId ?? null,
+            processingLaneName: fleetResult?.laneName ?? null,
+          };
+
+          if (fleetAssigned && fleetBooking.fleetWashLogId) {
+            try {
+              await fleetStartProcessing(
+                fleetBooking.fleetWashLogId,
+                fleetBooking.processingLaneId,
+              );
+              fleetBooking = {
+                ...fleetBooking,
+                status: "Processing",
+                processingStartTime: new Date().toISOString(),
+              };
+            } catch (startError) {
+              const message =
+                startError instanceof ApiError
+                  ? `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa: ${startError.message}`
+                  : `Xe ${plate} đã check-in nhưng không thể tự động bắt đầu rửa.`;
+              setLookupError(message);
+              notice(message, "error");
+            }
+          }
+
+          setSelectedBooking(fleetBooking);
+          await loadStaffTasks();
+          if (fleetAssigned) {
+            publishLaneDisplayEvent({
+              type: "assigned",
+              plate,
+              bookingId: fleetResult?.bookingId ?? fleetResult?.fleetWashLogId,
+              laneId: fleetResult?.laneId,
+              laneName: fleetResult?.laneName,
+            });
+          } else {
+            publishLaneDisplayEvent({ type: "waiting", plate });
+          }
+          const fleetMessage =
+            fleetBooking.status === "Processing"
+              ? `Camera AI đã check-in và tự động bắt đầu rửa xe doanh nghiệp ${plate}.`
+              : `Camera AI đã check-in xe doanh nghiệp ${plate} và đang chờ buồng rửa.`;
+          notice(fleetMessage);
+          return { message: fleetMessage };
+        }
+
+        if (lookup.customerType === "WalkIn") {
+          const laneMismatch = validatePhysicalQueueLane({
+            ...lookup,
+            ...lookup.walkInCustomer,
+          });
+          if (laneMismatch) return laneMismatch;
+
+          const branchId = Number(laneAssignment?.branchId);
+          setSelectedBooking(null);
+
+          if (!branchId) {
+            const message =
+              "Đã nhận diện khách vãng lai nhưng chưa xác định được chi nhánh Staff.";
+            setWalkInDraft(null);
+            setLookupError(message);
+            publishLaneDisplayEvent({ type: "error", plate });
+            return { status: "needs-action", type: "error", message };
+          }
+
+          const vehicleRecognition = meta?.vehicleRecognition;
+          const primaryVisionResult = vehicleRecognition?.primaryResult;
+          const predictedVehicleTypeId = findVehicleTypeIdByName(
+            vehicleTypes,
+            primaryVisionResult?.vehicleType,
+          );
+          const storedVehicleTypeId =
+            Number(lookup.walkInCustomer?.vehicleTypeId) || undefined;
+          const selectedVehicleTypeId =
+            storedVehicleTypeId ?? predictedVehicleTypeId;
+
+          setWalkInDraft({
+            licensePlate: plate,
+            branchId,
+            serviceIds: [],
+            userId: lookup.walkInCustomer?.userId ?? 0,
+            customerName: lookup.walkInCustomer?.customerName ?? "",
+            phoneNumber: lookup.walkInCustomer?.phoneNumber ?? "",
+            customerTierName: lookup.walkInCustomer?.customerTierName,
+            customerTierPoints: lookup.walkInCustomer?.customerTierPoints,
+            isVip: lookup.walkInCustomer?.isVip === true,
+            vehicleId: lookup.walkInCustomer?.vehicleId,
+            vehicleTypeId: selectedVehicleTypeId,
+            paymentMethod: "Cash",
+          });
+          if (selectedVehicleTypeId) {
+            updateVehicleReviewType(plate, selectedVehicleTypeId);
+          }
+          setLookupError(
+            "Camera đã nhận diện khách vãng lai cá nhân. Chọn dịch vụ để tạo check-in.",
+          );
+          publishLaneDisplayEvent({
+            type: "assistance",
+            plate,
+            title: "NHÂN VIÊN ĐANG ĐẾN HỖ TRỢ",
+            reasonCode: lookup.walkInCustomer?.userId
+              ? "customer_without_booking"
+              : "walk_in_assistance",
+            message: lookup.walkInCustomer?.userId
+              ? "Quý khách chưa có lịch rửa hôm nay."
+              : "Nhân viên sẽ hỗ trợ tạo lượt rửa cho quý khách",
+          });
+          await loadWalkInServices(branchId);
+          return {
+            status: "needs-action",
+            message: `Đã nhận diện khách vãng lai: ${plate}.`,
+          };
+        }
+
         const message =
-          err instanceof ApiError
-            ? err.message
-            : "Không thể check-in xe do không đúng lịch đặt.";
-        setWalkInDraft(null);
-        setLookupError(message);
-        notice(message, "error");
-        publishLaneDisplayEvent({
-          type: "assistance",
-          plate,
-          title:
-            getApiErrorCode(err) === CHECKIN_WRONG_DATE_ERROR
-              ? "LỊCH ĐẶT KHÔNG PHẢI HÔM NAY"
-              : "STAFF CHƯA XÁC NHẬN CHECK-IN NGOÀI GIỜ",
-          message,
-        });
-        return { status: "needs-action", type: "error", message };
-      }
-      if (meta?.queueLaneType && !queueLaneValidated) {
-        const message = `Chưa xác định được hạng của xe ${plate}; giữ nguyên check-in và yêu cầu Staff kiểm tra làn.`;
-        setWalkInDraft(null);
+          "Tra cứu biển số từ camera không trả về loại khách được hỗ trợ.";
         setSelectedBooking(null);
-        setLookupError(message);
-        publishLaneDisplayEvent({
-          type: "assistance",
-          plate,
-          message: "Vui lòng chờ Staff kiểm tra làn",
-        });
-        return { status: "needs-action", type: "error", message };
-      }
-      try {
-        return await fallbackCameraCheckIn();
-      } catch (fallbackErr) {
-        const message =
-          fallbackErr instanceof ApiError
-            ? fallbackErr.message
-            : err instanceof ApiError
-              ? err.message
-              : "Camera check-in thất bại.";
         setWalkInDraft(null);
-        setSelectedBooking(null);
         setLookupError(message);
         publishLaneDisplayEvent({ type: "error", plate });
-        throw fallbackErr instanceof Error ? fallbackErr : err;
+        return { status: "needs-action", type: "error", message };
+      } catch (err) {
+        if (meta?.operationMode === "exit") throw err;
+        if (isCheckInScheduleError(err)) {
+          const message =
+            err instanceof ApiError
+              ? err.message
+              : "Không thể check-in xe do không đúng lịch đặt.";
+          setWalkInDraft(null);
+          setLookupError(message);
+          notice(message, "error");
+          publishLaneDisplayEvent({
+            type: "assistance",
+            plate,
+            title:
+              getApiErrorCode(err) === CHECKIN_WRONG_DATE_ERROR
+                ? "LỊCH ĐẶT KHÔNG PHẢI HÔM NAY"
+                : "STAFF CHƯA XÁC NHẬN CHECK-IN NGOÀI GIỜ",
+            message,
+          });
+          return { status: "needs-action", type: "error", message };
+        }
+        if (meta?.queueLaneType && !queueLaneValidated) {
+          const message = `Chưa xác định được hạng của xe ${plate}; giữ nguyên check-in và yêu cầu Staff kiểm tra làn.`;
+          setWalkInDraft(null);
+          setSelectedBooking(null);
+          setLookupError(message);
+          publishLaneDisplayEvent({
+            type: "assistance",
+            plate,
+            message: "Vui lòng chờ Staff kiểm tra làn",
+          });
+          return { status: "needs-action", type: "error", message };
+        }
+        try {
+          return await fallbackCameraCheckIn();
+        } catch (fallbackErr) {
+          const message =
+            fallbackErr instanceof ApiError
+              ? fallbackErr.message
+              : err instanceof ApiError
+                ? err.message
+                : "Camera check-in thất bại.";
+          setWalkInDraft(null);
+          setSelectedBooking(null);
+          setLookupError(message);
+          publishLaneDisplayEvent({ type: "error", plate });
+          throw fallbackErr instanceof Error ? fallbackErr : err;
+        }
+      } finally {
+        setLoadingLookup(false);
       }
-    } finally {
-      setLoadingLookup(false);
-    }
-  }, [
-    applySelectedBooking,
-    executeBarrierCommand,
-    laneAssignment,
-    loadStaffTasks,
-    loadWalkInServices,
-    recordVehicleRecognition,
-    notice,
-    staffTasks,
-    updateVehicleReviewContext,
-    updateVehicleReviewType,
-    vehicleTypes,
-  ]);
+    },
+    [
+      applySelectedBooking,
+      executeBarrierCommand,
+      laneAssignment,
+      loadStaffTasks,
+      loadWalkInServices,
+      recordVehicleRecognition,
+      notice,
+      staffTasks,
+      updateVehicleReviewContext,
+      updateVehicleReviewType,
+      vehicleTypes,
+    ],
+  );
 
   const handleStartProcessing = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Checked-in") return;
@@ -3110,7 +3311,9 @@ export default function DashboardPage() {
         actualDurationMinutes: null,
       };
       try {
-        processingBooking = await enrichStaffBooking(processingBooking, { allowStandaloneFetch: true });
+        processingBooking = await enrichStaffBooking(processingBooking, {
+          allowStandaloneFetch: true,
+        });
       } catch {
         // keep local processing booking
       }
@@ -3132,7 +3335,10 @@ export default function DashboardPage() {
   const handleCheckin = useCallback(async () => {
     if (!selectedBooking || selectedBooking.status !== "Pending") return;
     if (!canCheckIn(selectedBooking)) {
-      notice("Booking chưa hoàn tất thanh toán nên chưa thể check-in.", "error");
+      notice(
+        "Booking chưa hoàn tất thanh toán nên chưa thể check-in.",
+        "error",
+      );
       publishLaneDisplayEvent({
         type: "payment",
         plate: selectedBooking.licensePlate,
@@ -3160,7 +3366,8 @@ export default function DashboardPage() {
           isFleetLookup: false,
           bookingId: result.bookingId ?? null,
           fleetWashLogId: result.fleetWashLogId,
-          fleetVehicleId: result.fleetVehicleId ?? selectedBooking.fleetVehicleId,
+          fleetVehicleId:
+            result.fleetVehicleId ?? selectedBooking.fleetVehicleId,
           driverName: result.driverName ?? selectedBooking.driverName,
           status: "Checked-in",
           scheduledTime: result.checkInTime ?? new Date().toISOString(),
@@ -3181,7 +3388,8 @@ export default function DashboardPage() {
       const latestEntryFrame = latestCameraFramesRef.current.entry;
       const checkInImage =
         latestEntryFrame?.imageBlob instanceof Blob &&
-        Date.now() - Number(latestEntryFrame.capturedAt) <= LATEST_CAMERA_IMAGE_MAX_AGE_MS
+        Date.now() - Number(latestEntryFrame.capturedAt) <=
+          LATEST_CAMERA_IMAGE_MAX_AGE_MS
           ? latestEntryFrame.imageBlob
           : undefined;
       // The button is the manual fallback; a recent camera frame is optional.
@@ -3222,10 +3430,13 @@ export default function DashboardPage() {
         const opened = await executeBarrierCommand({
           gate: entryGate,
           commandId: checkInResult.barrierCommandId,
-          licensePlate: checkInResult.licensePlate || selectedBooking.licensePlate,
+          licensePlate:
+            checkInResult.licensePlate || selectedBooking.licensePlate,
           expiresAt: checkInResult.barrierCommandExpiresAt,
           source: "staff-check-in",
-        }).then(wasBarrierCommandAccepted).catch(() => false);
+        })
+          .then(wasBarrierCommandAccepted)
+          .catch(() => false);
         if (!opened) {
           setBarrierAlert({
             type: "error",
@@ -3312,12 +3523,13 @@ export default function DashboardPage() {
               Number(t.fleetWashLogId) !== Number(fleetWashLogId),
           ),
         );
-        setLaneOccupancies((current) =>
-          current?.filter(
-            (occupancy) =>
-              Number(occupancy.bookingId) !== Number(bookingId) &&
-              Number(occupancy.fleetWashLogId) !== Number(fleetWashLogId),
-          ) ?? current,
+        setLaneOccupancies(
+          (current) =>
+            current?.filter(
+              (occupancy) =>
+                Number(occupancy.bookingId) !== Number(bookingId) &&
+                Number(occupancy.fleetWashLogId) !== Number(fleetWashLogId),
+            ) ?? current,
         );
         if (selectedBooking?.bookingId === bookingId) {
           setSelectedBooking(null);
@@ -3349,35 +3561,39 @@ export default function DashboardPage() {
     setExtraUsageForm({ materialId: "", quantity: "", note: "" });
   }, []);
 
-  const handleExtraUsageSubmit = useCallback(async (event) => {
-    event.preventDefault();
-    if (
-      !extraUsageBooking?.bookingId
-      || submittingExtraUsage
-      || !extraUsageForm.materialId
-      || Number(extraUsageForm.quantity) <= 0
-    ) return;
-    setSubmittingExtraUsage(true);
-    try {
-      await reportStaffExtraMaterialUsage(extraUsageBooking.bookingId, {
-        materialId: Number(extraUsageForm.materialId),
-        quantity: Number(extraUsageForm.quantity),
-        note: extraUsageForm.note.trim() || null,
-      });
-      setExtraUsageBooking(null);
-      setExtraUsageForm({ materialId: "", quantity: "", note: "" });
-      notice("Đã gửi yêu cầu vật tư phát sinh.");
-    } catch (err) {
-      notice(
-        err instanceof ApiError
-          ? err.message
-          : "Không gửi được yêu cầu vật tư phát sinh.",
-        "error",
-      );
-    } finally {
-      setSubmittingExtraUsage(false);
-    }
-  }, [extraUsageBooking, extraUsageForm, submittingExtraUsage, notice]);
+  const handleExtraUsageSubmit = useCallback(
+    async (event) => {
+      event.preventDefault();
+      if (
+        !extraUsageBooking?.bookingId ||
+        submittingExtraUsage ||
+        !extraUsageForm.materialId ||
+        Number(extraUsageForm.quantity) <= 0
+      )
+        return;
+      setSubmittingExtraUsage(true);
+      try {
+        await reportStaffExtraMaterialUsage(extraUsageBooking.bookingId, {
+          materialId: Number(extraUsageForm.materialId),
+          quantity: Number(extraUsageForm.quantity),
+          note: extraUsageForm.note.trim() || null,
+        });
+        setExtraUsageBooking(null);
+        setExtraUsageForm({ materialId: "", quantity: "", note: "" });
+        notice("Đã gửi yêu cầu vật tư phát sinh.");
+      } catch (err) {
+        notice(
+          err instanceof ApiError
+            ? err.message
+            : "Không gửi được yêu cầu vật tư phát sinh.",
+          "error",
+        );
+      } finally {
+        setSubmittingExtraUsage(false);
+      }
+    },
+    [extraUsageBooking, extraUsageForm, submittingExtraUsage, notice],
+  );
 
   const handleSelectFromQueue = useCallback(
     async (item) => {
@@ -3411,7 +3627,9 @@ export default function DashboardPage() {
           form={extraUsageForm}
           materials={materials}
           saving={submittingExtraUsage}
-          onChange={(patch) => setExtraUsageForm((form) => ({ ...form, ...patch }))}
+          onChange={(patch) =>
+            setExtraUsageForm((form) => ({ ...form, ...patch }))
+          }
           onClose={() => !submittingExtraUsage && setExtraUsageBooking(null)}
           onSubmit={handleExtraUsageSubmit}
         />
@@ -3427,10 +3645,14 @@ export default function DashboardPage() {
           <button
             type="button"
             className="flex items-center gap-2 rounded-full border border-outline-variant bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface transition-colors hover:border-primary hover:text-primary"
-            onClick={() => window.open('/display/lane', 'luxewash-lane-display')}
+            onClick={() =>
+              window.open("/display/lane", "luxewash-lane-display")
+            }
             title="Mở màn hình chỉ dẫn làn ở cửa sổ riêng"
           >
-            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+            <span className="material-symbols-outlined text-[16px]">
+              open_in_new
+            </span>
             Màn hình chỉ dẫn
           </button>
           <span className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary">
@@ -3524,29 +3746,31 @@ export default function DashboardPage() {
       {barrierAlert && (
         <div
           className={`mb-4 flex items-start gap-3 rounded-xl border px-5 py-4 ${
-            barrierAlert.type === 'success'
-              ? 'border-primary/40 bg-primary/10 text-primary'
-              : barrierAlert.type === 'manual'
-                ? 'border-amber-500/50 bg-amber-500/10 text-amber-800'
-                : 'border-error/50 bg-error-container/30 text-error'
+            barrierAlert.type === "success"
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : barrierAlert.type === "manual"
+                ? "border-amber-500/50 bg-amber-500/10 text-amber-800"
+                : "border-error/50 bg-error-container/30 text-error"
           }`}
           role="alert"
         >
           <span className="material-symbols-outlined text-3xl">
-            {barrierAlert.type === 'success'
-              ? 'garage_door'
-              : barrierAlert.type === 'manual'
-                ? 'warning'
-                : 'block'}
+            {barrierAlert.type === "success"
+              ? "garage_door"
+              : barrierAlert.type === "manual"
+                ? "warning"
+                : "block"}
           </span>
           <div>
-            <p className="font-sora text-lg font-bold uppercase">{barrierAlert.message}</p>
+            <p className="font-sora text-lg font-bold uppercase">
+              {barrierAlert.message}
+            </p>
             <p className="mt-1 text-sm opacity-85">
-              {barrierAlert.type === 'success'
-                ? 'Thanh toán hợp lệ, lượt rửa đã hoàn thành và vật tư đã được ghi nhận.'
-                : barrierAlert.type === 'manual'
-                  ? 'Hệ thống không tự mở barie trong luồng dự phòng này.'
-                  : 'Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại.'}
+              {barrierAlert.type === "success"
+                ? "Thanh toán hợp lệ, lượt rửa đã hoàn thành và vật tư đã được ghi nhận."
+                : barrierAlert.type === "manual"
+                  ? "Hệ thống không tự mở barie trong luồng dự phòng này."
+                  : "Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại."}
             </p>
           </div>
         </div>

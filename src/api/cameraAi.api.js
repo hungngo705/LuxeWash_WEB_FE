@@ -1,4 +1,4 @@
-import { API_DEFAULT_TIMEOUT_MS, CAMERA_AI_BASE_URL } from './config'
+import { CAMERA_AI_BASE_URL } from './config'
 import { apiRequest } from './client'
 import { ApiError } from './errors'
 import { normalizeStaffTask } from './operationStaff.api'
@@ -10,77 +10,13 @@ function buildCameraUrl(path) {
   return `${CAMERA_AI_BASE_URL.replace(/\/$/, '')}${normalized}`
 }
 
-async function parseBody(response) {
-  const contentType = response.headers.get('content-type') ?? ''
-  if (contentType.includes('application/json')) return response.json()
-  const text = await response.text()
-  return text ? { message: text } : null
-}
-
-function getMessage(body, fallback) {
-  if (body && typeof body === 'object' && 'message' in body) {
-    return String(body.message ?? fallback)
-  }
-  return fallback
-}
-
 async function cameraRequest(path, options = {}) {
-  const {
-    timeoutMs = API_DEFAULT_TIMEOUT_MS,
-    headers: customHeaders,
-    ...fetchOptions
-  } = options
-
-  const headers = new Headers(customHeaders)
-  if (!headers.has('Accept')) headers.set('Accept', 'application/json')
-
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-  const externalSignal = fetchOptions.signal
-  const onExternalAbort = () => controller.abort()
-
-  if (externalSignal) {
-    if (externalSignal.aborted) controller.abort()
-    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
-  }
-
-  let response
-  try {
-    response = await fetch(buildCameraUrl(path), {
-      ...fetchOptions,
-      headers,
-      signal: controller.signal,
-    })
-  } catch (err) {
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
-    if (err instanceof Error && err.name === 'AbortError') {
-      if (externalSignal?.aborted) {
-        const abortErr = new Error('Aborted')
-        abortErr.name = 'AbortError'
-        throw abortErr
-      }
-      throw new ApiError('Yêu cầu Camera AI quá thời gian chờ.', 408)
-    }
-    throw new ApiError(err instanceof Error ? err.message : 'Lỗi kết nối Camera AI', 0)
-  } finally {
-    clearTimeout(timeoutId)
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
-  }
-
-  const body = await parseBody(response)
-
-  if (!response.ok) {
-    throw new ApiError(getMessage(body, `HTTP ${response.status}`), response.status, body)
-  }
-
-  if (body && typeof body === 'object' && 'statusCode' in body) {
-    const statusCode = Number(body.statusCode)
-    if (statusCode >= 400) {
-      throw new ApiError(getMessage(body, 'Yêu cầu Camera AI thất bại'), statusCode, body)
-    }
-  }
-
-  return body
+  return apiRequest(buildCameraUrl(path), {
+    ...options,
+    // Keep the complete AI response because several endpoints return fields such
+    // as hasCar/boxes alongside statusCode instead of nesting them under data.
+    unwrapResponse: false,
+  })
 }
 
 export async function checkCameraHasCar(imageBlob, options = {}) {
