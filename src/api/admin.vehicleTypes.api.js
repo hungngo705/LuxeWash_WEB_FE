@@ -1,8 +1,8 @@
 import { apiRequest } from './client'
 
 /**
- * @typedef {{ id: number; name: string; description?: string }} VehicleType
- * @typedef {{ name: string; description?: string }} VehicleTypePayload
+ * @typedef {{ id: number; name: string; description?: string; baseWeight?: number | null }} VehicleType
+ * @typedef {{ name: string; description?: string; baseWeight?: number | null }} VehicleTypePayload
  */
 
 /** @returns {Promise<VehicleType[]>} */

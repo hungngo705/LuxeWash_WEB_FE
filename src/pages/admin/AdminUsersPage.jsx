@@ -457,6 +457,12 @@ export default function AdminUsersPage() {
                         <dt className="text-xs font-semibold text-on-surface-variant uppercase">SĐT</dt>
                         <dd className="text-on-surface">{selectedUser.phoneNumber}</dd>
                       </div>
+                      {selectedUser.userId != null && (
+                        <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">Mã người dùng</dt>
+                          <dd className="text-on-surface">#{selectedUser.userId}</dd>
+                        </div>
+                      )}
                       {selectedUser.tierName && (
                         <div>
                           <dt className="text-xs font-semibold text-on-surface-variant uppercase">Hạng</dt>

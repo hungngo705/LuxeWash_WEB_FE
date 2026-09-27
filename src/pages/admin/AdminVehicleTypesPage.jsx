@@ -12,7 +12,7 @@ import EmptyState from '../../components/admin/shared/EmptyState'
 import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 
-const emptyForm = { name: '', description: '' }
+const emptyForm = { name: '', description: '', baseWeight: '' }
 
 export default function AdminVehicleTypesPage() {
   const [vehicleTypes, setVehicleTypes] = useState([])
@@ -58,7 +58,11 @@ export default function AdminVehicleTypesPage() {
 
   const openEdit = (vt) => {
     setEditingId(vt.id)
-    setForm({ name: vt.name, description: vt.description ?? '' })
+    setForm({
+      name: vt.name,
+      description: vt.description ?? '',
+      baseWeight: vt.baseWeight == null ? '' : String(vt.baseWeight),
+    })
     setModalOpen(true)
   }
 
@@ -70,9 +74,20 @@ export default function AdminVehicleTypesPage() {
       return
     }
 
+    let baseWeight = null
+    if (form.baseWeight !== '' && form.baseWeight != null) {
+      const parsed = Number(form.baseWeight)
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+        showToast('Trọng số phải là số nguyên không âm (≥ 0)')
+        return
+      }
+      baseWeight = parsed
+    }
+
     const payload = {
       name: form.name.trim(),
       description: form.description.trim(),
+      baseWeight,
     }
 
     setSaving(true)
@@ -154,6 +169,7 @@ export default function AdminVehicleTypesPage() {
               <tr className="border-b border-outline-variant bg-surface-container-low text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Tên</th>
+                <th className="px-4 py-3">Trọng số</th>
                 <th className="px-4 py-3">Mô tả</th>
                 <th className="px-4 py-3">Dịch vụ liên kết</th>
                 <th className="px-4 py-3">Thao tác</th>
@@ -164,6 +180,7 @@ export default function AdminVehicleTypesPage() {
                 <tr key={vt.id} className="hover:bg-surface-container-low/50">
                   <td className="px-4 py-3 text-on-surface-variant">#{vt.id}</td>
                   <td className="px-4 py-3 font-medium text-on-surface">{vt.name}</td>
+                  <td className="px-4 py-3 text-on-surface">{vt.baseWeight ?? '—'}</td>
                   <td className="px-4 py-3 text-on-surface-variant">{vt.description || '—'}</td>
                   <td className="px-4 py-3 text-on-surface">{countLinkedServices(vt.id)}</td>
                   <td className="px-4 py-3">
@@ -223,6 +240,24 @@ export default function AdminVehicleTypesPage() {
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               disabled={saving}
             />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
+              Trọng số (baseWeight)
+            </span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
+              value={form.baseWeight}
+              onChange={(e) => setForm((f) => ({ ...f, baseWeight: e.target.value }))}
+              placeholder="Để trống = mặc định 1"
+              disabled={saving}
+            />
+            <span className="text-xs text-on-surface-variant">
+              Số nguyên không âm. Dùng để định trọng số khi tính giá / xếp hạng.
+            </span>
           </label>
         </div>
       </FormModal>
