@@ -13,13 +13,17 @@ function unwrapData(response) {
   return response?.data ?? response
 }
 
-/** BE response: { success: true, data: { affectedBookingsCount, totalCapacityLoss, affectedBookings } }. */
+/**
+ * BE response: { success: true, data: { affectedBookingsCount, totalCapacityLoss, affectedBookings } }.
+ * Each affected booking also contains isOverbooked so the Manager can decide
+ * which customers should receive an incident notification.
+ */
 export async function previewIncident(payload) {
   const response = await mutation(`${BASE}/preview`, 'POST', payload)
   return unwrapData(response)
 }
 
-/** BE response: { success: true, incidentId }. */
+/** BE body includes selectedBookingIds; only those bookings are notified. */
 export function createIncident(payload) {
   return mutation(BASE, 'POST', payload)
 }
@@ -41,7 +45,7 @@ export async function getIncidentImpact(id) {
   return unwrapData(response)
 }
 
-/** BE: PUT /{id}/extend, body { newEstimatedEndAtVn, note }. */
+/** BE: PUT /{id}/extend, body { newEstimatedEndAtVn, note, selectedBookingIds }. */
 export function extendIncident(id, payload) {
   return mutation(`${BASE}/${encodeURIComponent(id)}/extend`, 'PUT', payload)
 }

@@ -1,18 +1,27 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink } from "react-router-dom";
 
 const navItems = [
-  { to: '/manager/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
-  { to: '/manager/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
-  { to: '/manager/queue', label: 'Điều phối xe', icon: 'local_shipping' },
-  { to: '/manager/lanes', label: 'Làn rửa', icon: 'garage' },
-  { to: '/manager/incidents', label: 'Sự cố chi nhánh', icon: 'report_problem' },
-  { to: '/manager/time-slots', label: 'Khung giờ', icon: 'schedule' },
-  { to: '/manager/staff', label: 'Phân công làn', icon: 'badge' },
-  { to: '/manager/shifts', label: 'Ca làm', icon: 'schedule' },
-  { to: '/manager/employees', label: 'Nhân viên', icon: 'group_add' },
-  { to: '/manager/customers', label: 'Khách hàng', icon: 'group' },
-  { to: '/manager/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
-]
+  {
+    to: "/manager/dashboard",
+    label: "Dashboard",
+    icon: "dashboard",
+    end: true,
+  },
+  { to: "/manager/bookings", label: "Lịch đặt", icon: "calendar_month" },
+  { to: "/manager/queue", label: "Điều phối xe", icon: "local_shipping" },
+  { to: "/manager/lanes", label: "Làn rửa", icon: "garage" },
+  {
+    to: "/manager/incidents",
+    label: "Sự cố chi nhánh",
+    icon: "report_problem",
+  },
+  { to: "/manager/time-slots", label: "Khung giờ", icon: "schedule" },
+  // { to: "/manager/staff", label: "Phân công làn", icon: "badge" },
+  { to: "/manager/shifts", label: "Ca làm", icon: "schedule" },
+  { to: "/manager/employees", label: "Nhân viên", icon: "group_add" },
+  { to: "/manager/customers", label: "Khách hàng", icon: "group" },
+  { to: "/manager/inventory", label: "Kho vật tư", icon: "inventory_2" },
+];
 
 export default function ManagerSidebar() {
   return (
@@ -36,17 +45,21 @@ export default function ManagerSidebar() {
               className={({ isActive }) =>
                 `mx-3 flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200 active:scale-95 ${
                   isActive
-                    ? 'bg-primary text-on-primary'
-                    : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                    ? "bg-primary text-on-primary"
+                    : "text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <span className={`material-symbols-outlined ${isActive ? 'filled' : ''}`}>
+                  <span
+                    className={`material-symbols-outlined ${isActive ? "filled" : ""}`}
+                  >
                     {icon}
                   </span>
-                  <span className="text-sm font-medium tracking-wide">{label}</span>
+                  <span className="text-sm font-medium tracking-wide">
+                    {label}
+                  </span>
                 </>
               )}
             </NavLink>
@@ -57,22 +70,26 @@ export default function ManagerSidebar() {
             className={({ isActive }) =>
               `mx-3 mt-auto flex items-center gap-4 rounded-lg px-4 py-3 transition-all duration-200 active:scale-95 ${
                 isActive
-                  ? 'bg-primary text-on-primary'
-                  : 'text-on-surface-variant hover:bg-surface-variant hover:text-on-surface'
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant hover:bg-surface-variant hover:text-on-surface"
               }`
             }
           >
             {({ isActive }) => (
               <>
-                <span className={`material-symbols-outlined ${isActive ? 'filled' : ''}`}>
+                <span
+                  className={`material-symbols-outlined ${isActive ? "filled" : ""}`}
+                >
                   settings
                 </span>
-                <span className="text-sm font-medium tracking-wide">Cài đặt</span>
+                <span className="text-sm font-medium tracking-wide">
+                  Cài đặt
+                </span>
               </>
             )}
           </NavLink>
         </div>
       </div>
     </nav>
-  )
+  );
 }
