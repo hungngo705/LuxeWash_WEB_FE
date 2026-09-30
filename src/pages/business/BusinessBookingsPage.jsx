@@ -27,12 +27,52 @@ export default function BusinessBookingsPage() {
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('All')
   const [cancellingId, setCancellingId] = useState(null)
+  const [incidentNotice, setIncidentNotice] = useState('')
 
   useEffect(() => {
-    fetchAllBusinessBookings()
-      .then((data) => setBookings(Array.isArray(data) ? data : []))
-      .catch(() => setError('Không thể tải danh sách đặt lịch.'))
-      .finally(() => setLoading(false))
+    let active = true
+    let initialized = false
+    let knownPendingIncidentIds = new Set()
+
+    const loadBookings = async () => {
+      try {
+        const data = await fetchAllBusinessBookings()
+        if (!active) return
+
+        const nextBookings = Array.isArray(data) ? data : []
+        const nextPendingIds = new Set(
+          nextBookings
+            .filter((booking) => booking.hasPendingIncident)
+            .map((booking) => String(booking.bookingId || booking.id)),
+        )
+
+        if (
+          initialized &&
+          [...nextPendingIds].some((bookingId) => !knownPendingIncidentIds.has(bookingId))
+        ) {
+          setIncidentNotice(
+            'Có lịch mới bị ảnh hưởng bởi sự cố chi nhánh. Vui lòng kiểm tra và xử lý.',
+          )
+        }
+
+        initialized = true
+        knownPendingIncidentIds = nextPendingIds
+        setBookings(nextBookings)
+        setError('')
+      } catch {
+        if (active && !initialized) setError('Không thể tải danh sách đặt lịch.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadBookings()
+    const intervalId = window.setInterval(loadBookings, 30_000)
+
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+    }
   }, [])
 
   const handleCancel = async (id) => {
@@ -76,6 +116,21 @@ export default function BusinessBookingsPage() {
 
   return (
     <div className="space-y-6">
+      {incidentNotice && (
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-error/30 bg-error-container/15 px-4 py-3 text-sm text-error">
+          <span className="flex items-start gap-2">
+            <span className="material-symbols-outlined text-[19px]">warning</span>
+            {incidentNotice}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIncidentNotice('')}
+            className="shrink-0 font-semibold underline"
+          >
+            Đã hiểu
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-sora text-lg font-semibold text-on-surface">Đặt lịch</h2>
@@ -147,11 +202,27 @@ export default function BusinessBookingsPage() {
                       {booking.branch?.name || booking.branchName || '—'}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={booking.status} />
+                      <div className="flex flex-col items-start gap-1.5">
+                        <StatusBadge status={booking.status} />
+                        {booking.hasPendingIncident && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-error/30 bg-error-container/20 px-2 py-0.5 text-[11px] font-semibold text-error">
+                            <span className="material-symbols-outlined text-[13px]">warning</span>
+                            Cần xử lý sự cố
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        {booking.status === 'Pending' && (
+                        {booking.hasPendingIncident && (
+                          <Link
+                            to={`/business/bookings/${booking.bookingId || booking.id}/incident`}
+                            className="rounded-lg bg-error px-2.5 py-1 text-xs font-semibold text-on-error hover:bg-error/90"
+                          >
+                            Xử lý sự cố
+                          </Link>
+                        )}
+                        {booking.status === 'Pending' && !booking.hasPendingIncident && (
                           <Link
                             to={`/business/bookings/${booking.bookingId || booking.id}/reschedule`}
                             className="px-2 py-1 text-xs text-primary hover:underline"
@@ -165,7 +236,7 @@ export default function BusinessBookingsPage() {
                         >
                           Chi tiết
                         </Link>
-                        {booking.status === 'Pending' && (
+                        {booking.status === 'Pending' && !booking.hasPendingIncident && (
                           <button
                             onClick={() => handleCancel(booking.bookingId || booking.id)}
                             disabled={cancellingId === (booking.bookingId || booking.id)}

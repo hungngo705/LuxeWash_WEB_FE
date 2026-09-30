@@ -10,7 +10,6 @@ import BusinessLayout from './components/layout/BusinessLayout'
 import ManagerLayout from './components/layout/ManagerLayout'
 import StaffLayout from './components/layout/StaffLayout'
 import { AuthProvider } from './context/AuthContext'
-import ErrorBoundary from './components/ui/ErrorBoundary'
 import { ToastProvider } from './components/ui/Toast'
 import AdminBookingsPage from './pages/admin/AdminBookingsPage'
 import AdminBranchesPage from './pages/admin/AdminBranchesPage'
@@ -60,6 +59,7 @@ import BusinessImportHistoryPage from './pages/business/BusinessImportHistoryPag
 import BusinessBookingsPage from './pages/business/BusinessBookingsPage'
 import BusinessNewBookingPage from './pages/business/BusinessNewBookingPage'
 import BusinessBookingDetailPage from './pages/business/BusinessBookingDetailPage'
+import BusinessIncidentResolutionPage from './pages/business/BusinessIncidentResolutionPage'
 import BusinessRescheduleBookingPage from './pages/business/BusinessRescheduleBookingPage'
 import BusinessWalkInPage from './pages/business/BusinessWalkInPage'
 import BusinessFleetQueuePage from './pages/business/BusinessFleetQueuePage'
@@ -183,6 +183,10 @@ export default function App() {
             <Route path="/business/bookings" element={<BusinessBookingsPage />} />
             <Route path="/business/bookings/new" element={<BusinessNewBookingPage />} />
             <Route path="/business/bookings/:id" element={<BusinessBookingDetailPage />} />
+            <Route
+              path="/business/bookings/:id/incident"
+              element={<BusinessIncidentResolutionPage />}
+            />
             <Route
               path="/business/bookings/:id/reschedule"
               element={<BusinessRescheduleBookingPage />}

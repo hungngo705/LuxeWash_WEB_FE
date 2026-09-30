@@ -386,6 +386,8 @@ export {
   fetchImportBatchDetail,
   fetchBusinessBookings,
   fetchBookingDetail,
+  fetchBusinessIncidentOptions,
+  submitBusinessIncidentDecision,
   createBusinessBooking,
   cancelBooking,
   getBusinessAvailableSlots,

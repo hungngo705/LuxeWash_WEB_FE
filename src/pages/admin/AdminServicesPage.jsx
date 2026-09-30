@@ -13,36 +13,30 @@ import FormModal from '../../components/admin/shared/FormModal'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
 import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
 import { useToast } from '../../components/ui/Toast'
 import { formatVnd } from '../../utils/format'
 
-function buildPricesForAllVehicleTypes(vehicleTypes, branchId, defaultDuration) {
-  const bid = Number(branchId)
-  return vehicleTypes.map((vt) => ({
-    vehicleTypeId: vt.id,
-    branchId: bid,
-    price: '',
-    estimatedDurationMinutes: defaultDuration,
-  }))
-}
-
-function mergePricesWithVehicleTypes(existingPrices, vehicleTypes, branchId) {
-  const byTypeId = new Map(
-    (existingPrices ?? []).map((p) => [Number(p.vehicleTypeId), p]),
+function buildPricesForBranches(vehicleTypes, branchIds, existingPrices = []) {
+  const byBranchAndType = new Map(
+    existingPrices.map((price) => [
+      `${Number(price.branchId)}:${Number(price.vehicleTypeId)}`,
+      price,
+    ]),
   )
-  const bid = Number(branchId || existingPrices?.[0]?.branchId)
-  return vehicleTypes.map((vt) => {
-    const existing = byTypeId.get(Number(vt.id))
-    const minutes = Number(existing?.estimatedDurationMinutes)
-    return {
-      vehicleTypeId: vt.id,
-      branchId: bid,
-      price: existing?.price != null && existing.price !== '' ? String(existing.price) : '',
-      estimatedDurationMinutes:
-        minutes >= 5 && minutes <= 600 ? minutes : null,
-    }
-  })
+
+  return branchIds.flatMap((branchId) =>
+    vehicleTypes.map((vehicleType) => {
+      const bid = Number(branchId)
+      const existing = byBranchAndType.get(`${bid}:${Number(vehicleType.id)}`)
+      const minutes = Number(existing?.estimatedDurationMinutes)
+      return {
+        vehicleTypeId: vehicleType.id,
+        branchId: bid,
+        price: existing?.price != null && existing.price !== '' ? String(existing.price) : '',
+        estimatedDurationMinutes: minutes >= 5 && minutes <= 600 ? minutes : '',
+      }
+    }),
+  )
 }
 
 function getVehicleTypeName(vehicleTypes, vehicleTypeId) {
@@ -50,15 +44,14 @@ function getVehicleTypeName(vehicleTypes, vehicleTypeId) {
 }
 
 function toApiPayload(form) {
-  const branchId = Number(form.branchId)
   return {
     serviceName: form.serviceName.trim(),
     description: form.description.trim(),
-    prices: form.prices.map(({ vehicleTypeId, price, estimatedDurationMinutes }) => {
+    prices: form.prices.map(({ branchId, vehicleTypeId, price, estimatedDurationMinutes }) => {
       const minutes = Number(estimatedDurationMinutes)
       return {
         vehicleTypeId: Number(vehicleTypeId),
-        branchId,
+        branchId: Number(branchId),
         price: Number(price),
         estimatedDurationMinutes: minutes,
       }
@@ -68,12 +61,13 @@ function toApiPayload(form) {
 
 function validateForm(form, vehicleTypes) {
   if (!form.serviceName.trim()) return 'Vui lòng nhập tên dịch vụ'
-  if (!Number(form.branchId)) return 'Vui lòng chọn chi nhánh'
+  if (!form.branchIds.length) return 'Vui lòng chọn ít nhất một chi nhánh'
   if (!vehicleTypes.length) return 'Chưa có loại xe trong hệ thống'
   if (!form.prices.length) return 'Cần ít nhất một mức giá'
 
-  if (form.prices.length !== vehicleTypes.length) {
-    return `Phải nhập giá cho đủ ${vehicleTypes.length} loại xe`
+  const expectedPriceCount = vehicleTypes.length * form.branchIds.length
+  if (form.prices.length !== expectedPriceCount) {
+    return `Phải nhập giá cho đủ ${vehicleTypes.length} loại xe tại mỗi chi nhánh đã chọn`
   }
 
   const seen = new Set()
@@ -82,8 +76,9 @@ function validateForm(form, vehicleTypes) {
   for (const row of form.prices) {
     const typeId = Number(row.vehicleTypeId)
     if (!allowedIds.has(typeId)) return 'Mức giá phải thuộc loại xe hiện có'
-    if (seen.has(typeId)) return 'Mỗi loại xe chỉ được một mức giá'
-    seen.add(typeId)
+    const key = `${Number(row.branchId)}:${typeId}`
+    if (seen.has(key)) return 'Mỗi loại xe chỉ được một mức giá tại từng chi nhánh'
+    seen.add(key)
     if (row.price === '' || row.price == null) return 'Vui lòng nhập giá cho tất cả loại xe'
     if (Number(row.price) < 0) return 'Giá không được âm'
     const minutes = Number(row.estimatedDurationMinutes)
@@ -92,7 +87,7 @@ function validateForm(form, vehicleTypes) {
     }
   }
 
-  if (seen.size !== vehicleTypes.length) {
+  if (seen.size !== expectedPriceCount) {
     return 'Thiếu mức giá cho một hoặc nhiều loại xe'
   }
 
@@ -107,7 +102,7 @@ export default function AdminServicesPage() {
   const [loadError, setLoadError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ serviceName: '', description: '', branchId: '', prices: [] })
+  const [form, setForm] = useState({ serviceName: '', description: '', branchIds: [], prices: [] })
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -133,6 +128,8 @@ export default function AdminServicesPage() {
   }, [])
 
   useEffect(() => {
+    // Initial page synchronization intentionally owns the loading state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData()
   }, [loadData])
 
@@ -142,12 +139,18 @@ export default function AdminServicesPage() {
     [services],
   )
 
-  const setBranchId = (branchId) => {
-    setForm((f) => ({
-      ...f,
-      branchId,
-      prices: f.prices.map((row) => ({ ...row, branchId: Number(branchId) })),
-    }))
+  const toggleBranch = (branchId) => {
+    setForm((current) => {
+      const bid = Number(branchId)
+      const branchIds = current.branchIds.includes(bid)
+        ? current.branchIds.filter((id) => id !== bid)
+        : [...current.branchIds, bid]
+      return {
+        ...current,
+        branchIds,
+        prices: buildPricesForBranches(vehicleTypes, branchIds, current.prices),
+      }
+    })
   }
 
   const openCreate = () => {
@@ -160,25 +163,28 @@ export default function AdminServicesPage() {
       return
     }
 
-    const defaultBranchId = String(branches[0].id)
+    const defaultBranchId = Number(branches[0].id)
     setEditingId(null)
     setForm({
       serviceName: '',
       description: '',
-      branchId: defaultBranchId,
-      prices: buildPricesForAllVehicleTypes(vehicleTypes, defaultBranchId, ''),
+      branchIds: [defaultBranchId],
+      prices: buildPricesForBranches(vehicleTypes, [defaultBranchId]),
     })
     setModalOpen(true)
   }
 
   const openEdit = (service) => {
-    const branchId = String(service.prices?.[0]?.branchId ?? branches[0]?.id ?? '')
+    const branchIds = [...new Set(
+      (service.prices ?? []).map((price) => Number(price.branchId)).filter(Boolean),
+    )]
+    if (!branchIds.length && branches[0]?.id) branchIds.push(Number(branches[0].id))
     setEditingId(service.serviceId)
     setForm({
       serviceName: service.serviceName,
       description: service.description ?? '',
-      branchId,
-      prices: mergePricesWithVehicleTypes(service.prices, vehicleTypes, branchId),
+      branchIds,
+      prices: buildPricesForBranches(vehicleTypes, branchIds, service.prices ?? []),
     })
     setModalOpen(true)
   }
@@ -248,6 +254,11 @@ export default function AdminServicesPage() {
 
   const branchName = (branchId) =>
     branches.find((b) => b.id === Number(branchId))?.name ?? (branchId ? `#${branchId}` : '—')
+
+  const branchNames = (prices) => {
+    const ids = [...new Set((prices ?? []).map((price) => Number(price.branchId)).filter(Boolean))]
+    return ids.length ? ids.map(branchName).join(', ') : '—'
+  }
 
   return (
     <div className="w-full">
@@ -319,7 +330,7 @@ export default function AdminServicesPage() {
           {
             key: 'branch',
             label: 'Chi nhánh',
-            render: (row) => branchName(row.prices?.[0]?.branchId),
+            render: (row) => branchNames(row.prices),
             tdClassName: 'text-on-surface-variant',
           },
           {
@@ -405,25 +416,27 @@ export default function AdminServicesPage() {
         onSubmit={handleSave}
       >
         <div className="space-y-4">
-          <label className="block space-y-1">
+          <fieldset className="block space-y-2">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
-              Chi nhánh
+              Chi nhánh áp dụng
             </span>
-            <select
-              className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-on-surface"
-              value={form.branchId}
-              disabled={saving || !branches.length}
-              onChange={(e) => setBranchId(e.target.value)}
-              required
-            >
-              <option value="">— Chọn chi nhánh —</option>
+            <div className="grid gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest p-3 sm:grid-cols-2">
               {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
+                <label key={b.id} className="flex cursor-pointer items-center gap-2 text-sm text-on-surface">
+                  <input
+                    type="checkbox"
+                    checked={form.branchIds.includes(Number(b.id))}
+                    disabled={saving}
+                    onChange={() => toggleBranch(b.id)}
+                  />
+                  <span>{b.name}</span>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+            <p className="text-xs text-on-surface-variant">
+              Có thể áp dụng cùng một dịch vụ tại nhiều chi nhánh; đây là điều kiện để chuyển lịch khi có sự cố.
+            </p>
+          </fieldset>
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               Tên dịch vụ
@@ -457,13 +470,16 @@ export default function AdminServicesPage() {
               <p className="mt-1 text-xs text-on-surface-variant">
                 Bắt buộc nhập giá và thời lượng cho{' '}
                 <strong className="text-on-surface">tất cả {vehicleTypes.length} loại xe</strong>{' '}
-                tại chi nhánh đã chọn (thời lượng: 5 – 600 phút).
+                 tại từng chi nhánh đã chọn (thời lượng: 5 – 600 phút).
               </p>
             </div>
-            <div className="space-y-3">
-              {form.prices.map((price) => (
+            <div className="space-y-5">
+              {form.branchIds.map((branchId) => (
+                <section key={branchId} className="space-y-3 rounded-xl border border-outline-variant p-3">
+                  <h4 className="font-semibold text-on-surface">{branchName(branchId)}</h4>
+                  {form.prices.filter((price) => price.branchId === branchId).map((price) => (
                 <div
-                  key={price.vehicleTypeId}
+                  key={`${price.branchId}-${price.vehicleTypeId}`}
                   className="grid grid-cols-1 gap-2 rounded-lg border border-outline-variant/60 p-3 sm:grid-cols-3"
                 >
                   <div className="flex items-center">
@@ -485,7 +501,7 @@ export default function AdminServicesPage() {
                         setForm((f) => ({
                           ...f,
                           prices: f.prices.map((row) =>
-                            row.vehicleTypeId === price.vehicleTypeId
+                            row.branchId === price.branchId && row.vehicleTypeId === price.vehicleTypeId
                               ? { ...row, price: value }
                               : row,
                           ),
@@ -508,7 +524,7 @@ export default function AdminServicesPage() {
                         setForm((f) => ({
                           ...f,
                           prices: f.prices.map((row) =>
-                            row.vehicleTypeId === price.vehicleTypeId
+                            row.branchId === price.branchId && row.vehicleTypeId === price.vehicleTypeId
                               ? { ...row, estimatedDurationMinutes: value }
                               : row,
                           ),
@@ -517,6 +533,8 @@ export default function AdminServicesPage() {
                     />
                   </label>
                 </div>
+                  ))}
+                </section>
               ))}
             </div>
           </div>

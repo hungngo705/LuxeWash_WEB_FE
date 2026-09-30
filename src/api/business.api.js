@@ -59,6 +59,9 @@ export function normalizeBusinessBooking(item) {
         : item.ActualDurationMinutes != null
           ? Number(item.ActualDurationMinutes)
           : null,
+    hasPendingIncident: item.hasPendingIncident === true,
+    incidentCaseId:
+      item.incidentCaseId != null ? Number(item.incidentCaseId) : null,
   }
 }
 
@@ -319,6 +322,9 @@ export function normalizeBusinessBookingDetail(item) {
     ),
     startTime: record.startTime ?? record.slotStartTime ?? null,
     endTime: record.endTime ?? record.slotEndTime ?? null,
+    hasPendingIncident: record.hasPendingIncident === true,
+    incidentCaseId:
+      record.incidentCaseId != null ? Number(record.incidentCaseId) : null,
   }
 }
 
@@ -611,6 +617,28 @@ export const rescheduleBusinessBooking = (id, { newScheduledDate, newSlotId }) =
       newSlotId: Number(newSlotId),
     }),
   })
+
+export async function fetchBusinessIncidentOptions(bookingId) {
+  const response = await apiRequest(`/bookings/${bookingId}/incident-options`)
+  if (!response || typeof response !== 'object') return null
+  if (Object.prototype.hasOwnProperty.call(response, 'data')) {
+    return response.data ?? null
+  }
+  return response
+}
+
+export function submitBusinessIncidentDecision(bookingId, payload) {
+  const idempotencyKey =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `business-incident-${bookingId}-${Date.now()}`
+
+  return apiRequest(`/bookings/${bookingId}/incident-decision`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(payload),
+  })
+}
 
 /**
  * POST /business/available-slots — checks capacity and lane scheduling for the exact vehicle selection.

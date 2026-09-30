@@ -181,7 +181,16 @@ export default function BusinessBookingDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {booking.status === 'Pending' && (
+            {booking.hasPendingIncident && (
+              <Link
+                to={`/business/bookings/${id}/incident`}
+                className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-error px-4 text-sm font-semibold text-on-error shadow-sm transition-all hover:bg-error/90 active:scale-[0.98]"
+              >
+                <span className="material-symbols-outlined text-[18px]">warning</span>
+                Xử lý sự cố
+              </Link>
+            )}
+            {booking.status === 'Pending' && !booking.hasPendingIncident && (
               <Link
                 to={`/business/bookings/${id}/reschedule`}
                 className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl bg-primary px-4 text-sm font-semibold text-on-primary shadow-sm transition-all hover:bg-primary/90 active:scale-[0.98]"
@@ -195,6 +204,17 @@ export default function BusinessBookingDetailPage() {
         </div>
 
         <div className="space-y-5 p-6">
+          {booking.hasPendingIncident && (
+            <div className="flex items-start gap-3 rounded-xl border border-error/30 bg-error-container/15 px-4 py-3 text-sm text-error">
+              <span className="material-symbols-outlined mt-0.5 text-[18px]">report_problem</span>
+              <div>
+                <p className="font-semibold">Lịch này đang bị ảnh hưởng bởi sự cố chi nhánh.</p>
+                <p className="mt-1 text-on-surface-variant">
+                  Vui lòng dùng màn hình xử lý sự cố để chuyển chi nhánh hoặc hủy lịch. Thao tác đổi/hủy thông thường đã được khóa để tránh xử lý sai hạn mức.
+                </p>
+              </div>
+            </div>
+          )}
           <section>
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">Thông tin chung</p>
             <div className="grid gap-3 md:grid-cols-2">

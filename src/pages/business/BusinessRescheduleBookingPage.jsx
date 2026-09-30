@@ -95,13 +95,27 @@ export default function BusinessRescheduleBookingPage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([
-      fetchBookingDetail(id),
-      fetchFleetVehicles(),
-      fetchBusinessServices(),
-      fetchBranches(),
-    ])
-      .then(([detail, vehicles, services, branches]) => {
+    const load = async () => {
+      try {
+        const detail = await fetchBookingDetail(id)
+        if (!active) return
+
+        if (detail.hasPendingIncident) {
+          navigate(`/business/bookings/${id}/incident`, {
+            replace: true,
+            state: {
+              warningMessage:
+                'Lịch đang bị ảnh hưởng bởi sự cố. Vui lòng xử lý tại màn hình sự cố.',
+            },
+          })
+          return
+        }
+
+        const [vehicles, services, branches] = await Promise.all([
+          fetchFleetVehicles(),
+          fetchBusinessServices(),
+          fetchBranches(),
+        ])
         if (!active) return
 
         const matchedVehicle = vehicles.find(
@@ -140,16 +154,19 @@ export default function BusinessRescheduleBookingPage() {
         } else if (!matchedBranch) {
           setError('Không xác định chắc chắn được chi nhánh gốc của lịch đặt.')
         }
-      })
-      .catch((err) => setError(err.message || 'Không thể tải thông tin lịch đặt.'))
-      .finally(() => {
+      } catch (err) {
+        if (active) setError(err.message || 'Không thể tải thông tin lịch đặt.')
+      } finally {
         if (active) setLoading(false)
-      })
+      }
+    }
+
+    load()
 
     return () => {
       active = false
     }
-  }, [id])
+  }, [id, navigate])
 
   useEffect(() => {
     if (!selectedDate || !branch || !vehicle || serviceIds.length === 0 || !canReschedule) {
