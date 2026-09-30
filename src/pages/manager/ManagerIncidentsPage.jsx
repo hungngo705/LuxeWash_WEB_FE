@@ -168,13 +168,14 @@ function BookingSelectionTable({ bookings, selectedIds, onSelectionChange }) {
         </span>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[740px] text-left text-sm">
           <thead>
             <tr className="border-b border-outline-variant text-on-surface-variant">
               <th className="w-12 p-2">
                 <span className="sr-only">Chọn</span>
               </th>
               <th className="p-2">Booking</th>
+              <th className="p-2">Đối tượng</th>
               <th className="p-2">Biển số</th>
               <th className="p-2">Giờ đặt</th>
               <th className="p-2">Trọng số</th>
@@ -200,6 +201,11 @@ function BookingSelectionTable({ bookings, selectedIds, onSelectionChange }) {
                     />
                   </td>
                   <td className="p-2">#{bookingId}</td>
+                  <td className="p-2">
+                    {booking.bookingType === "Business"
+                      ? "Doanh nghiệp"
+                      : "Cá nhân"}
+                  </td>
                   <td className="p-2 font-medium">
                     {booking.licensePlate || "—"}
                   </td>
@@ -609,7 +615,7 @@ export default function ManagerIncidentsPage() {
     if (resolveTargetId == null || resolving) return;
     if (!canResolve) {
       setResolveError(
-        "Impact đã thay đổi hoặc trải qua nhiều ngày; hãy tải lại và liên hệ backend để xử lý an toàn.",
+        "Danh sách lịch bị ảnh hưởng chưa tải thành công. Hãy tải lại chi tiết trước khi xử lý.",
       );
       return;
     }
@@ -629,23 +635,9 @@ export default function ManagerIncidentsPage() {
     }
   };
 
-  // BE currently groups resolve capacity by slotId only, not by (date, slotId).
-  // Keep this mutation unavailable when pending cases span multiple dates.
-  const pendingImpact = impact.filter(
-    (item) => item.customerAction === "AwaitingCustomer",
-  );
-  const pendingDates = new Set(
-    pendingImpact.map((item) => String(item.scheduledTime ?? "").slice(0, 10)),
-  );
-  const canResolve = Boolean(
-    detail &&
-    !detailLoading &&
-    !impactError &&
-    pendingImpact.every((item) =>
-      /^\d{4}-\d{2}-\d{2}$/.test(String(item.scheduledTime ?? "").slice(0, 10)),
-    ) &&
-    pendingDates.size <= 1,
-  );
+  // Backend now resolves capacity by both date and slot, so multi-day incidents
+  // can be closed safely as long as their impact data loaded successfully.
+  const canResolve = Boolean(detail && !detailLoading && !impactError);
 
   return (
     <div className="space-y-6">
@@ -1060,7 +1052,7 @@ export default function ManagerIncidentsPage() {
                       title={
                         canResolve
                           ? "Đánh giá lại công suất và xử lý các lịch còn chờ"
-                          : "Chỉ khả dụng khi impact tải thành công và các lịch còn chờ cùng một ngày"
+                          : "Chỉ khả dụng khi danh sách ảnh hưởng tải thành công"
                       }
                       onClick={() => {
                         setResolveTargetId(selectedId);
@@ -1235,12 +1227,13 @@ export default function ManagerIncidentsPage() {
               )
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-[850px] w-full text-left text-sm">
+                <table className="min-w-[950px] w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-outline-variant text-on-surface-variant">
                       <th className="p-2">Mã lịch đặt</th>
+                      <th className="p-2">Đối tượng</th>
                       <th className="p-2">Biển số</th>
-                      <th className="p-2">Giờ đặt</th>
+                      <th className="p-2">Giờ đặt ban đầu</th>
                       <th className="p-2">Phản hồi</th>
                       <th className="p-2">Xử lý</th>
                       <th className="p-2">Hạn trả lời</th>
@@ -1254,6 +1247,11 @@ export default function ManagerIncidentsPage() {
                         className="border-b border-outline-variant/50"
                       >
                         <td className="p-2">#{item.bookingId}</td>
+                        <td className="p-2">
+                          {item.bookingType === "Business"
+                            ? "Doanh nghiệp"
+                            : "Cá nhân"}
+                        </td>
                         <td className="p-2">{item.licensePlate || "—"}</td>
                         <td className="p-2">{formatVn(item.scheduledTime)}</td>
                         <td className="p-2">
@@ -1274,7 +1272,7 @@ export default function ManagerIncidentsPage() {
                         <td className="p-2">
                           {item.alternativeBranchId &&
                           item.alternativeBranchId !== ""
-                            ? `Chi nhánh #${item.alternativeBranchId}, khung giờ ${item.alternativeTimeSlot}`
+                            ? `${item.alternativeBranchName || `Chi nhánh #${item.alternativeBranchId}`}${item.alternativeTimeSlot ? `, ${item.alternativeTimeSlotLabel || `khung giờ #${item.alternativeTimeSlot}`}` : ""}`
                             : "—"}
                         </td>
                       </tr>
