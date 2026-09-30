@@ -274,6 +274,15 @@ struct BackendAckMessage {
   char details[128];
 };
 
+// Arduino's sketch preprocessor cannot reliably place generated prototypes
+// for functions that use custom classes/structs. Declare them explicitly
+// after the related types so the generated C++ remains valid.
+void fillGateStatus(JsonObject target, const BarrierGate& gate);
+void handleOpen(BarrierGate& gate);
+void handleClose(BarrierGate& gate);
+BarrierGate* gateFromBarrierId(const String& barrierId);
+bool postCommandAck(WiFiClientSecure& client, const BackendAckMessage& ack);
+
 QueueHandle_t backendCommandQueue = nullptr;
 QueueHandle_t backendAckQueue = nullptr;
 TaskHandle_t backendTaskHandle = nullptr;
