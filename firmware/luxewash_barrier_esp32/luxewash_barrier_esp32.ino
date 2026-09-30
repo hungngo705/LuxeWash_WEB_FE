@@ -1,9 +1,10 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <ESP32Servo.h>
+#include <Adafruit_PWMServoDriver.h>
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <Preferences.h>
+#include <Wire.h>
 #include <WiFiClientSecure.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -25,17 +26,28 @@
 #endif
 
 namespace Config {
-constexpr uint8_t ENTRY_REGULAR_SERVO_PIN = 13;
-constexpr uint8_t ENTRY_VIP_SERVO_PIN = 25;
-constexpr uint8_t EXIT_SERVO_PIN = 33;
+constexpr uint8_t PCA9685_ADDRESS = 0x40;
+constexpr uint8_t PCA9685_SDA_PIN = 21;
+constexpr uint8_t PCA9685_SCL_PIN = 22;
+constexpr uint16_t PCA9685_PWM_FREQUENCY_HZ = 50;
+
+constexpr uint8_t ENTRY_REGULAR_SERVO_CHANNEL = 0;
+constexpr uint8_t ENTRY_VIP_SERVO_CHANNEL = 1;
+constexpr uint8_t EXIT_SERVO_CHANNEL = 2;
+
 constexpr uint8_t ENTRY_REGULAR_SENSOR_PIN = 26;
-constexpr uint8_t ENTRY_VIP_SENSOR_PIN = 32;
+constexpr uint8_t ENTRY_VIP_SENSOR_PIN = 25;
 constexpr uint8_t EXIT_SENSOR_PIN = 27;
 
-constexpr int CLOSED_ANGLE = 0;
-constexpr int OPEN_ANGLE = 90;
-constexpr int SERVO_MIN_US = 500;
-constexpr int SERVO_MAX_US = 2400;
+// These defaults preserve the previous ESP32Servo behavior: 0 degrees was
+// approximately 500 us and 90 degrees was approximately 1450 us. Calibrate
+// each gate independently if its mechanical endpoints are different.
+constexpr uint16_t ENTRY_REGULAR_CLOSED_US = 500;
+constexpr uint16_t ENTRY_REGULAR_OPEN_US = 1450;
+constexpr uint16_t ENTRY_VIP_CLOSED_US = 500;
+constexpr uint16_t ENTRY_VIP_OPEN_US = 1450;
+constexpr uint16_t EXIT_CLOSED_US = 500;
+constexpr uint16_t EXIT_OPEN_US = 1450;
 
 // Most IR/proximity modules pull the signal LOW when a vehicle is present.
 constexpr uint8_t SENSOR_ACTIVE_LEVEL = LOW;
@@ -47,9 +59,6 @@ constexpr unsigned long ENTRY_SENSOR_CLEAR_DEBOUNCE_MS = 650;
 // pulses quickly and keep the occupied state long enough for the UI poll.
 constexpr unsigned long EXIT_SENSOR_ACTIVE_DEBOUNCE_MS = 15;
 constexpr unsigned long EXIT_SENSOR_CLEAR_DEBOUNCE_MS = 1200;
-// Keep PWM active while a barrier is open so the servo holds the arm in place.
-// After closing, release the servo to reduce heat and electrical noise.
-constexpr unsigned long SERVO_SIGNAL_HOLD_MS = 800;
 // Avoid starting multiple servos at exactly the same time. This limits the
 // current spike on the shared 5 V supply when two commands arrive together.
 constexpr unsigned long SERVO_START_INTERVAL_MS = 350;
@@ -64,18 +73,43 @@ constexpr char HOSTNAME[] = "luxewash-barrier";
 
 WebServer server(80);
 Preferences preferences;
+Adafruit_PWMServoDriver servoDriver(Config::PCA9685_ADDRESS);
+bool servoDriverReady = false;
 unsigned long lastServoMoveStartedAt = 0;
+
+uint16_t pulseUsToPcaTicks(uint16_t pulseUs) {
+  const uint32_t numerator =
+      static_cast<uint32_t>(pulseUs) * Config::PCA9685_PWM_FREQUENCY_HZ * 4096UL;
+  const uint32_t roundedTicks = (numerator + 500000UL) / 1000000UL;
+  return static_cast<uint16_t>(constrain(roundedTicks, 1UL, 4095UL));
+}
+
+bool initializeServoDriver() {
+  Wire.begin(Config::PCA9685_SDA_PIN, Config::PCA9685_SCL_PIN);
+  Wire.setClock(100000);
+  if (!servoDriver.begin()) {
+    Serial.println("PCA9685 not detected at I2C address 0x40.");
+    return false;
+  }
+  servoDriver.setPWMFreq(Config::PCA9685_PWM_FREQUENCY_HZ);
+  delay(10);
+  Serial.println("PCA9685 servo driver ready at I2C address 0x40.");
+  return true;
+}
 
 enum class GateState { Closed, OpenWaitingForVehicle, OpenVehiclePassing };
 
 class BarrierGate {
  public:
-  BarrierGate(const char* id, uint8_t servoPin, uint8_t sensorPin,
+  BarrierGate(const char* id, uint8_t servoChannel, uint8_t sensorPin,
+              uint16_t closedPulseUs, uint16_t openPulseUs,
               const char* preferenceKey, unsigned long activeDebounceMs,
               unsigned long clearDebounceMs)
       : id_(id),
-        servoPin_(servoPin),
+        servoChannel_(servoChannel),
         sensorPin_(sensorPin),
+        closedPulseUs_(closedPulseUs),
+        openPulseUs_(openPulseUs),
         preferenceKey_(preferenceKey),
         activeDebounceMs_(activeDebounceMs),
         clearDebounceMs_(clearDebounceMs) {}
@@ -86,17 +120,17 @@ class BarrierGate {
     sensorBlocked_ = rawSensorBlocked_;
     sensorChangedAt_ = millis();
     state_ = GateState::Closed;
-    moveServo(Config::CLOSED_ANGLE);
     lastCommandId_ = preferences.getString(preferenceKey_, "");
-    servo_.setPeriodHertz(50);
-    servo_.attach(servoPin_, Config::SERVO_MIN_US, Config::SERVO_MAX_US);
+    if (!moveServo(closedPulseUs_)) {
+      Serial.printf("Unable to initialize servo channel %u for %s.\n",
+                    servoChannel_, id_);
+    }
   }
 
   bool update() {
     const bool previousSensorBlocked = sensorBlocked_;
     const GateState previousState = state_;
     updateSensor();
-    releaseServoSignalWhenSettled();
     if (state_ != GateState::Closed) {
       const unsigned long now = millis();
       if (sensorBlocked_) {
@@ -120,7 +154,7 @@ class BarrierGate {
     duplicate = commandId.length() > 0 && commandId == lastCommandId_;
     if (duplicate) return true;
 
-    moveServo(Config::OPEN_ANGLE);
+    if (!moveServo(openPulseUs_)) return false;
     state_ = GateState::OpenWaitingForVehicle;
     openedAt_ = millis();
     clearSince_ = 0;
@@ -136,7 +170,7 @@ class BarrierGate {
 
   bool close(bool force) {
     if (sensorBlocked_ && !force) return false;
-    moveServo(Config::CLOSED_ANGLE);
+    if (!moveServo(closedPulseUs_)) return false;
     state_ = GateState::Closed;
     vehicleSeen_ = false;
     clearSince_ = 0;
@@ -179,60 +213,51 @@ class BarrierGate {
     }
   }
 
-  void moveServo(int angle) {
+  bool moveServo(uint16_t pulseUs) {
+    if (!servoDriverReady) return false;
     const unsigned long elapsed = millis() - lastServoMoveStartedAt;
     if (lastServoMoveStartedAt != 0 &&
         elapsed < Config::SERVO_START_INTERVAL_MS) {
       delay(Config::SERVO_START_INTERVAL_MS - elapsed);
     }
-    if (!servo_.attached()) {
-      servo_.setPeriodHertz(50);
-      servo_.attach(servoPin_, Config::SERVO_MIN_US, Config::SERVO_MAX_US);
-    }
-    servo_.write(angle);
+    servoDriver.setPWM(servoChannel_, 0, pulseUsToPcaTicks(pulseUs));
     lastServoMoveStartedAt = millis();
-    lastServoCommandAt_ = lastServoMoveStartedAt;
-  }
-
-  void releaseServoSignalWhenSettled() {
-    // if (state_ == GateState::Closed && servo_.attached() &&
-    //     millis() - lastServoCommandAt_ >= Config::SERVO_SIGNAL_HOLD_MS) {
-    //   servo_.detach();
-    //   pinMode(servoPin_, OUTPUT);
-    //   digitalWrite(servoPin_, LOW);
-    // }
+    return true;
   }
 
   const char* id_;
-  uint8_t servoPin_;
+  uint8_t servoChannel_;
   uint8_t sensorPin_;
+  uint16_t closedPulseUs_;
+  uint16_t openPulseUs_;
   const char* preferenceKey_;
   unsigned long activeDebounceMs_;
   unsigned long clearDebounceMs_;
-  Servo servo_;
   GateState state_ = GateState::Closed;
   bool rawSensorBlocked_ = false;
   bool sensorBlocked_ = false;
   bool vehicleSeen_ = false;
   unsigned long sensorChangedAt_ = 0;
-  unsigned long lastServoCommandAt_ = 0;
   unsigned long openedAt_ = 0;
   unsigned long clearSince_ = 0;
   String lastCommandId_;
 };
 
 BarrierGate entryRegularGate(
-    "entryRegular", Config::ENTRY_REGULAR_SERVO_PIN,
-    Config::ENTRY_REGULAR_SENSOR_PIN, "entryRegularCmd",
+    "entryRegular", Config::ENTRY_REGULAR_SERVO_CHANNEL,
+    Config::ENTRY_REGULAR_SENSOR_PIN, Config::ENTRY_REGULAR_CLOSED_US,
+    Config::ENTRY_REGULAR_OPEN_US, "entryRegularCmd",
     Config::ENTRY_SENSOR_ACTIVE_DEBOUNCE_MS,
     Config::ENTRY_SENSOR_CLEAR_DEBOUNCE_MS);
 BarrierGate entryVipGate(
-    "entryVip", Config::ENTRY_VIP_SERVO_PIN, Config::ENTRY_VIP_SENSOR_PIN,
-    "entryVipCmd",
+    "entryVip", Config::ENTRY_VIP_SERVO_CHANNEL,
+    Config::ENTRY_VIP_SENSOR_PIN, Config::ENTRY_VIP_CLOSED_US,
+    Config::ENTRY_VIP_OPEN_US, "entryVipCmd",
     Config::ENTRY_SENSOR_ACTIVE_DEBOUNCE_MS,
     Config::ENTRY_SENSOR_CLEAR_DEBOUNCE_MS);
 BarrierGate exitGate(
-    "exit", Config::EXIT_SERVO_PIN, Config::EXIT_SENSOR_PIN, "exitCmd",
+    "exit", Config::EXIT_SERVO_CHANNEL, Config::EXIT_SENSOR_PIN,
+    Config::EXIT_CLOSED_US, Config::EXIT_OPEN_US, "exitCmd",
     Config::EXIT_SENSOR_ACTIVE_DEBOUNCE_MS,
     Config::EXIT_SENSOR_CLEAR_DEBOUNCE_MS);
 unsigned long lastWifiReconnectAt = 0;
@@ -299,6 +324,7 @@ void sendStatus(int statusCode = 200, bool duplicate = false) {
   response["duplicate"] = duplicate;
   response["device"] = Config::HOSTNAME;
   response["wifiConnected"] = WiFi.status() == WL_CONNECTED;
+  response["servoDriverReady"] = servoDriverReady;
   response["ip"] = WiFi.localIP().toString();
   response["uptimeMs"] = millis();
   JsonObject gates = response.createNestedObject("gates");
@@ -331,9 +357,14 @@ void handleOpen(BarrierGate& gate) {
     return;
   }
   bool duplicate = false;
+  bool opened = false;
   if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
-    gate.open(commandId, duplicate);
+    opened = gate.open(commandId, duplicate);
     xSemaphoreGive(gateStateMutex);
+  }
+  if (!opened) {
+    sendMessage(503, "PCA9685 servo driver is unavailable.");
+    return;
   }
   requestImmediateHeartbeat();
   sendStatus(duplicate ? 200 : 202, duplicate);
@@ -346,6 +377,10 @@ void handleClose(BarrierGate& gate) {
   }
   StaticJsonDocument<384> body;
   if (!parseBody(body)) return;
+  if (!servoDriverReady) {
+    sendMessage(503, "PCA9685 servo driver is unavailable.");
+    return;
+  }
   const bool force = body["force"] | false;
   bool closed = false;
   if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
@@ -539,6 +574,7 @@ void sendBackendHeartbeat(WiFiClientSecure& client) {
   body["ipAddress"] = WiFi.localIP().toString();
   body["wifiRssi"] = WiFi.RSSI();
   body["uptimeMs"] = millis();
+  body["servoDriverReady"] = servoDriverReady;
   JsonObject gates = body.createNestedObject("gates");
   if (xSemaphoreTake(gateStateMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
     fillGateStatus(gates.createNestedObject("entryRegular"), entryRegularGate);
@@ -604,22 +640,25 @@ void processBackendCommands() {
     bool duplicate = false;
     String details;
 
-    if (gate == nullptr) {
+    if (!servoDriverReady) {
+      details = "PCA9685 servo driver is unavailable.";
+    } else if (gate == nullptr) {
       details = "Unsupported barrierId: " + String(command.barrierId);
     } else if (strcmp(command.action, "OPEN") == 0) {
       if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
         completed = gate->open(String(command.commandId), duplicate);
         xSemaphoreGive(gateStateMutex);
       }
-      details = duplicate ? "Duplicate command already applied."
-                          : "Barrier opened.";
+      details = !completed ? "PCA9685 servo command failed."
+                           : duplicate ? "Duplicate command already applied."
+                                       : "Barrier opened.";
     } else if (strcmp(command.action, "CLOSE") == 0) {
       if (xSemaphoreTake(gateStateMutex, portMAX_DELAY) == pdTRUE) {
         completed = gate->close(false);
         xSemaphoreGive(gateStateMutex);
       }
       details = completed ? "Barrier closed."
-                          : "Sensor blocked; close refused.";
+                          : "Sensor blocked or PCA9685 command failed.";
     } else {
       details = "Unsupported action: " + String(command.action);
     }
@@ -646,10 +685,7 @@ void setup() {
     Serial.println("Unable to allocate backend synchronization primitives.");
     while (true) delay(1000);
   }
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
+  servoDriverReady = initializeServoDriver();
   preferences.begin("luxewash", false);
   entryRegularGate.begin();
   entryVipGate.begin();

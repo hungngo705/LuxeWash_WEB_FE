@@ -2,17 +2,29 @@
 
 ## Phần cứng
 
-| Cổng | Servo | Sensor |
-|---|---:|---:|
-| Cổng vào làn thường | GPIO 18 | GPIO 26 |
-| Cổng vào làn VIP | GPIO 25 | GPIO 32 |
-| Cổng ra | GPIO 23 | GPIO 27 |
+Ba servo được điều khiển qua PCA9685, không nối tín hiệu PWM trực tiếp vào
+ESP32.
 
-- Servo dùng nguồn 5V riêng và nối chung GND với ESP32.
-- Không cấp nguồn servo từ chân 3V3 của ESP32.
-- Mỗi dây tín hiệu servo đi qua điện trở 220Ω.
-- Mắc tụ lọc song song giữa 5V và GND, đúng cực; đặt gần servo hoặc điểm chia nguồn.
-- Sensor đang được cấp 3V3 và xuất mức LOW khi phát hiện xe.
+| Cổng | Sensor ESP32 | Servo PCA9685 |
+|---|---:|---:|
+| Cổng vào làn thường | GPIO 26 | Channel 0 |
+| Cổng vào làn VIP | GPIO 25 | Channel 1 |
+| Cổng ra | GPIO 27 | Channel 2 |
+
+| ESP32 | PCA9685 |
+|---|---|
+| GPIO 21 | SDA |
+| GPIO 22 | SCL |
+| 3V3 | VCC |
+| GND | GND |
+
+- Địa chỉ I2C mặc định của PCA9685 là `0x40`, tần số servo là `50 Hz`.
+- Chân `V+` của PCA9685 dùng nguồn servo 5V riêng; không nối `V+` vào 3V3.
+- Âm nguồn servo, GND PCA9685 và GND ESP32 phải nối chung.
+- Nên mắc tụ 1000-2200 uF giữa `V+` và GND gần PCA9685, đúng cực.
+- Đường cấp nguồn servo phải đủ tiết diện và nguồn phải chịu được tổng dòng
+  khởi động/stall của ba servo.
+- Ba sensor được cấp 3V3, dùng chung GND và xuất mức LOW khi phát hiện xe.
 
 ## REST API
 
@@ -28,21 +40,24 @@ Các endpoint `/api/barriers/entry/...` cũ vẫn được giữ và trỏ vào 
 ## Nạp firmware
 
 1. Cài board `esp32 by Espressif Systems`.
-2. Cài thư viện `ESP32Servo` và `ArduinoJson`.
+2. Cài các thư viện `ArduinoJson`, `Adafruit PWM Servo Driver Library` và
+   dependency `Adafruit BusIO`.
 3. Tạo `secrets.h` từ `secrets.example.h`, sau đó điền Wi-Fi, backend HTTPS, device ID và device key.
 4. Chọn board ESP32, đúng cổng COM và Upload.
 5. Serial Monitor dùng tốc độ `115200 baud`.
 6. Cấu hình dashboard dùng IP hiển thị trên Serial Monitor hoặc `http://luxewash-barrier.local`.
 
 Nếu sensor xuất HIGH khi có xe, đổi `SENSOR_ACTIVE_LEVEL` từ `LOW` thành `HIGH`.
-Có thể hiệu chỉnh tay barie bằng `CLOSED_ANGLE` và `OPEN_ANGLE`.
+Hiệu chỉnh từng tay barie bằng các cặp hằng số `*_CLOSED_US` và `*_OPEN_US`.
+Tăng/giảm pulse từng bước nhỏ và tránh ép servo vào giới hạn cơ khí.
 
 ## Cơ chế an toàn
 
 - Mỗi `commandId` chỉ được thực thi một lần, kể cả sau khi ESP32 restart.
 - Ba cổng hoạt động và đọc sensor độc lập.
 - Lệnh khởi động servo được giãn tối thiểu 350ms để giảm dòng khởi động đồng thời.
-- Servo giữ PWM khi barie mở để tay barie không tự tụt; chỉ ngắt PWM sau khi đóng ổn định.
+- PCA9685 giữ PWM để tay barie không tự tụt ở cả trạng thái mở và đóng.
+- Nếu PCA9685 không được phát hiện khi khởi động, REST API trả 503 và lệnh từ backend được ACK thất bại thay vì báo mở thành công giả.
 - Barie tự đóng sau khi xe đi qua và sensor trống liên tục 1,5 giây.
 - Nếu không có xe đi qua, barie tự đóng sau 15 giây.
 - ESP32 từ chối đóng nếu sensor vẫn phát hiện xe, trừ lệnh đóng cưỡng bức.
