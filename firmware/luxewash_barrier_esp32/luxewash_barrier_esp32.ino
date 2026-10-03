@@ -51,14 +51,13 @@ constexpr uint16_t EXIT_OPEN_US = 1450;
 
 // Most IR/proximity modules pull the signal LOW when a vehicle is present.
 constexpr uint8_t SENSOR_ACTIVE_LEVEL = LOW;
-// Detect a vehicle quickly, but require a longer stable clear signal so noisy
-// proximity sensors do not flicker between occupied/empty on the dashboard.
-constexpr unsigned long ENTRY_SENSOR_ACTIVE_DEBOUNCE_MS = 120;
-constexpr unsigned long ENTRY_SENSOR_CLEAR_DEBOUNCE_MS = 650;
-// GPIO 27 can emit brief pulses on some IR/proximity modules. Latch those
-// pulses quickly and keep the occupied state long enough for the UI poll.
-constexpr unsigned long EXIT_SENSOR_ACTIVE_DEBOUNCE_MS = 15;
-constexpr unsigned long EXIT_SENSOR_CLEAR_DEBOUNCE_MS = 1200;
+// The three proximity sensors can produce short, non-contiguous LOW pulses
+// when they operate together. Accumulate two LOW samples inside a short window
+// instead of requiring one uninterrupted LOW period. Once occupied, only a
+// long continuous clear period can release the state.
+constexpr uint8_t SENSOR_ACTIVE_HITS_REQUIRED = 2;
+constexpr unsigned long SENSOR_ACTIVE_HIT_WINDOW_MS = 50;
+constexpr unsigned long SENSOR_CLEAR_DEBOUNCE_MS = 2500;
 // Avoid starting multiple servos at exactly the same time. This limits the
 // current spike on the shared 5 V supply when two commands arrive together.
 constexpr unsigned long SERVO_START_INTERVAL_MS = 350;
@@ -103,22 +102,20 @@ class BarrierGate {
  public:
   BarrierGate(const char* id, uint8_t servoChannel, uint8_t sensorPin,
               uint16_t closedPulseUs, uint16_t openPulseUs,
-              const char* preferenceKey, unsigned long activeDebounceMs,
-              unsigned long clearDebounceMs)
+              const char* preferenceKey)
       : id_(id),
         servoChannel_(servoChannel),
         sensorPin_(sensorPin),
         closedPulseUs_(closedPulseUs),
         openPulseUs_(openPulseUs),
-        preferenceKey_(preferenceKey),
-        activeDebounceMs_(activeDebounceMs),
-        clearDebounceMs_(clearDebounceMs) {}
+        preferenceKey_(preferenceKey) {}
 
   void begin() {
     pinMode(sensorPin_, INPUT_PULLUP);
     rawSensorBlocked_ = readRawSensor();
     sensorBlocked_ = rawSensorBlocked_;
     sensorChangedAt_ = millis();
+    lastRawActiveAt_ = rawSensorBlocked_ ? sensorChangedAt_ : 0;
     state_ = GateState::Closed;
     lastCommandId_ = preferences.getString(preferenceKey_, "");
     if (!moveServo(closedPulseUs_)) {
@@ -178,7 +175,13 @@ class BarrierGate {
   }
 
   const char* id() const { return id_; }
+  uint8_t sensorPin() const { return sensorPin_; }
+  bool rawSensorBlocked() const { return rawSensorBlocked_; }
   bool sensorBlocked() const { return sensorBlocked_; }
+  unsigned long sensorStableForMs() const {
+    return millis() - sensorChangedAt_;
+  }
+  uint8_t activeHitCount() const { return activeHitCount_; }
   bool isOpen() const { return state_ != GateState::Closed; }
   const String& lastCommandId() const { return lastCommandId_; }
 
@@ -205,11 +208,46 @@ class BarrierGate {
       rawSensorBlocked_ = raw;
       sensorChangedAt_ = now;
     }
-    const unsigned long requiredStableMs =
-        rawSensorBlocked_ ? activeDebounceMs_ : clearDebounceMs_;
-    if (rawSensorBlocked_ != sensorBlocked_ &&
-        now - sensorChangedAt_ >= requiredStableMs) {
-      sensorBlocked_ = rawSensorBlocked_;
+
+    if (raw) {
+      lastRawActiveAt_ = now;
+      if (sensorBlocked_) {
+        activeHitCount_ = 0;
+        activeWindowStartedAt_ = 0;
+        return;
+      }
+
+      if (activeWindowStartedAt_ == 0 ||
+          now - activeWindowStartedAt_ >
+              Config::SENSOR_ACTIVE_HIT_WINDOW_MS) {
+        activeWindowStartedAt_ = now;
+        activeHitCount_ = 1;
+      } else if (activeHitCount_ < Config::SENSOR_ACTIVE_HITS_REQUIRED) {
+        activeHitCount_++;
+      }
+
+      if (activeHitCount_ >= Config::SENSOR_ACTIVE_HITS_REQUIRED) {
+        sensorBlocked_ = true;
+        activeHitCount_ = 0;
+        activeWindowStartedAt_ = 0;
+      }
+      return;
+    }
+
+    if (!sensorBlocked_) {
+      if (activeWindowStartedAt_ != 0 &&
+          now - activeWindowStartedAt_ >
+              Config::SENSOR_ACTIVE_HIT_WINDOW_MS) {
+        activeHitCount_ = 0;
+        activeWindowStartedAt_ = 0;
+      }
+      return;
+    }
+
+    if (now - lastRawActiveAt_ >= Config::SENSOR_CLEAR_DEBOUNCE_MS) {
+      sensorBlocked_ = false;
+      activeHitCount_ = 0;
+      activeWindowStartedAt_ = 0;
     }
   }
 
@@ -231,13 +269,14 @@ class BarrierGate {
   uint16_t closedPulseUs_;
   uint16_t openPulseUs_;
   const char* preferenceKey_;
-  unsigned long activeDebounceMs_;
-  unsigned long clearDebounceMs_;
   GateState state_ = GateState::Closed;
   bool rawSensorBlocked_ = false;
   bool sensorBlocked_ = false;
   bool vehicleSeen_ = false;
   unsigned long sensorChangedAt_ = 0;
+  unsigned long lastRawActiveAt_ = 0;
+  unsigned long activeWindowStartedAt_ = 0;
+  uint8_t activeHitCount_ = 0;
   unsigned long openedAt_ = 0;
   unsigned long clearSince_ = 0;
   String lastCommandId_;
@@ -246,20 +285,14 @@ class BarrierGate {
 BarrierGate entryRegularGate(
     "entryRegular", Config::ENTRY_REGULAR_SERVO_CHANNEL,
     Config::ENTRY_REGULAR_SENSOR_PIN, Config::ENTRY_REGULAR_CLOSED_US,
-    Config::ENTRY_REGULAR_OPEN_US, "entryRegularCmd",
-    Config::ENTRY_SENSOR_ACTIVE_DEBOUNCE_MS,
-    Config::ENTRY_SENSOR_CLEAR_DEBOUNCE_MS);
+    Config::ENTRY_REGULAR_OPEN_US, "entryRegularCmd");
 BarrierGate entryVipGate(
     "entryVip", Config::ENTRY_VIP_SERVO_CHANNEL,
     Config::ENTRY_VIP_SENSOR_PIN, Config::ENTRY_VIP_CLOSED_US,
-    Config::ENTRY_VIP_OPEN_US, "entryVipCmd",
-    Config::ENTRY_SENSOR_ACTIVE_DEBOUNCE_MS,
-    Config::ENTRY_SENSOR_CLEAR_DEBOUNCE_MS);
+    Config::ENTRY_VIP_OPEN_US, "entryVipCmd");
 BarrierGate exitGate(
     "exit", Config::EXIT_SERVO_CHANNEL, Config::EXIT_SENSOR_PIN,
-    Config::EXIT_CLOSED_US, Config::EXIT_OPEN_US, "exitCmd",
-    Config::EXIT_SENSOR_ACTIVE_DEBOUNCE_MS,
-    Config::EXIT_SENSOR_CLEAR_DEBOUNCE_MS);
+    Config::EXIT_CLOSED_US, Config::EXIT_OPEN_US, "exitCmd");
 unsigned long lastWifiReconnectAt = 0;
 
 struct BackendCommandMessage {
@@ -323,7 +356,12 @@ void fillGateStatus(JsonObject target, const BarrierGate& gate) {
   target["id"] = gate.id();
   target["state"] = gate.stateName();
   target["isOpen"] = gate.isOpen();
+  target["sensorPin"] = gate.sensorPin();
+  target["rawPinLevel"] = gate.rawSensorBlocked() ? LOW : HIGH;
+  target["rawSensorBlocked"] = gate.rawSensorBlocked();
   target["sensorBlocked"] = gate.sensorBlocked();
+  target["sensorStableForMs"] = gate.sensorStableForMs();
+  target["activeHitCount"] = gate.activeHitCount();
   target["lastCommandId"] = gate.lastCommandId();
 }
 
