@@ -10,7 +10,7 @@ import {
   getBarrierId,
 } from '../services/barrierDevice'
 
-const DEVICE_STATUS_POLL_MS = 5_000
+const DEVICE_STATUS_POLL_MS = 1_000
 const COMMAND_RESULT_POLL_MS = 500
 const COMMAND_RESULT_TIMEOUT_MS = 10_000
 

@@ -58,6 +58,8 @@ Tăng/giảm pulse từng bước nhỏ và tránh ép servo vào giới hạn c
 - Lệnh khởi động servo được giãn tối thiểu 350ms để giảm dòng khởi động đồng thời.
 - PCA9685 giữ PWM để tay barie không tự tụt ở cả trạng thái mở và đóng.
 - Nếu PCA9685 không được phát hiện khi khởi động, REST API trả 503 và lệnh từ backend được ACK thất bại thay vì báo mở thành công giả.
+- Sensor xác nhận có xe khi nhận đủ hai mẫu LOW trong cửa sổ 50ms và chỉ báo trống sau 2,5 giây HIGH liên tục, giúp giữ được các xung ngắn không liền nhau khi nhiều sensor hoạt động cùng lúc.
+- `GET /health` trả thêm `sensorPin`, `rawPinLevel`, `rawSensorBlocked`, `sensorStableForMs` và `activeHitCount` để chẩn đoán tín hiệu trước debounce.
 - Barie tự đóng sau khi xe đi qua và sensor trống liên tục 1,5 giây.
 - Nếu không có xe đi qua, barie tự đóng sau 15 giây.
 - ESP32 từ chối đóng nếu sensor vẫn phát hiện xe, trừ lệnh đóng cưỡng bức.
