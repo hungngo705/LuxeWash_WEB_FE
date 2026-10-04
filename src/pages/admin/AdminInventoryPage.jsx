@@ -342,6 +342,7 @@ export default function AdminInventoryPage() {
 
   const canSaveUsage = Boolean(
     selectedServiceId
+      && filters.vehicleTypeId
       && usageForm.materialId
       && Number(usageForm.baseQuantity) > 0,
   )
@@ -444,7 +445,7 @@ export default function AdminInventoryPage() {
     const targetServiceId = editingUsage?.serviceId ?? selectedServiceId
     if (!targetServiceId || !usageForm.materialId || !usageForm.baseQuantity) return
     const payload = {
-      vehicleTypeId: filters.vehicleTypeId ? Number(filters.vehicleTypeId) : null,
+      vehicleTypeId: Number(filters.vehicleTypeId),
       materialId: Number(usageForm.materialId),
       baseQuantity: Number(usageForm.baseQuantity),
     }
@@ -844,7 +845,7 @@ export default function AdminInventoryPage() {
                   <label className="block space-y-1">
                     <span className={labelTextClass}>Loại xe</span>
                     <select className={fieldClass} value={filters.vehicleTypeId} onChange={(e) => setFilters((f) => ({ ...f, vehicleTypeId: e.target.value }))}>
-                      <option value="">Mặc định</option>
+                      <option value="">Chọn loại xe</option>
                       {vehicleTypes.map((t) => <option key={t.vehicleTypeId ?? t.id} value={t.vehicleTypeId ?? t.id}>{t.name ?? t.vehicleTypeName}</option>)}
                     </select>
                   </label>
@@ -898,7 +899,7 @@ export default function AdminInventoryPage() {
                         >
                           <td className="px-4 py-3 font-semibold">{u.materialName}</td>
                           <td className="px-4 py-3">{u.serviceName}</td>
-                          <td className="px-4 py-3">{u.vehicleTypeName || 'Mặc định'}</td>
+                          <td className="px-4 py-3">{u.vehicleTypeName || '—'}</td>
                           <td className="px-4 py-3">{num(u.baseQuantity)} {u.unit}</td>
                           <td className="px-4 py-3"><StatusBadge status={u.isActive ? 'Active' : 'Inactive'} /></td>
                           <td className="px-4 py-3">

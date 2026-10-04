@@ -12,7 +12,15 @@ import { fetchBranches } from '../../api/admin.branches.api'
 import { getVietnameseApiErrorMessage } from '../../api/errors'
 import { formatVnd } from '../../utils/format'
 
-const STEPS = ['Chọn xe', 'Dịch vụ từng xe', 'Chi nhánh & slot', 'Xác nhận']
+const STEPS = ['Chọn xe', 'Chi nhánh', 'Dịch vụ từng xe', 'Khung giờ', 'Xác nhận']
+
+function servicesForVehicle(services, branchId, vehicle) {
+  const vehicleTypeId = resolveVehicleTypeId(vehicle, services)
+  if (!branchId || !vehicleTypeId) return []
+  return services.filter((service) => service.prices.some((price) =>
+    Number(price.branchId) === Number(branchId) && Number(price.vehicleTypeId) === vehicleTypeId,
+  ))
+}
 
 function formatScheduleTime(value) {
   const match = String(value || '').match(/T(\d{2}:\d{2})/)
@@ -23,8 +31,7 @@ function VehicleServiceRow({ vehicle, services, selectedServices, onToggleServic
   const price = (serviceId) => {
     const svc = services.find((s) => s.serviceId === serviceId)
     if (!svc) return null
-    // branchId chưa có ở bước này → getServicePriceForContext trả giá tạm tính theo loại xe.
-    return getServicePriceForContext(svc, { branchId: branchId ?? null, vehicleTypeId: resolvedVehicleTypeId })
+    return getServicePriceForContext(svc, { branchId, vehicleTypeId: resolvedVehicleTypeId })
   }
 
   const total = (selectedServices[vehicle.fleetVehicleId] || []).reduce((sum, id) => {
@@ -50,6 +57,9 @@ function VehicleServiceRow({ vehicle, services, selectedServices, onToggleServic
         </div>
       </div>
       <div className="p-3 space-y-1.5">
+        {services.length === 0 && (
+          <p className="text-sm text-on-surface-variant">Chi nhánh chưa có dịch vụ phù hợp với loại xe này. Vui lòng chọn chi nhánh khác.</p>
+        )}
         {services.map((service) => {
           const svcPrice = price(service.serviceId)
           const isSelected = (selectedServices[vehicle.fleetVehicleId] || []).includes(service.serviceId)
@@ -97,16 +107,19 @@ export default function BusinessNewBookingPage() {
   // Step 0: vehicle selection
   const [selectedVehicleIds, setSelectedVehicleIds] = useState([])
 
-  // Step 1: per-vehicle services  { [fleetVehicleId]: number[] }
+  // Per-vehicle services { [fleetVehicleId]: number[] }
   const [selectedServices, setSelectedServices] = useState({})
 
-  // Step 2: branch + date + slot
+  // Branch and schedule
   const [selectedBranch, setSelectedBranch] = useState(null)
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedSlot, setSelectedSlot] = useState(null)
 
   // UI state
   const [loading, setLoading] = useState(true)
+  const [servicesLoading, setServicesLoading] = useState(false)
+  const [servicesError, setServicesError] = useState('')
+  const [servicesRetry, setServicesRetry] = useState(0)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotError, setSlotError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -114,19 +127,57 @@ export default function BusinessNewBookingPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    Promise.all([fetchFleetVehicles(), fetchBranches(), fetchBusinessServices()])
-      .then(([v, b, s]) => {
+    Promise.all([fetchFleetVehicles(), fetchBranches()])
+      .then(([v, b]) => {
         setVehicles(Array.isArray(v) ? v : [])
         setBranches(Array.isArray(b) ? b : [])
-        setServices(Array.isArray(s) ? s.filter((svc) => svc.isActive) : [])
       })
       .catch(() => setError('Không thể tải dữ liệu.'))
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!selectedBranch) return
+    let ignore = false
+    fetchBusinessServices(selectedBranch)
+      .then((data) => {
+        if (!ignore) setServices(data.filter((service) => service.isActive))
+      })
+      .catch(() => {
+        if (!ignore) setServicesError('Không thể tải dịch vụ của chi nhánh. Vui lòng thử lại.')
+      })
+      .finally(() => {
+        if (!ignore) setServicesLoading(false)
+      })
+    return () => { ignore = true }
+  }, [selectedBranch, servicesRetry])
+
+  const resetSchedule = () => {
+    setSelectedSlot(null)
+    setSlots([])
+    setSlotError('')
+    setError('')
+  }
+
+  const selectBranch = (branchId) => {
+    if (selectedBranch === branchId) return
+    setSelectedBranch(branchId)
+    setServices([])
+    setSelectedServices({})
+    setServicesLoading(true)
+    setServicesError('')
+    resetSchedule()
+  }
+
+  const selectVehicles = (ids) => {
+    setSelectedVehicleIds(ids)
+    setSelectedServices({})
+    resetSchedule()
+  }
+
   // Fetch slots when branch/date/vehicles/services change
   useEffect(() => {
-    if (step !== 2 || !selectedBranch || !selectedDate || selectedVehicleIds.length === 0) return
+    if (step !== 3 || !selectedBranch || !selectedDate || selectedVehicleIds.length === 0) return
     let ignore = false
 
     const vehicleSelections = selectedVehicleIds.map((id) => ({
@@ -169,12 +220,13 @@ export default function BusinessNewBookingPage() {
   }, [step, selectedBranch, selectedDate, selectedVehicleIds, selectedServices])
 
   const toggleVehicle = (vehicleId) => {
-    setSelectedVehicleIds((prev) =>
-      prev.includes(vehicleId) ? prev.filter((id) => id !== vehicleId) : [...prev, vehicleId]
+    selectVehicles(
+      selectedVehicleIds.includes(vehicleId) ? selectedVehicleIds.filter((id) => id !== vehicleId) : [...selectedVehicleIds, vehicleId]
     )
   }
 
   const toggleService = (fleetVehicleId, serviceId) => {
+    resetSchedule()
     setSelectedServices((prev) => {
       const current = prev[fleetVehicleId] || []
       const updated = current.includes(serviceId)
@@ -189,7 +241,11 @@ export default function BusinessNewBookingPage() {
     .filter(Boolean)
 
   const allServicesSelected = () => {
-    return selectedVehicleIds.every((id) => (selectedServices[id] || []).length > 0)
+    return selectedVehicles.length > 0 && !servicesLoading && !servicesError && selectedVehicles.every((vehicle) => {
+      const ids = selectedServices[vehicle.fleetVehicleId] || []
+      const available = servicesForVehicle(services, selectedBranch, vehicle)
+      return ids.length > 0 && ids.every((id) => available.some((service) => service.serviceId === id))
+    })
   }
 
   // Compute per-vehicle and total prices
@@ -220,9 +276,10 @@ export default function BusinessNewBookingPage() {
 
   const canNext = () => {
     if (step === 0) return selectedVehicleIds.length > 0
-    if (step === 1) return allServicesSelected()
-    if (step === 2) return !!selectedSlot?.isAvailable
-    if (step === 3) return true
+    if (step === 1) return !!selectedBranch
+    if (step === 2) return allServicesSelected()
+    if (step === 3) return !slotsLoading && !!selectedSlot?.isAvailable
+    if (step === 4) return allServicesSelected() && !!selectedSlot?.isAvailable
     return false
   }
 
@@ -269,6 +326,7 @@ export default function BusinessNewBookingPage() {
   }
 
   const handleSubmit = async () => {
+    if (!selectedBranch || !selectedDate || !allServicesSelected() || !selectedSlot?.isAvailable || submitting || scheduleUpdating) return
     setSubmitting(true)
     setError('')
     try {
@@ -346,14 +404,14 @@ export default function BusinessNewBookingPage() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setSelectedVehicleIds(vehicles.map((v) => v.fleetVehicleId))}
+                  onClick={() => selectVehicles(vehicles.map((v) => v.fleetVehicleId))}
                   className="text-xs px-2.5 py-1 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                 >
                   Chọn tất cả
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedVehicleIds([])}
+                  onClick={() => selectVehicles([])}
                   className="text-xs px-2.5 py-1 rounded-lg bg-surface-container text-on-surface-variant hover:bg-surface-container-high transition-colors"
                 >
                   Bỏ chọn
@@ -410,19 +468,30 @@ export default function BusinessNewBookingPage() {
           </div>
         )}
 
-        {/* STEP 1: Per-vehicle services */}
-        {step === 1 && (
+        {/* STEP 2: Per-vehicle services */}
+        {step === 2 && (
           <div className="space-y-3">
             <h3 className="font-medium text-on-surface mb-1">Chọn dịch vụ cho từng xe</h3>
             <p className="text-xs text-on-surface-variant mb-4">
-              Mỗi xe có thể chọn dịch vụ khác nhau. Chọn ít nhất 1 dịch vụ cho mỗi xe.
+              Dịch vụ tại {branches.find((branch) => branch.id === selectedBranch)?.name}. Chọn ít nhất 1 dịch vụ cho mỗi xe.
             </p>
 
-            {selectedVehicles.map((vehicle) => (
+            {servicesLoading && <p className="text-sm text-on-surface-variant">Đang tải dịch vụ...</p>}
+            {servicesError && (
+              <div className="text-sm text-red-700">
+                {servicesError}
+                <button type="button" className="ml-2 underline" onClick={() => {
+                  setServicesLoading(true)
+                  setServicesError('')
+                  setServicesRetry((value) => value + 1)
+                }}>Thử lại</button>
+              </div>
+            )}
+            {!servicesLoading && !servicesError && selectedVehicles.map((vehicle) => (
               <VehicleServiceRow
                 key={vehicle.fleetVehicleId}
                 vehicle={vehicle}
-                services={services}
+                services={servicesForVehicle(services, selectedBranch, vehicle)}
                 selectedServices={selectedServices}
                 onToggleService={toggleService}
                 resolvedVehicleTypeId={resolveVehicleTypeId(vehicle, services)}
@@ -434,7 +503,7 @@ export default function BusinessNewBookingPage() {
               <div className="bg-surface-container rounded-xl px-4 py-3 flex items-center justify-between">
                 <div>
                   <span className="text-sm text-on-surface">Tạm tính ({selectedVehicleIds.length} xe)</span>
-                  <p className="text-[11px] text-on-surface-variant">Giá cuối cùng theo chi nhánh sẽ hiển thị ở bước sau</p>
+                  <p className="text-[11px] text-on-surface-variant">Giá dịch vụ theo chi nhánh và loại xe đã chọn</p>
                 </div>
                 <span className="text-lg font-bold text-primary">{formatVnd(totalPrice)}</span>
               </div>
@@ -442,17 +511,18 @@ export default function BusinessNewBookingPage() {
           </div>
         )}
 
-        {/* STEP 2: Branch + Date + Slot */}
-        {step === 2 && (
+        {/* STEP 1: Branch */}
+        {step === 1 && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-on-surface-variant mb-2">Chi nhánh</label>
+              {branches.length === 0 && <p className="text-sm text-on-surface-variant">Chưa có chi nhánh để đặt lịch.</p>}
               <div className="space-y-2">
                 {branches.map((branch) => (
                   <button
                     key={branch.id}
                     type="button"
-                    onClick={() => setSelectedBranch(branch.id)}
+                    onClick={() => selectBranch(branch.id)}
                     className={`w-full text-left p-4 rounded-xl border transition-colors ${
                       selectedBranch === branch.id
                         ? 'border-primary bg-primary/5'
@@ -466,12 +536,22 @@ export default function BusinessNewBookingPage() {
               </div>
             </div>
 
+          </div>
+        )}
+
+        {/* STEP 3: Date + Slot */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-on-surface">{branches.find((branch) => branch.id === selectedBranch)?.name}</p>
             <div>
               <label className="block text-sm font-medium text-on-surface-variant mb-2">Ngày đặt</label>
               <input
                 type="date"
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
+                onChange={(e) => {
+                  setSelectedDate(e.target.value)
+                  resetSchedule()
+                }}
                 min={new Date().toISOString().split('T')[0]}
                 className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm text-on-surface focus:outline-none focus:border-primary"
               />
@@ -565,8 +645,8 @@ export default function BusinessNewBookingPage() {
           </div>
         )}
 
-        {/* STEP 3: Confirmation */}
-        {step === 3 && (
+        {/* STEP 4: Confirmation */}
+        {step === 4 && (
           <div className="space-y-4">
             <h3 className="font-medium text-on-surface">Xác nhận đặt lịch</h3>
 
@@ -687,7 +767,7 @@ export default function BusinessNewBookingPage() {
           <button
             type="button"
             onClick={() => setStep((s) => s - 1)}
-            disabled={step === 0}
+            disabled={step === 0 || scheduleUpdating || submitting}
             className="px-4 py-2 text-sm font-medium text-on-surface-variant border border-outline-variant rounded-xl hover:bg-surface-container disabled:opacity-50 transition-colors"
           >
             ← Quay lại
@@ -705,7 +785,7 @@ export default function BusinessNewBookingPage() {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || scheduleUpdating}
+              disabled={submitting || scheduleUpdating || !canNext()}
               className="px-6 py-2 text-sm font-medium text-on-primary bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2"
             >
               {submitting ? (

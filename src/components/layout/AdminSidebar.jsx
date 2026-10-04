@@ -1,95 +1,130 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
 
 // Cấu hình các nhóm navigation - sắp xếp theo đúng nghiệp vụ thực tế
 const navGroups = [
   {
-    title: 'Tổng quan',
-    icon: 'dashboard',
+    title: "Tổng quan",
+    icon: "dashboard",
     items: [
-      { to: '/admin/dashboard', label: 'Dashboard', icon: 'dashboard', end: true },
+      {
+        to: "/admin/dashboard",
+        label: "Dashboard",
+        icon: "dashboard",
+        end: true,
+      },
     ],
   },
   {
-    title: 'Dịch vụ & Xe',
-    icon: 'local_car_wash',
+    title: "Dịch vụ & Xe",
+    icon: "local_car_wash",
     items: [
-      { to: '/admin/services', label: 'Dịch vụ', icon: 'local_car_wash' },
-      { to: '/admin/vehicle-types', label: 'Loại xe', icon: 'directions_car' },
-      { to: '/admin/vehicle-approvals', label: 'Duyệt loại xe', icon: 'pending_actions' },
-      { to: '/admin/car-models', label: 'Mẫu xe', icon: 'commute' },
-      { to: '/admin/pending-car-models', label: 'Duyệt mẫu xe', icon: 'fact_check' },
+      { to: "/admin/services", label: "Dịch vụ", icon: "local_car_wash" },
+      { to: "/admin/vehicle-types", label: "Loại xe", icon: "directions_car" },
+      {
+        to: "/admin/vehicle-approvals",
+        label: "Duyệt loại xe",
+        icon: "pending_actions",
+      },
+      { to: "/admin/car-models", label: "Mẫu xe", icon: "commute" },
+      {
+        to: "/admin/pending-car-models",
+        label: "Duyệt mẫu xe",
+        icon: "fact_check",
+      },
     ],
   },
   {
-    title: 'Cơ sở vật hành',
-    icon: 'store',
+    title: "Cơ sở vận hành",
+    icon: "store",
     items: [
-      { to: '/admin/branches', label: 'Chi nhánh', icon: 'store' },
-      { to: '/admin/lanes', label: 'Làn rửa', icon: 'garage' },
-      { to: '/admin/time-slots', label: 'Khung giờ', icon: 'schedule' },
+      { to: "/admin/branches", label: "Chi nhánh", icon: "store" },
+      { to: "/admin/lanes", label: "Làn rửa", icon: "garage" },
+      { to: "/admin/time-slots", label: "Khung giờ", icon: "schedule" },
     ],
   },
   {
-    title: 'Nhân sự',
-    icon: 'group',
+    title: "Nhân sự",
+    icon: "group",
+    items: [{ to: "/admin/employees", label: "Nhân viên", icon: "badge" }],
+  },
+  {
+    title: "Khuyến mãi",
+    icon: "local_offer",
     items: [
-      { to: '/admin/employees', label: 'Nhân viên', icon: 'badge' },
+      {
+        to: "/admin/vouchers",
+        label: "Voucher đổi điểm",
+        icon: "confirmation_number",
+      },
+      {
+        to: "/admin/voucher-campaigns",
+        label: "Voucher tự cấp",
+        icon: "campaign",
+      },
     ],
   },
   {
-    title: 'Khuyến mãi',
-    icon: 'local_offer',
+    title: "Khách hàng",
+    icon: "people",
     items: [
-      { to: '/admin/vouchers', label: 'Voucher đổi điểm', icon: 'confirmation_number' },
-      { to: '/admin/voucher-campaigns', label: 'Voucher tự cấp', icon: 'campaign' },
+      { to: "/admin/users", label: "Người dùng", icon: "group" },
+      {
+        to: "/admin/tiers",
+        label: "Hạng thành viên",
+        icon: "workspace_premium",
+      },
     ],
   },
   {
-    title: 'Khách hàng',
-    icon: 'people',
+    title: "Vận hành",
+    icon: "assignment",
     items: [
-      { to: '/admin/users', label: 'Người dùng', icon: 'group' },
-      { to: '/admin/tiers', label: 'Hạng thành viên', icon: 'workspace_premium' },
+      { to: "/admin/bookings", label: "Lịch đặt", icon: "calendar_month" },
+      { to: "/admin/inventory", label: "Kho vật tư", icon: "inventory_2" },
     ],
   },
   {
-    title: 'Vận hành',
-    icon: 'assignment',
+    title: "Tài chính",
+    icon: "payments",
     items: [
-      { to: '/admin/bookings', label: 'Lịch đặt', icon: 'calendar_month' },
-      { to: '/admin/inventory', label: 'Kho vật tư', icon: 'inventory_2' },
+      { to: "/admin/transactions", label: "Giao dịch", icon: "payments" },
     ],
   },
   {
-    title: 'Tài chính',
-    icon: 'payments',
+    title: "Đối tác DN",
+    icon: "business",
     items: [
-      { to: '/admin/transactions', label: 'Giao dịch', icon: 'payments' },
+      {
+        to: "/admin/business-applications",
+        label: "Đơn DN",
+        icon: "assignment",
+      },
+      {
+        to: "/admin/fleet-approvals",
+        label: "Duyệt xe DN",
+        icon: "local_shipping",
+      },
+      {
+        to: "/admin/business-invoices",
+        label: "Hóa đơn DN",
+        icon: "receipt_long",
+      },
     ],
   },
-  {
-    title: 'Đối tác DN',
-    icon: 'business',
-    items: [
-      { to: '/admin/business-applications', label: 'Đơn DN', icon: 'assignment' },
-      { to: '/admin/fleet-approvals', label: 'Duyệt xe DN', icon: 'local_shipping' },
-      { to: '/admin/business-invoices', label: 'Hóa đơn DN', icon: 'receipt_long' },
-    ],
-  },
-]
+];
 
 // Component NavGroup - Header + collapsible items (cửa cuộn)
 function NavGroup({ group, isFirst, isOpen, onToggle }) {
   return (
-    <div className={!isFirst ? 'mt-2' : ''}>
+    <div className={!isFirst ? "mt-2" : ""}>
       {/* Group Header - Nổi bật, có thể click để thu gọn */}
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isOpen}
         className={`group relative mx-3 flex w-[calc(100%-1.5rem)] items-center justify-center gap-2 rounded-md border border-outline-variant/60 bg-white px-4 py-2.5 text-on-surface transition-colors duration-300 hover:border-outline hover:bg-surface-variant/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-          isOpen ? 'shadow-sm' : ''
+          isOpen ? "shadow-sm" : ""
         }`}
       >
         <span
@@ -106,7 +141,9 @@ function NavGroup({ group, isFirst, isOpen, onToggle }) {
       {/* Collapsible Items - Cửa cuộn trượt mượt */}
       <div
         className={`grid overflow-hidden transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-          isOpen ? 'grid-rows-[1fr] opacity-100 mt-1' : 'grid-rows-[0fr] opacity-0 mt-0'
+          isOpen
+            ? "grid-rows-[1fr] opacity-100 mt-1"
+            : "grid-rows-[0fr] opacity-0 mt-0"
         }`}
       >
         <div className="min-h-0">
@@ -118,7 +155,7 @@ function NavGroup({ group, isFirst, isOpen, onToggle }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // Component NavItem - Item con trong nhóm (icon trái, text căn giữa)
@@ -130,15 +167,15 @@ function NavItem({ to, label, icon, end }) {
       className={({ isActive }) =>
         `flex items-center justify-center rounded-lg px-3 py-2.5 transition-colors duration-200 active:scale-95 ${
           isActive
-            ? 'bg-primary text-on-primary shadow-sm'
-            : 'text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface'
+            ? "bg-primary text-on-primary shadow-sm"
+            : "text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface"
         }`
       }
     >
       {({ isActive }) => (
         <>
           <span
-            className={`material-symbols-outlined text-[22px] leading-none shrink-0 mr-auto ${isActive ? 'filled' : ''}`}
+            className={`material-symbols-outlined text-[22px] leading-none shrink-0 mr-auto ${isActive ? "filled" : ""}`}
           >
             {icon}
           </span>
@@ -148,18 +185,18 @@ function NavItem({ to, label, icon, end }) {
         </>
       )}
     </NavLink>
-  )
+  );
 }
 
 export default function AdminSidebar() {
   // Mặc định: nhóm đầu tiên mở, còn lại thu gọn - nhưng để UX tốt ta mở nhóm đang active
   const [openGroups, setOpenGroups] = useState(() =>
-    Object.fromEntries(navGroups.map((g, i) => [g.title, i === 0]))
-  )
+    Object.fromEntries(navGroups.map((g, i) => [g.title, i === 0])),
+  );
 
   const toggleGroup = (title) => {
-    setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }))
-  }
+    setOpenGroups((prev) => ({ ...prev, [title]: !prev[title] }));
+  };
 
   return (
     <nav className="bg-surface-container-lowest fixed top-0 left-0 z-50 h-screen w-64 border-r border-outline-variant shadow-sm">
@@ -194,15 +231,15 @@ export default function AdminSidebar() {
             className={({ isActive }) =>
               `flex items-center justify-center rounded-lg px-3 py-2.5 transition-colors duration-200 active:scale-95 ${
                 isActive
-                  ? 'bg-primary text-on-primary shadow-sm'
-                  : 'text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface'
+                  ? "bg-primary text-on-primary shadow-sm"
+                  : "text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface"
               }`
             }
           >
             {({ isActive }) => (
               <>
                 <span
-                  className={`material-symbols-outlined text-[22px] leading-none shrink-0 mr-auto ${isActive ? 'filled' : ''}`}
+                  className={`material-symbols-outlined text-[22px] leading-none shrink-0 mr-auto ${isActive ? "filled" : ""}`}
                 >
                   settings
                 </span>
@@ -215,5 +252,5 @@ export default function AdminSidebar() {
         </div>
       </div>
     </nav>
-  )
+  );
 }
