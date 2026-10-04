@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { firstDisplayName } from '../utils/personnelName'
 import { toApiTimeValue } from './admin.timeSlots.api'
 
 /** @param {unknown} data */
@@ -18,7 +19,7 @@ export function normalizeStaffShift(item) {
   return {
     shiftAssignmentId: Number(item.shiftAssignmentId ?? item.assignmentId ?? item.id),
     staffUserId: item.staffUserId != null ? Number(item.staffUserId) : undefined,
-    staffName: item.staffName != null ? String(item.staffName) : '',
+    staffName: firstDisplayName(item.staffName, item.fullName),
     workShiftId: Number(item.workShiftId ?? 0),
     shiftName: String(item.shiftName ?? '—'),
     workDate: String(item.workDate ?? ''),

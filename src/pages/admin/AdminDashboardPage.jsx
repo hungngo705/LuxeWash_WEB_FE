@@ -54,7 +54,7 @@ export default function AdminDashboardPage() {
     <div className="w-full">
       <PageHeader
         eyebrow="Tổng quan"
-        title="Dashboard"
+        title="Tổng quan vận hành"
         description="Theo dõi hoạt động kinh doanh tổng quan"
         actionLabel={refreshing ? 'Đang làm mới…' : 'Làm mới'}
         actionIcon="refresh"

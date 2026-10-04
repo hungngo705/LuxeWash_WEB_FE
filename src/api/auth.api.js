@@ -33,8 +33,8 @@ export function refreshAccessToken(accessToken, refreshToken) {
 }
 
 /** @returns {Promise<Record<string, unknown>>} */
-export function fetchCurrentUser() {
-  return apiRequest('/users/me')
+export function fetchCurrentUser(options = {}) {
+  return apiRequest('/users/me', options)
 }
 
 /**

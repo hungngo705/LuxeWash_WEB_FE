@@ -247,7 +247,7 @@ export default function ManagerTimeSlotsPage() {
             />
           </div>
           <Input
-            label="Sức chứa (xe)"
+            label="Sức chứa"
             type="number"
             min="1"
             value={form.maxCapacity}

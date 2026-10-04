@@ -3,22 +3,22 @@ import ManagerSidebar from "./ManagerSidebar";
 import ManagerTopBar from "./ManagerTopBar";
 
 const PAGE_TITLES = {
-  "/manager/dashboard": "Tổng quan chi nhánh",
-  "/manager/bookings": "Lịch đặt",
-  // '/manager/queue': 'Điều phối xe vào làn',
-  "/manager/lanes": "Quản lý làn rửa",
-  "/manager/incidents": "Sự cố chi nhánh",
-  "/manager/time-slots": "Khung giờ đặt lịch",
-  "/manager/staff": "Phân công nhân viên & Làn",
-  "/manager/employees": "Quản lý nhân viên",
-  "/manager/settings": "Cài đặt Manager",
-  "/manager/shifts": "Quản lý ca làm",
-  "/manager/customers": "Tra cứu khách hàng",
+  // "/manager/dashboard": "Tổng quan chi nhánh",
+  // "/manager/bookings": "Lịch đặt",
+  // // '/manager/queue': 'Điều phối xe vào làn',
+  // "/manager/lanes": "Quản lý làn rửa",
+  // "/manager/incidents": "Sự cố chi nhánh",
+  // "/manager/time-slots": "Khung giờ đặt lịch",
+  // "/manager/staff": "Phân công nhân viên & Làn",
+  // "/manager/employees": "Quản lý nhân viên",
+  // "/manager/settings": "Cài đặt Manager",
+  // "/manager/shifts": "Quản lý ca làm",
+  // "/manager/customers": "Tra cứu khách hàng",
 };
 
 export default function ManagerLayout() {
   const { pathname } = useLocation();
-  const title = PAGE_TITLES[pathname] ?? "LuxeWash Manager";
+  const title = PAGE_TITLES[pathname] ?? "";
 
   return (
     <div className="min-h-screen bg-background">

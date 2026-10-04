@@ -66,3 +66,22 @@ export function createManagerLane(payload) {
     }),
   })
 }
+
+/** PUT /api/v1/manager/lanes/{laneId}. BE enforces the Manager's branch. */
+export function updateManagerLane(id, payload) {
+  return apiRequest(`/manager/lanes/${Number(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: payload.name.trim(),
+      branchId: Number(payload.branchId),
+      isActive: payload.isActive,
+      isBusinessLane: payload.isBusinessLane === true,
+      isVipLane: payload.isVipLane === true,
+    }),
+  })
+}
+
+/** DELETE soft-deactivates the lane, preserving historical records. */
+export function deleteManagerLane(id) {
+  return apiRequest(`/manager/lanes/${Number(id)}`, { method: 'DELETE' })
+}

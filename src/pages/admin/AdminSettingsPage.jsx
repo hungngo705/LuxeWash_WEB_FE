@@ -305,7 +305,7 @@ export default function AdminSettingsPage() {
         </form>
       </section>
 
-      <section className="glass-panel soft-shadow mb-6 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
+      {/* <section className="glass-panel soft-shadow mb-6 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">
           <h2 className="flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
             <span className="material-symbols-outlined text-primary">info</span>
@@ -330,7 +330,7 @@ export default function AdminSettingsPage() {
             <dd className="text-sm font-medium text-on-surface">Admin Console</dd>
           </div>
         </dl>
-      </section>
+      </section> */}
 
       <section className="glass-panel soft-shadow overflow-hidden rounded-xl border border-error-container/40 bg-surface-container-lowest">
         <div className="border-b border-outline-variant bg-surface-container-low px-6 py-4">

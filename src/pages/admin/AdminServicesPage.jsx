@@ -350,13 +350,6 @@ export default function AdminServicesPage() {
             ),
           },
           {
-            key: 'priceCount',
-            label: 'Số mức giá',
-            width: '110px',
-            align: 'center',
-            render: (row) => row.prices?.length ?? 0,
-          },
-          {
             key: 'priceRange',
             label: 'Giá thấp nhất – cao nhất',
             render: (row) => getPriceRange(row.prices),

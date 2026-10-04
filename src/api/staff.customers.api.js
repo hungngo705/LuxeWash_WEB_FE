@@ -7,10 +7,8 @@ const DEFAULT_AVATAR =
 export function normalizePlateKey(plate) {
   return String(plate ?? '')
     .toUpperCase()
-    .replace(/[\s.\-]/g, '')
+    .replace(/[\s.-]/g, '')
 }
-
-const userByPlateCache = new Map()
 
 /**
  * Resolve customer + vehicle by license plate via GET /admin/users + GET /admin/users/{id}.
@@ -21,15 +19,14 @@ const userByPlateCache = new Map()
 export async function findUserByLicensePlate(licensePlate, options = {}) {
   const key = normalizePlateKey(licensePlate)
   if (!key) return null
-  if (userByPlateCache.has(key)) return userByPlateCache.get(key)
 
   const pageSize = 25
   let page = 1
 
-  while (page <= 8) {
+  while (!options.signal?.aborted) {
     let data
     try {
-      data = await fetchUsers({ page, pageSize, status: 'Active' }, options)
+      data = await fetchUsers({ page, pageSize, keyword: key, status: 'Active', role: 'Customer', signal: options.signal })
     } catch {
       break
     }
@@ -41,13 +38,12 @@ export async function findUserByLicensePlate(licensePlate, options = {}) {
       try {
         const detail = await fetchUserById(item.userId, options)
         const vehicles = Array.isArray(detail.vehicles) ? detail.vehicles : []
-        const vehicle = vehicles.find((v) => normalizePlateKey(v.licensePlate) === key)
+        const vehicle = vehicles.find((v) => !v.isDeleted && normalizePlateKey(v.licensePlate) === key)
         if (vehicle) {
           const result = {
             customer: mapUserDetailToCustomerView(detail),
             vehicle,
           }
-          userByPlateCache.set(key, result)
           return result
         }
       } catch {
@@ -59,7 +55,6 @@ export async function findUserByLicensePlate(licensePlate, options = {}) {
     page += 1
   }
 
-  userByPlateCache.set(key, null)
   return null
 }
 
@@ -79,8 +74,8 @@ function formatLastVisit(value) {
 
 /** @param {Record<string, unknown>} detail */
 export function mapUserDetailToCustomerView(detail) {
-  const vehicles = Array.isArray(detail.vehicles) ? detail.vehicles : []
-  const totalPoint = Number(detail.totalPoint ?? detail.promotionPoint ?? 0)
+  const vehicles = Array.isArray(detail.vehicles) ? detail.vehicles.filter((v) => !v.isDeleted) : []
+  const totalPoint = detail.totalPoint == null ? null : Number(detail.totalPoint)
 
   return {
     userId: Number(detail.userId),
@@ -94,11 +89,12 @@ export function mapUserDetailToCustomerView(detail) {
     rankName: String(detail.tierName ?? detail.rankName ?? '—').toUpperCase(),
     pointMultiplier: Number(detail.pointMultiplier ?? 1),
     userScore: totalPoint,
-    walletBalance: Number(detail.walletBalance ?? 0),
+    walletBalance: detail.walletBalance == null ? null : Number(detail.walletBalance),
+    vehicleCount: detail.vehicleCount == null ? vehicles.length : Number(detail.vehicleCount),
     userStatus:
       detail.status === 'Blocked' || detail.userStatus === 'Blocked' ? 'Banned' : 'Active',
     lastVisitDisplay: formatLastVisit(detail.lastVisitDate),
-    totalWashes: Number(detail.totalWashes ?? 0),
+    totalWashes: detail.totalWashes == null ? null : Number(detail.totalWashes),
     avatar: DEFAULT_AVATAR,
     vehicles: vehicles.map((v) => ({
       licensePlate: String(v.licensePlate ?? ''),
@@ -121,11 +117,12 @@ export function mapListUserToCustomerView(item) {
     rankId: 0,
     rankName: String(item.tierName ?? item.rankName ?? '—').toUpperCase(),
     pointMultiplier: 1,
-    userScore: 0,
-    walletBalance: 0,
+    userScore: item.totalPoint == null ? null : Number(item.totalPoint),
+    walletBalance: item.walletBalance == null ? null : Number(item.walletBalance),
+    vehicleCount: item.vehicleCount == null ? null : Number(item.vehicleCount),
     userStatus: item.status === 'Blocked' ? 'Banned' : 'Active',
     lastVisitDisplay: formatLastVisit(item.lastVisitDate),
-    totalWashes: 0,
+    totalWashes: item.totalWashes == null ? null : Number(item.totalWashes),
     avatar: DEFAULT_AVATAR,
     vehicles: [],
   }

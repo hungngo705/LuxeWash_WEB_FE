@@ -207,6 +207,8 @@ export {
 export {
   fetchManagerLanes,
   createManagerLane,
+  updateManagerLane,
+  deleteManagerLane,
   asManagerCollection,
 } from './manager.lanes.api'
 
@@ -238,6 +240,7 @@ export {
   fetchManagerWorkShifts,
   createManagerWorkShift,
   updateManagerWorkShift,
+  deleteManagerWorkShift,
   fetchManagerShiftAssignments,
   createManagerShiftAssignment,
   updateManagerShiftAssignment,

@@ -2,28 +2,28 @@ import { useState } from 'react'
 
 const faqs = [
   {
-    question: 'Thời gian rửa xe trung bình là bao lâu?',
-    answer: 'Tùy gói dịch vụ: Rửa nhanh 15-20 phút, Rửa tiêu chuẩn 30-40 phút, Rửa cao cấp 60-90 phút, Hấp sấy 45-60 phút.',
+    question: 'Giá và thời gian dịch vụ được xác định như thế nào?',
+    answer: 'Giá và thời gian ước tính được cấu hình theo dịch vụ, loại xe và chi nhánh. Chọn chi nhánh trong bảng giá để xem dữ liệu hiện có. Thời gian ước tính không phải cam kết hoàn thành.',
   },
   {
-    question: 'Tôi có cần đặt lịch trước không?',
-    answer: 'Không bắt buộc, nhưng đặt lịch trước qua app giúp bạn được giảm 10% và ưu tiên vào làn rửa nhanh, tránh chờ đợi.',
+    question: 'Khách hàng cá nhân và doanh nghiệp đặt lịch ở đâu?',
+    answer: 'Khách hàng cá nhân đặt lịch trong ứng dụng LuxeWash. Doanh nghiệp sử dụng cổng web sau khi đăng ký và được duyệt. Trang giới thiệu này chỉ hiển thị dịch vụ, bảng giá và chi nhánh; không tạo lịch đặt.',
   },
   {
     question: 'Làm sao để hủy hoặc thay đổi lịch đặt?',
-    answer: 'Bạn có thể hủy hoặc thay đổi lịch trong mục "Lịch sử đặt lịch" trên app, tối thiểu 2 giờ trước giờ hẹn mà không mất phí.',
+    answer: 'Mở chi tiết lịch hẹn trong tài khoản để xem thao tác đang được cho phép. Hệ thống kiểm tra trạng thái và thời gian còn lại; điều kiện hoàn tiền được xử lý riêng. Nếu lịch bị ảnh hưởng bởi sự cố, hãy sử dụng màn hình xử lý sự cố thay vì luồng đổi hoặc hủy thông thường.',
   },
   {
     question: 'Tôi có thể thanh toán bằng những cách nào?',
-    answer: 'LuxeWash hỗ trợ thanh toán qua: Ví điện tử (VNPay, MoMo, ZaloPay), Thẻ ngân hàng (ATM, VISA, Mastercard), và tiền mặt tại quầy.',
+    answer: 'Hệ thống có ví nội bộ và thanh toán QR qua PayOS. Các lựa chọn khả dụng được hiển thị trong bước thanh toán tương ứng. Doanh nghiệp có luồng công nợ, hóa đơn và sao kê riêng theo cấu hình tài khoản.',
   },
   {
-    question: 'Chính sách bảo hành sau rửa xe như thế nào?',
-    answer: 'Nếu xe không sạch theo tiêu chuẩn dịch vụ, bạn có thể phản ánh trong vòng 30 phút sau khi nhận xe. Chúng tôi sẽ rửa lại miễn phí.',
+    question: 'Ứng dụng khách hàng có những chức năng nào?',
+    answer: 'Ứng dụng hỗ trợ quản lý xe, đặt lịch, theo dõi lịch hẹn, ví, điểm thưởng và voucher. Ưu đãi chỉ được áp dụng khi tài khoản và lịch đặt đáp ứng điều kiện của voucher hoặc cấu hình hiện tại.',
   },
   {
     question: 'Làm sao để đăng ký gói doanh nghiệp?',
-    answer: 'Truy cập trang web luxewash.vn, chọn "Đăng ký doanh nghiệp", điền thông tin công ty và tải lên giấy phép kinh doanh. Đội ngũ của chúng tôi sẽ liên hệ trong 24 giờ.',
+    answer: 'Chọn “Đăng ký doanh nghiệp”, điền thông tin tài khoản và doanh nghiệp, tải giấy phép kinh doanh rồi gửi hồ sơ. Hồ sơ cần được quản trị viên xét duyệt trước khi sử dụng các chức năng dành cho doanh nghiệp.',
   },
 ]
 
@@ -31,7 +31,7 @@ export default function FAQSection() {
   const [openIndex, setOpenIndex] = useState(null)
 
   return (
-    <section className="py-20 bg-white">
+    <section id="faq" className="scroll-mt-20 py-20 bg-white">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <span className="inline-block px-4 py-1.5 bg-[#006689]/10 text-[#006689] text-xs font-semibold rounded-full mb-3">Hỗ trợ</span>
@@ -46,6 +46,9 @@ export default function FAQSection() {
               className={`rounded-xl border overflow-hidden transition-colors ${openIndex === index ? 'border-[#006689]/30 bg-[#006689]/5' : 'border-[#e0e3e5] bg-white'}`}
             >
               <button
+                type="button"
+                aria-expanded={openIndex === index}
+                aria-controls={`landing-faq-${index}`}
                 className="w-full px-6 py-4 flex items-center justify-between text-left"
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
               >
@@ -55,7 +58,7 @@ export default function FAQSection() {
                 </span>
               </button>
               {openIndex === index && (
-                <div className="px-6 pb-4">
+                <div id={`landing-faq-${index}`} className="px-6 pb-4">
                   <p className="text-sm text-[#3f484e] leading-relaxed border-t border-[#e0e3e5] pt-3">{faq.answer}</p>
                 </div>
               )}

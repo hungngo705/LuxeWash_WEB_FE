@@ -364,7 +364,7 @@ export default function AdminTimeSlotsPage() {
           <Input
             type="number"
             min="1"
-            label="Sức chứa (xe)"
+            label="Sức chứa"
             placeholder="VD: 3"
             value={form.maxCapacity}
             disabled={saving}

@@ -5,11 +5,12 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const navLinks = [
-    { label: 'Trang chủ', href: '#' },
+    { label: 'Trang chủ', href: '#home' },
     { label: 'Dịch vụ', href: '#services' },
     { label: 'Bảng giá', href: '#pricing' },
     { label: 'Chi nhánh', href: '#branches' },
-    { label: 'Về chúng tôi', href: '#about' },
+    { label: 'Quy trình', href: '#about' },
+    { label: 'Hỏi đáp', href: '#faq' },
   ]
 
   return (
@@ -48,6 +49,10 @@ export default function Navbar() {
           </div>
 
           <button
+            type="button"
+            aria-label={menuOpen ? 'Đóng menu' : 'Mở menu'}
+            aria-expanded={menuOpen}
+            aria-controls="landing-mobile-menu"
             className="md:hidden p-2 text-white"
             onClick={() => setMenuOpen(!menuOpen)}
           >
@@ -59,11 +64,12 @@ export default function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="md:hidden bg-[#003344]/95 backdrop-blur-md border-t border-white/10 px-4 py-4">
+        <div id="landing-mobile-menu" className="md:hidden bg-[#003344]/95 backdrop-blur-md border-t border-white/10 px-4 py-4">
           {navLinks.map((link) => (
             <a
               key={link.label}
               href={link.href}
+              onClick={() => setMenuOpen(false)}
               className="block py-2 text-sm font-medium text-white/70"
             >
               {link.label}

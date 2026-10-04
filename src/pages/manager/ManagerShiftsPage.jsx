@@ -4,6 +4,7 @@ import {
   createManagerShiftAssignment,
   createManagerWorkShift,
   deleteManagerShiftAssignment,
+  deleteManagerWorkShift,
   fetchManagerOvertimeRequests,
   fetchManagerShiftAssignments,
   fetchManagerShiftSwapRequests,
@@ -12,6 +13,7 @@ import {
   reviewManagerOvertimeRequest,
   reviewManagerShiftSwapRequest,
   toTimeInputValue,
+  updateManagerWorkShift,
 } from '../../api'
 import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
 import EmptyState from '../../components/admin/shared/EmptyState'
@@ -23,7 +25,7 @@ import Input from '../../components/ui/Input'
 import { useToast } from '../../components/ui/Toast'
 import { formatDateTime } from '../../utils/format'
 
-const emptyShiftForm = { shiftName: '', startTime: '07:00', endTime: '15:00' }
+const emptyShiftForm = { shiftName: '', startTime: '07:00', endTime: '15:00', isActive: true }
 const emptyAssignForm = { staffUserId: '', workShiftId: '', workDate: '', note: '' }
 
 const TAB_BASE = [
@@ -46,11 +48,14 @@ export default function ManagerShiftsPage() {
 
   const [shiftModalOpen, setShiftModalOpen] = useState(false)
   const [shiftForm, setShiftForm] = useState(emptyShiftForm)
+  const [editingShiftId, setEditingShiftId] = useState(null)
   const [assignModalOpen, setAssignModalOpen] = useState(false)
   const [assignForm, setAssignForm] = useState(emptyAssignForm)
   const [saving, setSaving] = useState(false)
   const [deleteAssignId, setDeleteAssignId] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [deleteShiftTarget, setDeleteShiftTarget] = useState(null)
+  const [deletingShift, setDeletingShift] = useState(false)
 
   const todayLocal = (() => {
     const d = new Date()
@@ -85,22 +90,61 @@ export default function ManagerShiftsPage() {
     }
   })
 
-  const handleCreateShift = async () => {
+  const openShiftForm = (shift = null) => {
+    if (saving || deletingShift) return
+    setEditingShiftId(shift?.workShiftId ?? null)
+    setShiftForm(shift ? {
+      shiftName: shift.shiftName,
+      startTime: toTimeInputValue(shift.startTime),
+      endTime: toTimeInputValue(shift.endTime),
+      isActive: shift.isActive,
+    } : emptyShiftForm)
+    setShiftModalOpen(true)
+  }
+
+  const handleSaveShift = async () => {
+    if (saving || deletingShift) return
     if (!shiftForm.shiftName.trim()) {
       toast.warning('Vui lòng nhập tên ca')
       return
     }
+    if (!shiftForm.startTime || !shiftForm.endTime || shiftForm.startTime >= shiftForm.endTime) {
+      toast.warning('Giờ bắt đầu phải trước giờ kết thúc. Ca làm phải nằm trong cùng một ngày.')
+      return
+    }
     setSaving(true)
     try {
-      await createManagerWorkShift(shiftForm)
-      toast.success('Đã tạo ca làm')
+      const payload = { ...shiftForm, shiftName: shiftForm.shiftName.trim() }
+      if (editingShiftId != null) {
+        await updateManagerWorkShift(editingShiftId, payload)
+      } else {
+        await createManagerWorkShift(payload)
+      }
+      toast.success(editingShiftId != null ? 'Đã cập nhật ca làm' : 'Đã tạo ca làm')
       setShiftModalOpen(false)
       setShiftForm(emptyShiftForm)
       await loadAll()
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không tạo được ca làm')
+      toast.error(err instanceof ApiError ? err.message : 'Không lưu được ca làm')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeleteShift = async () => {
+    if (!deleteShiftTarget || deletingShift || saving) return
+    const target = deleteShiftTarget
+    setDeleteShiftTarget(null)
+    setDeletingShift(true)
+    try {
+      await deleteManagerWorkShift(target.workShiftId)
+      setWorkShifts((prev) => prev.map((shift) => shift.workShiftId === target.workShiftId ? { ...shift, isActive: false } : shift))
+      toast.success('Đã xóa hoặc ngừng hoạt động ca làm theo lịch sử phân ca')
+      await loadAll()
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Không xóa được ca làm')
+    } finally {
+      setDeletingShift(false)
     }
   }
 
@@ -271,7 +315,7 @@ export default function ManagerShiftsPage() {
           tab === 'assignments'
             ? () => setAssignModalOpen(true)
             : tab === 'shifts'
-            ? () => setShiftModalOpen(true)
+            ? () => openShiftForm()
             : undefined
         }
       />
@@ -318,6 +362,10 @@ export default function ManagerShiftsPage() {
         ))}
       </div>
 
+      {lastFetchAt.getTime() > 0 && (
+        <p className="mb-4 text-xs text-on-surface-variant">Cập nhật dữ liệu: {formatDateTime(lastFetchAt)}</p>
+      )}
+
       {loadError && (
         <div className="mb-4 rounded-lg border border-error-container bg-error-container/30 px-4 py-3 text-sm text-error">
           {loadError}
@@ -340,7 +388,8 @@ export default function ManagerShiftsPage() {
             <DataTable
               data={workShifts}
               loading={loading}
-              minWidth="520px"
+              minWidth="640px"
+              rowKey="workShiftId"
               emptyIcon="schedule"
               emptyTitle="Chưa có ca làm"
               columns={[
@@ -366,7 +415,37 @@ export default function ManagerShiftsPage() {
                   label: 'Trạng thái',
                   width: '160px',
                   render: (row) => (
-                    <StatusBadge status={row.isActive ? 'Active' : 'Cancelled'} />
+                    <StatusBadge status={row.isActive ? 'Active' : 'Inactive'} />
+                  ),
+                },
+                {
+                  key: 'actions',
+                  label: 'Thao tác',
+                  width: '170px',
+                  align: 'right',
+                  renderActions: (row) => (
+                    <div className="flex justify-end gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Sửa ca ${row.shiftName}`}
+                      disabled={saving || deletingShift}
+                      onClick={() => openShiftForm(row)}
+                      className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">edit</span>
+                      Sửa
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Xóa ca ${row.shiftName}`}
+                      disabled={saving || deletingShift}
+                      onClick={() => setDeleteShiftTarget(row)}
+                      className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-medium text-error hover:bg-error-container/20 disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                      Xóa
+                    </button>
+                    </div>
                   ),
                 },
               ]}
@@ -625,14 +704,16 @@ export default function ManagerShiftsPage() {
 
       <FormModal
         open={shiftModalOpen}
-        title="Thêm ca làm"
+        title={editingShiftId != null ? 'Sửa ca làm' : 'Thêm ca làm'}
+        submitting={saving}
         submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
         onClose={() => !saving && setShiftModalOpen(false)}
-        onSubmit={handleCreateShift}
+        onSubmit={handleSaveShift}
       >
         <div className="space-y-4">
           <Input
             label="Tên ca"
+            required
             value={shiftForm.shiftName}
             disabled={saving}
             onChange={(e) => setShiftForm((f) => ({ ...f, shiftName: e.target.value }))}
@@ -642,6 +723,7 @@ export default function ManagerShiftsPage() {
             <Input
               label="Bắt đầu"
               type="time"
+              required
               value={shiftForm.startTime}
               disabled={saving}
               onChange={(e) => setShiftForm((f) => ({ ...f, startTime: e.target.value }))}
@@ -649,11 +731,25 @@ export default function ManagerShiftsPage() {
             <Input
               label="Kết thúc"
               type="time"
+              required
               value={shiftForm.endTime}
               disabled={saving}
               onChange={(e) => setShiftForm((f) => ({ ...f, endTime: e.target.value }))}
             />
           </div>
+          {editingShiftId != null && (
+            <>
+              <label className="flex items-center gap-2 text-sm font-medium text-on-surface">
+                <input
+                  type="checkbox"
+                  checked={shiftForm.isActive}
+                  disabled={saving}
+                  onChange={(e) => setShiftForm((f) => ({ ...f, isActive: e.target.checked }))}
+                />
+                Đang hoạt động
+              </label>
+            </>
+          )}
         </div>
       </FormModal>
 
@@ -688,7 +784,7 @@ export default function ManagerShiftsPage() {
               onChange={(e) => setAssignForm((f) => ({ ...f, workShiftId: e.target.value }))}
             >
               <option value="">— Chọn —</option>
-              {workShifts.map((s) => (
+              {workShifts.filter((s) => s.isActive).map((s) => (
                 <option key={s.workShiftId} value={s.workShiftId}>
                   {s.shiftName} ({toTimeInputValue(s.startTime)} – {toTimeInputValue(s.endTime)})
                 </option>
@@ -714,6 +810,17 @@ export default function ManagerShiftsPage() {
           </label>
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        open={Boolean(deleteShiftTarget)}
+        title="Xóa ca làm"
+        message={`Bạn muốn xóa ca “${deleteShiftTarget?.shiftName ?? ''}”? Nếu chưa có phân ca, ca sẽ bị xóa khỏi hệ thống; nếu đã có phân ca, ca chỉ ngừng hoạt động và giữ lại lịch sử. Ca làm dùng chung toàn hệ thống, nên thao tác này ảnh hưởng tất cả chi nhánh sử dụng ca này.`}
+        confirmLabel="Xóa ca làm"
+        variant="danger"
+        loading={deletingShift}
+        onConfirm={handleDeleteShift}
+        onCancel={() => !deletingShift && setDeleteShiftTarget(null)}
+      />
 
       <ConfirmDialog
         open={Boolean(deleteAssignId)}
