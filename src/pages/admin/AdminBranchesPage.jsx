@@ -1,90 +1,96 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   createBranch,
   fetchAdminBranches,
   updateBranch,
-} from '../../api'
-import FormModal from '../../components/admin/shared/FormModal'
-import PageHeader from '../../components/admin/shared/PageHeader'
-import StatusBadge from '../../components/admin/shared/StatusBadge'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
+} from "../../api";
+import FormModal from "../../components/admin/shared/FormModal";
+import PageHeader from "../../components/admin/shared/PageHeader";
+import StatusBadge from "../../components/admin/shared/StatusBadge";
+import DataTable from "../../components/ui/DataTable";
+import Input from "../../components/ui/Input";
+import { useToast } from "../../components/ui/Toast";
 
-const emptyForm = { name: '', address: '', isActive: true }
+const emptyForm = { name: "", address: "", isActive: true };
 
 export default function AdminBranchesPage() {
-  const [branches, setBranches] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const toast = useToast()
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const loadBranches = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
+    setLoading(true);
+    setLoadError("");
     try {
-      setBranches(await fetchAdminBranches())
+      setBranches(await fetchAdminBranches());
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách chi nhánh')
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : "Không tải được danh sách chi nhánh",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    loadBranches()
-  }, [loadBranches])
+    loadBranches();
+  }, [loadBranches]);
 
   const openCreate = () => {
-    setEditingId(null)
-    setForm(emptyForm)
-    setModalOpen(true)
-  }
+    setEditingId(null);
+    setForm(emptyForm);
+    setModalOpen(true);
+  };
 
   const openEdit = (branch) => {
-    setEditingId(branch.id)
+    setEditingId(branch.id);
     setForm({
       name: branch.name,
-      address: branch.address ?? '',
+      address: branch.address ?? "",
       isActive: branch.isActive !== false,
-    })
-    setModalOpen(true)
-  }
+    });
+    setModalOpen(true);
+  };
 
   const handleSave = async () => {
-    if (!form.name.trim() || saving) return
+    if (!form.name.trim() || saving) return;
 
-    setSaving(true)
+    setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         address: form.address.trim() || null,
-      }
+      };
       if (editingId) {
-        await updateBranch(editingId, { ...payload, isActive: form.isActive })
-        toast.success('Đã cập nhật chi nhánh')
+        await updateBranch(editingId, { ...payload, isActive: form.isActive });
+        toast.success("Đã cập nhật chi nhánh");
       } else {
-        await createBranch(payload)
-        toast.success('Đã thêm chi nhánh')
+        await createBranch(payload);
+        toast.success("Đã thêm chi nhánh");
       }
-      setModalOpen(false)
-      await loadBranches()
+      setModalOpen(false);
+      await loadBranches();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không lưu được chi nhánh')
+      toast.error(
+        err instanceof ApiError ? err.message : "Không lưu được chi nhánh",
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow="Cơ sở vật hành"
+        eyebrow="Cơ sở vận hành"
         title="Chi nhánh"
         description="Quản lý chi nhánh — tạo trước khi cấu hình làn rửa"
         actionLabel="Thêm chi nhánh"
@@ -115,45 +121,49 @@ export default function AdminBranchesPage() {
         emptyAction={
           !loadError
             ? {
-                label: 'Thêm chi nhánh',
-                icon: 'add_business',
+                label: "Thêm chi nhánh",
+                icon: "add_business",
                 onClick: openCreate,
               }
             : undefined
         }
         columns={[
           {
-            key: 'id',
-            label: 'ID',
-            width: '80px',
+            key: "id",
+            label: "ID",
+            width: "80px",
             render: (row) => (
-              <span className="font-mono text-on-surface-variant">#{row.id}</span>
+              <span className="font-mono text-on-surface-variant">
+                #{row.id}
+              </span>
             ),
           },
           {
-            key: 'name',
-            label: 'Tên',
+            key: "name",
+            label: "Tên",
             render: (row) => <span className="font-medium">{row.name}</span>,
           },
           {
-            key: 'address',
-            label: 'Địa chỉ',
-            render: (row) => row.address || '—',
-            tdClassName: 'text-on-surface-variant',
+            key: "address",
+            label: "Địa chỉ",
+            render: (row) => row.address || "—",
+            tdClassName: "text-on-surface-variant",
           },
           {
-            key: 'isActive',
-            label: 'Trạng thái',
-            width: '160px',
+            key: "isActive",
+            label: "Trạng thái",
+            width: "160px",
             render: (row) => (
-              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
+              <StatusBadge
+                status={row.isActive !== false ? "Active" : "Inactive"}
+              />
             ),
           },
           {
-            key: 'actions',
-            label: 'Thao tác',
-            width: '100px',
-            align: 'right',
+            key: "actions",
+            label: "Thao tác",
+            width: "100px",
+            align: "right",
             renderActions: (row) => (
               <button
                 type="button"
@@ -175,8 +185,8 @@ export default function AdminBranchesPage() {
 
       <FormModal
         open={modalOpen}
-        title={editingId ? 'Sửa chi nhánh' : 'Thêm chi nhánh'}
-        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        title={editingId ? "Sửa chi nhánh" : "Thêm chi nhánh"}
+        submitLabel={saving ? "Đang lưu…" : "Lưu"}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
@@ -195,7 +205,9 @@ export default function AdminBranchesPage() {
             maxLength={255}
             value={form.address}
             disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, address: e.target.value }))
+            }
             iconLeft="location_on"
           />
           {editingId && (
@@ -205,7 +217,9 @@ export default function AdminBranchesPage() {
                 className="h-4 w-4 rounded border-outline-variant accent-primary"
                 checked={form.isActive}
                 disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, isActive: e.target.checked }))
+                }
               />
               <span className="font-medium">Đang hoạt động</span>
             </label>
@@ -213,5 +227,5 @@ export default function AdminBranchesPage() {
         </div>
       </FormModal>
     </div>
-  )
+  );
 }

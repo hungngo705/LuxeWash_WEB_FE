@@ -8,7 +8,7 @@ const navItems = [
     end: true,
   },
   { to: "/manager/bookings", label: "Lịch đặt", icon: "calendar_month" },
-  { to: "/manager/queue", label: "Điều phối xe", icon: "local_shipping" },
+  // { to: "/manager/queue", label: "Điều phối xe", icon: "local_shipping" },
   { to: "/manager/lanes", label: "Làn rửa", icon: "garage" },
   {
     to: "/manager/incidents",

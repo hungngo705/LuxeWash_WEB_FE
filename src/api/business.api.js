@@ -450,8 +450,8 @@ export const fetchFleetDashboard = () => apiRequest('/fleet/dashboard')
 
 // === Services (public — Business không truy cập /admin/services) ===
 
-export async function fetchBusinessServices() {
-  const data = await apiRequest('/services')
+export async function fetchBusinessServices(branchId) {
+  const data = await apiRequest(branchId == null ? '/services' : `/services?branchId=${encodeURIComponent(branchId)}`)
   return asBusinessCollection(data).map(normalizeBusinessService)
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   createBusinessLane,
@@ -6,109 +6,118 @@ import {
   fetchBranches,
   fetchLanes,
   updateLane,
-} from '../../api'
-import FormModal from '../../components/admin/shared/FormModal'
-import PageHeader from '../../components/admin/shared/PageHeader'
-import StatusBadge from '../../components/admin/shared/StatusBadge'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
+} from "../../api";
+import FormModal from "../../components/admin/shared/FormModal";
+import PageHeader from "../../components/admin/shared/PageHeader";
+import StatusBadge from "../../components/admin/shared/StatusBadge";
+import DataTable from "../../components/ui/DataTable";
+import Input from "../../components/ui/Input";
+import { useToast } from "../../components/ui/Toast";
 
 const emptyForm = {
-  name: '',
-  branchId: '',
+  name: "",
+  branchId: "",
   isActive: true,
   isBusinessLane: false,
-}
+};
 
 export default function AdminLanesPage() {
-  const [lanes, setLanes] = useState([])
-  const [branches, setBranches] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [saving, setSaving] = useState(false)
-  const toast = useToast()
+  const [lanes, setLanes] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   const branchName = (branchId) =>
-    branches.find((b) => b.id === branchId)?.name ?? `#${branchId}`
+    branches.find((b) => b.id === branchId)?.name ?? `#${branchId}`;
 
   const loadData = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
+    setLoading(true);
+    setLoadError("");
     try {
-      const [lanesData, branchesData] = await Promise.all([fetchLanes(), fetchBranches()])
-      setLanes(lanesData)
-      setBranches(branchesData)
+      const [lanesData, branchesData] = await Promise.all([
+        fetchLanes(),
+        fetchBranches(),
+      ]);
+      setLanes(lanesData);
+      setBranches(branchesData);
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách làn rửa')
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : "Không tải được danh sách làn rửa",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    loadData()
-  }, [loadData])
+    loadData();
+  }, [loadData]);
 
   const openCreate = () => {
-    setEditingId(null)
+    setEditingId(null);
     setForm({
       ...emptyForm,
-      branchId: branches[0]?.id ? String(branches[0].id) : '',
-    })
-    setModalOpen(true)
-  }
+      branchId: branches[0]?.id ? String(branches[0].id) : "",
+    });
+    setModalOpen(true);
+  };
 
   const openEdit = (lane) => {
-    setEditingId(lane.id)
+    setEditingId(lane.id);
     setForm({
       name: lane.name,
       branchId: String(lane.branchId),
       isActive: lane.isActive !== false,
       isBusinessLane: lane.isBusinessLane === true,
-    })
-    setModalOpen(true)
-  }
+    });
+    setModalOpen(true);
+  };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.branchId || saving) return
+    if (!form.name.trim() || !form.branchId || saving) return;
 
-    setSaving(true)
+    setSaving(true);
     try {
       const payload = {
         name: form.name.trim(),
         branchId: Number(form.branchId),
         isBusinessLane: form.isBusinessLane,
-      }
+      };
       if (editingId) {
         await updateLane(editingId, {
           ...payload,
           isActive: form.isActive,
-        })
-        toast.success('Đã cập nhật làn rửa')
+        });
+        toast.success("Đã cập nhật làn rửa");
       } else if (form.isBusinessLane) {
-        await createBusinessLane(payload)
-        toast.success('Đã thêm làn doanh nghiệp')
+        await createBusinessLane(payload);
+        toast.success("Đã thêm làn doanh nghiệp");
       } else {
-        await createLane(payload)
-        toast.success('Đã thêm làn rửa')
+        await createLane(payload);
+        toast.success("Đã thêm làn rửa");
       }
-      setModalOpen(false)
-      await loadData()
+      setModalOpen(false);
+      await loadData();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không lưu được làn rửa')
+      toast.error(
+        err instanceof ApiError ? err.message : "Không lưu được làn rửa",
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <div className="w-full">
       <PageHeader
-        eyebrow="Cơ sở vật hành"
+        eyebrow="Cơ sở vận hành"
         title="Làn rửa"
         description="Làn rửa gắn với chi nhánh — dùng cho phân công Manager"
         actionLabel="Thêm làn"
@@ -131,7 +140,11 @@ export default function AdminLanesPage() {
       {loadError && (
         <div className="mb-4 flex justify-between rounded-lg border border-error-container bg-error-container/30 px-4 py-3">
           <p className="text-sm text-error">{loadError}</p>
-          <button type="button" className="text-sm text-error" onClick={loadData}>
+          <button
+            type="button"
+            className="text-sm text-error"
+            onClick={loadData}
+          >
             Thử lại
           </button>
         </div>
@@ -145,27 +158,31 @@ export default function AdminLanesPage() {
         emptyTitle="Chưa có làn rửa"
         columns={[
           {
-            key: 'id',
-            label: 'ID',
-            width: '80px',
+            key: "id",
+            label: "ID",
+            width: "80px",
             render: (row) => (
-              <span className="font-mono text-on-surface-variant">#{row.id}</span>
+              <span className="font-mono text-on-surface-variant">
+                #{row.id}
+              </span>
             ),
           },
           {
-            key: 'name',
-            label: 'Tên làn',
-            render: (row) => <span className="font-medium text-on-surface">{row.name}</span>,
+            key: "name",
+            label: "Tên làn",
+            render: (row) => (
+              <span className="font-medium text-on-surface">{row.name}</span>
+            ),
           },
           {
-            key: 'branchId',
-            label: 'Chi nhánh',
+            key: "branchId",
+            label: "Chi nhánh",
             render: (row) => row.branchName ?? branchName(row.branchId),
-            tdClassName: 'text-on-surface-variant',
+            tdClassName: "text-on-surface-variant",
           },
           {
-            key: 'isBusinessLane',
-            label: 'Loại làn',
+            key: "isBusinessLane",
+            label: "Loại làn",
             render: (row) =>
               row.isBusinessLane ? (
                 <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary-container/40 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-on-secondary-container uppercase">
@@ -176,18 +193,20 @@ export default function AdminLanesPage() {
               ),
           },
           {
-            key: 'isActive',
-            label: 'Trạng thái',
-            width: '140px',
+            key: "isActive",
+            label: "Trạng thái",
+            width: "140px",
             render: (row) => (
-              <StatusBadge status={row.isActive !== false ? 'Active' : 'Inactive'} />
+              <StatusBadge
+                status={row.isActive !== false ? "Active" : "Inactive"}
+              />
             ),
           },
           {
-            key: 'actions',
-            label: 'Thao tác',
-            width: '100px',
-            align: 'right',
+            key: "actions",
+            label: "Thao tác",
+            width: "100px",
+            align: "right",
             renderActions: (row) => (
               <button
                 type="button"
@@ -209,8 +228,8 @@ export default function AdminLanesPage() {
 
       <FormModal
         open={modalOpen}
-        title={editingId ? 'Sửa làn rửa' : 'Thêm làn rửa'}
-        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        title={editingId ? "Sửa làn rửa" : "Thêm làn rửa"}
+        submitLabel={saving ? "Đang lưu…" : "Lưu"}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
@@ -225,12 +244,16 @@ export default function AdminLanesPage() {
             iconLeft="garage"
           />
           <label className="block space-y-1">
-            <span className="text-xs font-semibold uppercase text-on-surface-variant">Chi nhánh</span>
+            <span className="text-xs font-semibold uppercase text-on-surface-variant">
+              Chi nhánh
+            </span>
             <select
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.branchId}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, branchId: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, branchId: e.target.value }))
+              }
               required
             >
               <option value="">— Chọn chi nhánh —</option>
@@ -248,12 +271,17 @@ export default function AdminLanesPage() {
                 className="mt-0.5"
                 checked={form.isBusinessLane}
                 disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, isBusinessLane: e.target.checked }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, isBusinessLane: e.target.checked }))
+                }
               />
               <span>
-                <span className="font-medium">Làn doanh nghiệp (phục vụ fleet)</span>
+                <span className="font-medium">
+                  Làn doanh nghiệp (phục vụ fleet)
+                </span>
                 <span className="block text-xs text-on-surface-variant">
-                  Tạo qua API riêng — làn này chỉ dùng cho đặt lịch của doanh nghiệp.
+                  Tạo qua API riêng — làn này chỉ dùng cho đặt lịch của doanh
+                  nghiệp.
                 </span>
               </span>
             </label>
@@ -264,7 +292,9 @@ export default function AdminLanesPage() {
                 type="checkbox"
                 checked={form.isActive}
                 disabled={saving}
-                onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, isActive: e.target.checked }))
+                }
               />
               Đang hoạt động
             </label>
@@ -272,5 +302,5 @@ export default function AdminLanesPage() {
         </div>
       </FormModal>
     </div>
-  )
+  );
 }
