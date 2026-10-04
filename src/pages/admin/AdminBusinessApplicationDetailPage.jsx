@@ -96,10 +96,6 @@ export default function AdminBusinessApplicationDetailPage() {
               <p className="text-on-surface">{formatDateTime(app.createdAt)}</p>
             </div>
             <div>
-              <p className="text-xs text-on-surface-variant mb-1">Hạn mức tín dụng</p>
-              <p className="text-on-surface">{app.monthlyCreditLimit?.toLocaleString() || 0} VNĐ/tháng</p>
-            </div>
-            <div>
               <p className="text-xs text-on-surface-variant mb-1">Chu kỳ thanh toán</p>
               <p className="text-on-surface">{app.paymentTermDays || 30} ngày</p>
             </div>

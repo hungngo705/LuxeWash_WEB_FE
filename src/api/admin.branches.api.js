@@ -23,8 +23,8 @@ export function normalizeBranch(item) {
 }
 
 /** Chi nhánh đang hoạt động (public) — dùng cho dropdown booking, dịch vụ, v.v. */
-export async function fetchBranches() {
-  const data = await apiRequest('/branches')
+export async function fetchBranches(options = {}) {
+  const data = await apiRequest('/branches', options)
   const list = Array.isArray(data) ? data : []
   return list.map(normalizeBranch)
 }

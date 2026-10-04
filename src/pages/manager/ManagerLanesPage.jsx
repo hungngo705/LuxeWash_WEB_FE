@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ApiError, createManagerLane, fetchManagerLanes } from "../../api";
+import { ApiError, createManagerLane, fetchManagerLanes, updateManagerLane, deleteManagerLane } from "../../api";
+import ConfirmDialog from "../../components/admin/shared/ConfirmDialog";
 import FormModal from "../../components/admin/shared/FormModal";
 import PageHeader from "../../components/admin/shared/PageHeader";
 import StatusBadge from "../../components/admin/shared/StatusBadge";
@@ -16,7 +17,10 @@ export default function ManagerLanesPage() {
   const [loadError, setLoadError] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [editingLane, setEditingLane] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const toast = useToast();
 
   const laneStats = useMemo(() => {
@@ -53,23 +57,47 @@ export default function ManagerLanesPage() {
   }, [loadLanes]);
 
   const openCreate = () => {
+    if (saving || deleting) return;
+    setEditingLane(null);
     setForm(emptyForm);
     setModalOpen(true);
   };
 
+  const openEdit = (lane) => {
+    if (saving || deleting) return;
+    setEditingLane(lane);
+    setForm({ name: lane.name, isBusinessLane: lane.isBusinessLane, isVipLane: lane.isVipLane });
+    setModalOpen(true);
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim() || saving) {
+    if (saving || deleting) return;
+    if (!form.name.trim()) {
       toast.warning("Vui lòng nhập tên làn");
+      return;
+    }
+    if (form.name.trim().length > 50) {
+      toast.warning("Tên làn không được dài quá 50 ký tự");
       return;
     }
 
     setSaving(true);
     try {
-      await createManagerLane({
+      const payload = {
         name: form.name.trim(),
         isBusinessLane: form.isBusinessLane,
-      });
-      toast.success("Đã thêm làn rửa");
+      };
+      if (editingLane) {
+        await updateManagerLane(editingLane.laneId, {
+          ...payload,
+          branchId: editingLane.branchId,
+          isActive: editingLane.isActive,
+          isVipLane: form.isVipLane,
+        });
+      } else {
+        await createManagerLane(payload);
+      }
+      toast.success(editingLane ? "Đã cập nhật làn rửa" : "Đã thêm làn rửa");
       setModalOpen(false);
       await loadLanes();
     } catch (err) {
@@ -78,6 +106,23 @@ export default function ManagerLanesPage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleting || saving) return;
+    const target = deleteTarget;
+    setDeleteTarget(null);
+    setDeleting(true);
+    try {
+      await deleteManagerLane(target.laneId);
+      setLanes((prev) => prev.map((lane) => lane.laneId === target.laneId ? { ...lane, isActive: false } : lane));
+      toast.success(`Đã ngừng hoạt động làn “${target.name}”`);
+      await loadLanes();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Không xóa được làn rửa");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -167,6 +212,7 @@ export default function ManagerLanesPage() {
       <DataTable
         data={lanes}
         loading={loading}
+        rowKey="laneId"
         minWidth="640px"
         emptyIcon="garage"
         emptyTitle="Chưa có làn rửa"
@@ -202,6 +248,12 @@ export default function ManagerLanesPage() {
               ),
           },
           {
+            key: "isVipLane",
+            label: "VIP",
+            width: "80px",
+            render: (row) => row.isVipLane ? "Có" : "Không",
+          },
+          {
             key: "isActive",
             label: "Trạng thái",
             width: "140px",
@@ -211,13 +263,45 @@ export default function ManagerLanesPage() {
               />
             ),
           },
+          {
+            key: "actions",
+            label: "Thao tác",
+            width: "170px",
+            align: "right",
+            renderActions: (row) => (
+              <div className="flex justify-end gap-1">
+              <button
+                type="button"
+                aria-label={`Sửa làn ${row.name}`}
+                disabled={saving || deleting}
+                onClick={() => openEdit(row)}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">edit</span>
+                Sửa
+              </button>
+              <button
+                type="button"
+                aria-label={`Xóa làn ${row.name}`}
+                disabled={saving || deleting || row.isActive === false}
+                title={row.isActive === false ? "Làn đã ngừng hoạt động" : "Xóa (ngừng hoạt động làn)"}
+                onClick={() => setDeleteTarget(row)}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-medium text-error hover:bg-error-container/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">delete</span>
+                Xóa
+              </button>
+              </div>
+            ),
+          },
         ]}
       />
 
       <FormModal
         open={modalOpen}
-        title="Thêm làn rửa"
-        submitLabel={saving ? "Đang lưu..." : "Thêm làn"}
+        title={editingLane ? "Sửa làn rửa" : "Thêm làn rửa"}
+        submitting={saving}
+        submitLabel={editingLane ? "Lưu thay đổi" : "Thêm làn"}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
       >
@@ -251,8 +335,35 @@ export default function ManagerLanesPage() {
               Dành cho doanh nghiệp
             </span>
           </label>
+          {editingLane && (
+            <>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={form.isVipLane}
+                  disabled={saving}
+                  onChange={(e) => setForm((prev) => ({ ...prev, isVipLane: e.target.checked }))}
+                  className="h-4 w-4 rounded border-outline-variant text-secondary focus:ring-secondary"
+                />
+                <span className="text-sm font-medium text-on-surface">Làn VIP</span>
+              </label>
+              <p className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
+                Đổi loại làn có thể ảnh hưởng việc phân xe và công suất phục vụ. Chi nhánh và trạng thái hoạt động được giữ nguyên. Nếu buồng hỏng, hãy dùng chức năng “Báo buồng hỏng”.
+              </p>
+            </>
+          )}
         </div>
       </FormModal>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Xóa làn rửa"
+        message={`Làn “${deleteTarget?.name ?? ''}” sẽ được ngừng hoạt động, không xóa dữ liệu lịch sử. Chỉ thực hiện sau khi bảo đảm làn không còn xe và đã xử lý các lịch liên quan; Nếu làn bị hỏng, hãy dùng “Báo buồng hỏng”.`}
+        confirmLabel="Xóa (ngừng hoạt động)"
+        variant="danger"
+        loading={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
     </div>
   );
 }

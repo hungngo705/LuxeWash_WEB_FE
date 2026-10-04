@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ApiError,
   fetchUserById,
@@ -57,6 +57,7 @@ const PAGE_SIZE = 10
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState([])
+  const usersRequest = useRef(0)
   const [pagination, setPagination] = useState({
     totalItems: 0,
     totalPages: 1,
@@ -83,6 +84,16 @@ export default function AdminUsersPage() {
   const [serviceHistory, setServiceHistory] = useState([])
   const [loadingServiceHistory, setLoadingServiceHistory] = useState(false)
   const [serviceHistoryLoaded, setServiceHistoryLoaded] = useState(false)
+  const selectedRequest = useRef(0)
+  const [pointsPage, setPointsPage] = useState(1)
+  const [servicePage, setServicePage] = useState(1)
+  const [pointsHasMore, setPointsHasMore] = useState(false)
+  const [serviceHasMore, setServiceHasMore] = useState(false)
+  const [pointsError, setPointsError] = useState('')
+  const [serviceError, setServiceError] = useState('')
+  const HISTORY_SIZE = 50
+
+  useEffect(() => () => { selectedRequest.current++ }, [])
 
   const showToast = (msg) => {
     setToast(msg)
@@ -105,13 +116,12 @@ export default function AdminUsersPage() {
   )
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim())
+      setPage(1)
+    }, 350)
     return () => clearTimeout(timer)
   }, [search])
-
-  useEffect(() => {
-    setPage(1)
-  }, [debouncedSearch, roleFilter])
 
   const loadStats = useCallback(async () => {
     try {
@@ -129,7 +139,8 @@ export default function AdminUsersPage() {
     }
   }, [])
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (signal) => {
+    const requestId = ++usersRequest.current
     setLoading(true)
     setLoadError('')
     try {
@@ -138,7 +149,9 @@ export default function AdminUsersPage() {
         pageSize: PAGE_SIZE,
         keyword: debouncedSearch || undefined,
         role: roleFilter !== 'All' ? roleFilter : undefined,
+        signal,
       })
+      if (signal?.aborted || requestId !== usersRequest.current) return
       const items = Array.isArray(data?.items) ? data.items.map(normalizeListUser) : []
       setUsers(items)
       setPagination({
@@ -147,30 +160,46 @@ export default function AdminUsersPage() {
         currentPage: data?.currentPage ?? page,
       })
     } catch (err) {
+      if (signal?.aborted || requestId !== usersRequest.current) return
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách người dùng')
     } finally {
-      setLoading(false)
+      if (!signal?.aborted && requestId === usersRequest.current) setLoading(false)
     }
   }, [page, debouncedSearch, roleFilter])
 
   useEffect(() => {
-    loadStats()
+    Promise.resolve().then(loadStats)
   }, [loadStats])
 
   useEffect(() => {
-    loadUsers()
+    const controller = new AbortController()
+    // Defer initial state updates; cleanup also cancels stale search/page requests.
+    Promise.resolve().then(() => {
+      if (!controller.signal.aborted) loadUsers(controller.signal)
+    })
+    return () => controller.abort()
   }, [loadUsers])
 
   const selectUser = async (user) => {
+    const version = ++selectedRequest.current
     setSelectedUser({ ...user })
     setDetailTab('info')
     setPointsHistory([])
     setPointsHistoryLoaded(false)
     setServiceHistory([])
     setServiceHistoryLoaded(false)
+    setPointsPage(1)
+    setServicePage(1)
+    setPointsHasMore(false)
+    setServiceHasMore(false)
+    setPointsError('')
+    setServiceError('')
+    setLoadingPointsHistory(false)
+    setLoadingServiceHistory(false)
     setDetailLoading(true)
     try {
       const detail = await fetchUserById(user.userId)
+      if (version !== selectedRequest.current) return
       setSelectedUser((prev) => ({
         ...prev,
         ...detail,
@@ -179,40 +208,59 @@ export default function AdminUsersPage() {
         tierName: detail.tierName ?? user.tierName,
       }))
     } catch (err) {
+      if (version !== selectedRequest.current) return
       showToast(err instanceof ApiError ? err.message : 'Không tải được chi tiết')
       setSelectedUser(null)
     } finally {
-      setDetailLoading(false)
+      if (version === selectedRequest.current) setDetailLoading(false)
     }
   }
 
-  const handleOpenPointsHistory = async (userId) => {
+  const handleOpenPointsHistory = async (userId, append = false) => {
     setDetailTab('points')
-    if (pointsHistoryLoaded) return
+    if ((pointsHistoryLoaded && !append) || loadingPointsHistory) return
+    const version = selectedRequest.current
+    const nextPage = append ? pointsPage + 1 : 1
+    setPointsError('')
     setLoadingPointsHistory(true)
     try {
-      const data = await fetchUserPointsHistory(userId)
-      setPointsHistory(Array.isArray(data) ? data : [])
+      const data = await fetchUserPointsHistory(userId, { page: nextPage, pageSize: HISTORY_SIZE })
+      if (version !== selectedRequest.current) return
+      if (!Array.isArray(data)) throw new Error('Invalid points history response')
+      setPointsHistory((prev) => (append ? [...prev, ...data] : data).filter((item, i, all) => all.findIndex((entry) => entry.ledgerId === item.ledgerId) === i))
+      setPointsPage(nextPage)
+      setPointsHasMore(data.length === HISTORY_SIZE)
       setPointsHistoryLoaded(true)
     } catch (err) {
+      if (version !== selectedRequest.current) return
+      setPointsError('Không tải được lịch sử điểm. Vui lòng thử lại.')
       showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử điểm')
     } finally {
-      setLoadingPointsHistory(false)
+      if (version === selectedRequest.current) setLoadingPointsHistory(false)
     }
   }
 
-  const handleOpenServiceHistory = async (userId) => {
+  const handleOpenServiceHistory = async (userId, append = false) => {
     setDetailTab('services')
-    if (serviceHistoryLoaded) return
+    if ((serviceHistoryLoaded && !append) || loadingServiceHistory) return
+    const version = selectedRequest.current
+    const nextPage = append ? servicePage + 1 : 1
+    setServiceError('')
     setLoadingServiceHistory(true)
     try {
-      const data = await fetchUserServiceHistory(userId)
-      setServiceHistory(Array.isArray(data) ? data : [])
+      const data = await fetchUserServiceHistory(userId, { page: nextPage, pageSize: HISTORY_SIZE })
+      if (version !== selectedRequest.current) return
+      if (!Array.isArray(data)) throw new Error('Invalid service history response')
+      setServiceHistory((prev) => (append ? [...prev, ...data] : data).filter((item, i, all) => all.findIndex((entry) => entry.bookingId === item.bookingId) === i))
+      setServicePage(nextPage)
+      setServiceHasMore(data.length === HISTORY_SIZE)
       setServiceHistoryLoaded(true)
     } catch (err) {
+      if (version !== selectedRequest.current) return
+      setServiceError('Không tải được lịch sử dịch vụ. Vui lòng thử lại.')
       showToast(err instanceof ApiError ? err.message : 'Không tải được lịch sử dịch vụ')
     } finally {
-      setLoadingServiceHistory(false)
+      if (version === selectedRequest.current) setLoadingServiceHistory(false)
     }
   }
 
@@ -313,7 +361,10 @@ export default function AdminUsersPage() {
                   ? 'bg-primary text-on-primary'
                   : 'border border-outline-variant text-on-surface-variant hover:bg-surface-variant'
               }`}
-              onClick={() => setRoleFilter(tab)}
+              onClick={() => {
+                setRoleFilter(tab)
+                setPage(1)
+              }}
             >
               {tab === 'All' ? 'Tất cả' : tab}
             </button>
@@ -472,7 +523,7 @@ export default function AdminUsersPage() {
                       {selectedUser.totalPoint != null && (
                         <div>
                           <dt className="text-xs font-semibold text-on-surface-variant uppercase">
-                            Tổng điểm
+                            Điểm khả dụng
                           </dt>
                           <dd className="text-on-surface">
                             {selectedUser.totalPoint.toLocaleString('vi-VN')}
@@ -481,11 +532,17 @@ export default function AdminUsersPage() {
                       )}
                       {selectedUser.promotionPoint != null && (
                         <div>
+                          <dt className="text-xs font-semibold text-on-surface-variant uppercase">Điểm xét hạng</dt>
+                          <dd className="text-on-surface">{selectedUser.promotionPoint.toLocaleString('vi-VN')}</dd>
+                        </div>
+                      )}
+                      {selectedUser.role === 'Customer' && (
+                        <div>
                           <dt className="text-xs font-semibold text-on-surface-variant uppercase">
                             Số dư ví
                           </dt>
                           <dd className="text-on-surface">
-                            {selectedUser.promotionPoint.toLocaleString('vi-VN')}
+                            {selectedUser.walletBalance == null ? '—' : `${Number(selectedUser.walletBalance).toLocaleString('vi-VN')} ₫`}
                           </dd>
                         </div>
                       )}
@@ -532,11 +589,12 @@ export default function AdminUsersPage() {
                     <h4 className="font-sora text-base font-semibold text-on-surface">
                       Biến động điểm thưởng
                     </h4>
-                    {loadingPointsHistory ? (
+                    {pointsError && <p role="alert" className="text-sm text-error">{pointsError}</p>}
+                    {loadingPointsHistory && !pointsHistory.length ? (
                       <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
                         Đang tải lịch sử điểm…
                       </div>
-                    ) : pointsHistory.length === 0 ? (
+                    ) : pointsHistory.length === 0 && !pointsError ? (
                       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant py-8 text-center text-on-surface-variant">
                         <span className="material-symbols-outlined text-3xl opacity-50">stars</span>
                         <p className="text-sm">Chưa có giao dịch điểm nào.</p>
@@ -579,6 +637,7 @@ export default function AdminUsersPage() {
                         })}
                       </div>
                     )}
+                    {(pointsHasMore || pointsError) && <button type="button" disabled={loadingPointsHistory} onClick={() => handleOpenPointsHistory(selectedUser.userId, pointsHistoryLoaded)} className="rounded-lg border px-3 py-2 text-sm text-primary disabled:opacity-50">{loadingPointsHistory ? 'Đang tải…' : pointsError ? 'Thử lại' : 'Xem thêm lịch sử điểm'}</button>}
                   </div>
                 )}
 
@@ -587,11 +646,12 @@ export default function AdminUsersPage() {
                     <h4 className="font-sora text-base font-semibold text-on-surface">
                       Lịch sử sử dụng dịch vụ
                     </h4>
-                    {loadingServiceHistory ? (
+                    {serviceError && <p role="alert" className="text-sm text-error">{serviceError}</p>}
+                    {loadingServiceHistory && !serviceHistory.length ? (
                       <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-sm text-on-surface-variant">
                         Đang tải lịch sử dịch vụ…
                       </div>
-                    ) : serviceHistory.length === 0 ? (
+                    ) : serviceHistory.length === 0 && !serviceError ? (
                       <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-outline-variant py-8 text-center text-on-surface-variant">
                         <span className="material-symbols-outlined text-3xl opacity-50">
                           local_car_wash
@@ -603,7 +663,7 @@ export default function AdminUsersPage() {
                         {serviceHistory.map((bk) => {
                           const dateRaw = bk.scheduledTime || bk.scheduledDate
                           const amount = Number(bk.finalAmount ?? 0)
-                          const isPaid = bk.paymentStatus === 'Paid'
+                          const isPaid = ['Completed', 'Paid', 'Success', 'Succeeded'].includes(bk.paymentStatus)
                           const subServices = Array.isArray(bk.details)
                             ? bk.details
                                 .map((d) => d?.serviceName)
@@ -649,6 +709,7 @@ export default function AdminUsersPage() {
                         })}
                       </div>
                     )}
+                    {(serviceHasMore || serviceError) && <button type="button" disabled={loadingServiceHistory} onClick={() => handleOpenServiceHistory(selectedUser.userId, serviceHistoryLoaded)} className="rounded-lg border px-3 py-2 text-sm text-primary disabled:opacity-50">{loadingServiceHistory ? 'Đang tải…' : serviceError ? 'Thử lại' : 'Xem thêm lịch sử dịch vụ'}</button>}
                   </div>
                 )}
 

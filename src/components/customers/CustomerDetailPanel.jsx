@@ -1,6 +1,6 @@
 import { formatDateTime, formatVnd } from '../../utils/format'
 
-export default function CustomerDetailPanel({ customer }) {
+export default function CustomerDetailPanel({ customer, onLoadMore, historyLoading = false, historyHasMore = false }) {
   if (!customer) {
     return (
       <div className="glass-panel soft-shadow flex h-full min-h-[320px] flex-col items-center justify-center rounded-xl border border-outline-variant bg-surface-container-lowest p-8 text-center">
@@ -54,9 +54,9 @@ export default function CustomerDetailPanel({ customer }) {
         <InfoBlock icon="call" label="Số điện thoại" value={customer.phoneNumber} />
         <InfoBlock icon="mail" label="Email" value={customer.email} />
         <InfoBlock icon="home" label="Địa chỉ" value={customer.address} className="sm:col-span-2" />
-        <InfoBlock icon="stars" label="Điểm tích lũy" value={customer.userScore.toLocaleString('vi-VN')} />
-        <InfoBlock icon="account_balance_wallet" label="Ví (Wallet)" value={formatVnd(customer.walletBalance)} />
-        <InfoBlock icon="local_car_wash" label="Lần rửa" value={`${customer.totalWashes} lượt`} />
+        <InfoBlock icon="stars" label="Điểm khả dụng" value={customer.userScore?.toLocaleString('vi-VN') ?? '—'} />
+        <InfoBlock icon="account_balance_wallet" label="Số dư ví" value={customer.walletBalance == null ? '—' : formatVnd(customer.walletBalance)} />
+        <InfoBlock icon="local_car_wash" label="Lần rửa hoàn thành" value={customer.totalWashes == null ? '—' : `${customer.totalWashes} lượt`} />
         <InfoBlock icon="event" label="Lần ghé gần nhất" value={customer.lastVisitDisplay} />
       </div>
 
@@ -88,8 +88,9 @@ export default function CustomerDetailPanel({ customer }) {
       <div className="border-t border-outline-variant p-6">
         <h3 className="mb-3 flex items-center gap-2 font-sora text-lg font-semibold text-on-surface">
           <span className="material-symbols-outlined text-primary">receipt_long</span>
-          Lịch đặt gần đây
+          Lịch sử lịch đặt
         </h3>
+        {customer.historyError && <p role="alert" className="mb-3 text-sm text-error">{customer.historyError}</p>}
         {customer.recentBookings?.length ? (
           <div className="space-y-2">
             {customer.recentBookings.map((booking) => (
@@ -112,10 +113,15 @@ export default function CustomerDetailPanel({ customer }) {
               </div>
             ))}
           </div>
-        ) : (
+        ) : !customer.historyError ? (
           <p className="rounded-lg border border-dashed border-outline-variant bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
             Chưa có lịch đặt nào.
           </p>
+        ) : null}
+        {(historyHasMore || customer.historyError) && (
+          <button type="button" onClick={onLoadMore} disabled={historyLoading} className="mt-3 rounded-lg border border-outline-variant px-4 py-2 text-sm font-medium text-primary disabled:opacity-50">
+            {historyLoading ? 'Đang tải…' : customer.historyError ? 'Thử tải lại lịch sử' : 'Xem thêm lịch sử'}
+          </button>
         )}
       </div>
     </div>

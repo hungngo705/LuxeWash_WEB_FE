@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { registerBusinessProfile } from '../../api/business.api'
 import { isValidPhoneNumber, isValidPassword, isValidEmail, PHONE_ERROR_MESSAGE, PASSWORD_ERROR_MESSAGE } from '../../utils/validation'
 
+const DEFAULT_MONTHLY_CREDIT_LIMIT = 50_000_000
+
 export default function BusinessRegisterPage() {
-  const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -19,7 +20,6 @@ export default function BusinessRegisterPage() {
     businessAddress: '',
     billingEmail: '',
     representativeName: '',
-    monthlyCreditLimit: 0,
     paymentTermDays: 30,
   })
 
@@ -72,7 +72,7 @@ export default function BusinessRegisterPage() {
       formData.append('businessAddress', form.businessAddress)
       formData.append('billingEmail', form.billingEmail)
       formData.append('representativeName', form.representativeName)
-      formData.append('monthlyCreditLimit', form.monthlyCreditLimit)
+      formData.append('monthlyCreditLimit', String(DEFAULT_MONTHLY_CREDIT_LIMIT))
       formData.append('paymentTermDays', form.paymentTermDays)
       if (files.businessLicense) formData.append('businessLicense', files.businessLicense)
       if (files.authorizationLetter) formData.append('authorizationLetter', files.authorizationLetter)
@@ -250,17 +250,6 @@ export default function BusinessRegisterPage() {
                   onChange={handleChange}
                   className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 input-focus-glow"
                   placeholder="Nguyễn Văn A"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-on-surface-variant mb-1">Hạn mức tín dụng/tháng</label>
-                <input
-                  type="number"
-                  name="monthlyCreditLimit"
-                  value={form.monthlyCreditLimit}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-surface border border-outline-variant rounded-xl text-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 input-focus-glow"
-                  placeholder="0"
                 />
               </div>
               <div>

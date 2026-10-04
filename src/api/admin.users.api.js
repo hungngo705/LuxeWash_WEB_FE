@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { firstDisplayName } from '../utils/personnelName'
 import { fetchBookingsByUserId } from './admin.bookings.api'
 
 /**
@@ -96,6 +97,7 @@ export function normalizeUserVehicle(vehicle) {
 export function normalizeUserDetail(detail) {
   return {
     ...detail,
+    fullName: firstDisplayName(detail.fullName),
     vehicles: Array.isArray(detail.vehicles) ? detail.vehicles.map(normalizeUserVehicle) : [],
   }
 }
@@ -119,8 +121,9 @@ export function syncUserPoints() {
 }
 
 /** @param {number} id @returns {Promise<unknown[]>} */
-export function fetchUserPointsHistory(id) {
-  return apiRequest(`/admin/users/${id}/points-history`)
+export function fetchUserPointsHistory(id, { page = 1, pageSize = 50, signal } = {}) {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  return apiRequest(`/admin/users/${id}/points-history?${params}`, { signal })
 }
 
 /**
@@ -128,14 +131,15 @@ export function fetchUserPointsHistory(id) {
  * Tận dụng endpoint /bookings/user/{userId} đã có sẵn trong BE.
  * @param {number} userId
  */
-export function fetchUserServiceHistory(userId) {
-  return fetchBookingsByUserId(userId)
+export function fetchUserServiceHistory(userId, options = {}) {
+  return fetchBookingsByUserId(userId, options)
 }
 
 /** @param {UserListItem} item */
 export function normalizeListUser(item) {
   return {
     ...item,
+    fullName: firstDisplayName(item.fullName),
     role: item.role ?? 'Customer',
     userStatus: item.status ?? 'Active',
   }

@@ -3,36 +3,36 @@ const steps = [
     number: 1,
     icon: 'calendar_month',
     title: 'Đặt lịch',
-    description: 'Đặt lịch rửa xe qua app trong 30 giây. Chọn chi nhánh, dịch vụ và thời gian phù hợp.',
+    description: 'Chọn xe, chi nhánh, dịch vụ và khung giờ còn chỗ trong ứng dụng khách hàng hoặc cổng doanh nghiệp.',
   },
   {
     number: 2,
     icon: 'directions_car',
     title: 'Đến trạm',
-    description: 'Lái xe đến trạm LuxeWash đã đặt. Hệ thống tự nhận diện biển số khi bạn vào cổng.',
+    description: 'Đến chi nhánh theo lịch hẹn. Nhân viên kiểm tra lịch và xác nhận check-in, có hỗ trợ nhận diện biển số.',
   },
   {
     number: 3,
     icon: 'local_car_wash',
-    title: 'Rửa xe tự động',
-    description: 'Xe được rửa tự động bằng công nghệ hiện đại. Bạn không cần xuống xe.',
+    title: 'Thực hiện dịch vụ',
+    description: 'Xe được phân vào làn rửa. Nhân viên thực hiện dịch vụ và cập nhật trạng thái trên hệ thống.',
   },
   {
     number: 4,
     icon: 'check_circle',
     title: 'Hoàn tất',
-    description: 'Nhận thông báo khi xe sạch. Thanh toán qua app hoặc tại quầy.',
+    description: 'Theo dõi trạng thái hoàn thành và check-out. Xem lại lịch sử dịch vụ và giao dịch trong tài khoản.',
   },
 ]
 
 export default function ProcessSection() {
   return (
-    <section id="about" className="py-20 bg-white">
+    <section id="about" className="scroll-mt-20 py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <span className="inline-block px-4 py-1.5 bg-[#006689]/10 text-[#006689] text-xs font-semibold rounded-full mb-3">Quy trình</span>
           <h2 className="font-sora text-3xl font-bold text-[#191c1e] mb-3">Quy trình 4 bước</h2>
-          <p className="text-[#3f484e]">Trải nghiệm rửa xe không chạm chỉ trong vài phút</p>
+          <p className="text-[#3f484e]">Từ đặt lịch đến check-in, thực hiện dịch vụ và check-out.</p>
         </div>
 
         <div className="hidden md:grid grid-cols-4 gap-8 relative">

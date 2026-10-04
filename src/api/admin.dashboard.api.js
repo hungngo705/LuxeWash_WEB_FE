@@ -150,14 +150,14 @@ export async function fetchDashboardStats() {
   const [
     transactionsRaw,
     todayBookingsRaw,
-    activeUsersResult,
+    customerUsersResult,
     pointsRaw,
     vouchersRaw,
     ...last7BookingsRaw
   ] = await Promise.all([
     fetchTransactions(),
     fetchBookingsByDate(toApiTargetDate(todayValue)),
-    fetchUsers({ page: 1, pageSize: 1, status: 'Active' }),
+    fetchUsers({ page: 1, pageSize: 1, role: 'Customer' }),
     fetchPointsHistory(),
     fetchVouchers(),
     ...last7Days.map((date) => fetchBookingsByDate(toApiTargetDate(toDateValue(date)))),
@@ -211,9 +211,9 @@ export async function fetchDashboardStats() {
     { id: 'bookings-today', label: 'Booking hôm nay', value: todayBookings.length, format: 'number', icon: 'calendar_month' },
     { id: 'pending', label: 'Đang chờ (Pending)', value: pendingCount, format: 'number', icon: 'hourglass_top' },
     {
-      id: 'active-customers',
-      label: 'Khách Active',
-      value: activeUsersResult?.totalItems ?? 0,
+      id: 'total-customers',
+      label: 'Tổng Số Người Dùng',
+      value: customerUsersResult?.totalItems ?? 0,
       format: 'number',
       icon: 'group',
     },

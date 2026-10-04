@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { firstDisplayName } from '../utils/personnelName'
 
 /**
  * @typedef {{
@@ -36,7 +37,7 @@ import { apiRequest } from './client'
 export function normalizeManagerStaff(item) {
   return {
     userId: Number(item.userId ?? item.staffId ?? item.id),
-    fullName: String(item.fullName ?? '—'),
+    fullName: firstDisplayName(item.fullName, item.staffName),
     phoneNumber: String(item.phoneNumber ?? '—'),
     status: String(item.status ?? 'Active'),
     shiftId: item.shiftId != null ? Number(item.shiftId) : undefined,

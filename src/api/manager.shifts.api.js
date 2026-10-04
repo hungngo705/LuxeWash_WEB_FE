@@ -1,4 +1,5 @@
 import { apiRequest } from './client'
+import { firstDisplayName } from '../utils/personnelName'
 import { toApiTimeValue, toTimeInputValue } from './admin.timeSlots.api'
 
 /** @param {unknown} data */
@@ -29,7 +30,7 @@ export function normalizeShiftAssignment(item) {
   return {
     shiftAssignmentId: Number(item.shiftAssignmentId ?? item.assignmentId ?? item.id),
     staffUserId: Number(item.staffUserId ?? 0),
-    staffName: String(item.staffName ?? item.fullName ?? '—'),
+    staffName: firstDisplayName(item.staffName, item.fullName),
     workShiftId: Number(item.workShiftId ?? 0),
     shiftName: String(item.shiftName ?? '—'),
     workDate: String(item.workDate ?? ''),
@@ -43,7 +44,7 @@ export function normalizeOvertimeRequest(item) {
   return {
     overtimeRequestId: Number(item.overtimeRequestId ?? item.id),
     staffUserId: Number(item.staffUserId ?? 0),
-    staffName: String(item.staffName ?? item.fullName ?? '—'),
+    staffName: firstDisplayName(item.staffName, item.fullName),
     workDate: String(item.workDate ?? ''),
     startTime: item.startTime != null ? String(item.startTime) : '',
     endTime: item.endTime != null ? String(item.endTime) : '',
@@ -58,12 +59,12 @@ export function normalizeOvertimeRequest(item) {
 export function normalizeShiftSwapRequest(item) {
   return {
     shiftSwapRequestId: Number(item.shiftSwapRequestId ?? item.id),
-    requesterName: String(item.requesterName ?? item.requestedByName ?? '—'),
+    requesterName: firstDisplayName(item.requesterName, item.requestedByName),
     fromAssignmentId: Number(item.fromAssignmentId ?? 0),
     toAssignmentId: item.toAssignmentId != null ? Number(item.toAssignmentId) : null,
     toWorkShiftId: item.toWorkShiftId != null ? Number(item.toWorkShiftId) : null,
-    fromStaffName: String(item.fromStaffName ?? '—'),
-    toStaffName: String(item.toStaffName ?? '—'),
+    fromStaffName: firstDisplayName(item.fromStaffName),
+    toStaffName: firstDisplayName(item.toStaffName),
     fromShiftName: String(item.fromShiftName ?? ''),
     toShiftName: String(item.toShiftName ?? ''),
     fromWorkDate: String(item.fromWorkDate ?? ''),
@@ -108,6 +109,11 @@ export function updateManagerWorkShift(id, payload) {
       isActive: payload.isActive !== false,
     }),
   })
+}
+
+/** BE deletes unused shifts; shifts with assignments are deactivated. */
+export function deleteManagerWorkShift(id) {
+  return apiRequest(`/manager/work-shifts/${Number(id)}`, { method: 'DELETE' })
 }
 
 export async function fetchManagerShiftAssignments(filter = {}) {

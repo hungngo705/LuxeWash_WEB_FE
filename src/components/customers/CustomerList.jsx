@@ -50,7 +50,7 @@ export default function CustomerList({ customers, selectedUserId, onSelect }) {
                     {c.rankName}
                   </span>
                   <span className="text-xs text-on-surface-variant">
-                    {c.vehicles.length} xe · {formatVnd(c.walletBalance)}
+                    {c.vehicleCount == null ? '— xe' : `${c.vehicleCount} xe`} · {c.walletBalance == null ? '—' : formatVnd(c.walletBalance)}
                   </span>
                 </div>
               </div>

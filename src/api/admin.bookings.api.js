@@ -321,10 +321,12 @@ export function fetchBookingById(bookingId) {
  * Admin/Manager/Staff lookup for a customer's bookings.
  * @param {number} userId
  */
-export function fetchBookingsByUserId(userId) {
-  return apiRequest(`/bookings/user/${Number(userId)}`).then((data) =>
-    asBookingList(data).map(normalizeAdminBooking),
-  )
+export function fetchBookingsByUserId(userId, { page = 1, pageSize = 50, signal } = {}) {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  return apiRequest(`/bookings/user/${Number(userId)}?${params}`, { signal }).then((data) => {
+    if (!Array.isArray(data)) throw new Error('Invalid customer booking history response')
+    return data.map(normalizeAdminBooking)
+  })
 }
 
 /** @param {unknown} raw */
