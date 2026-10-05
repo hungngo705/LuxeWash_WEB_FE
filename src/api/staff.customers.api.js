@@ -61,8 +61,8 @@ export async function findUserByLicensePlate(licensePlate, options = {}) {
 /** @param {string | undefined} phone */
 export function maskPhoneNumber(phone) {
   const p = String(phone ?? '').trim()
-  if (p.length < 7) return p || '—'
-  return `${p.slice(0, 3)}****${p.slice(-3)}`
+  if (!p) return '—'
+  return p
 }
 
 function formatLastVisit(value) {
