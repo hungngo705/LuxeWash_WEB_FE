@@ -1716,6 +1716,7 @@ export default function DashboardPage() {
   const [payOsPayment, setPayOsPayment] = useState(null);
   const [verifyingPayOsPayment, setVerifyingPayOsPayment] = useState(false);
   const [barrierAlert, setBarrierAlert] = useState(null);
+  const [allowRegularInVipLane, setAllowRegularInVipLane] = useState(false);
   const taskLaneSnapshotRef = useRef(null);
   const staffTasksRequestRef = useRef(null);
   const latestCameraFramesRef = useRef({ entry: null, exit: null });
@@ -2606,7 +2607,11 @@ export default function DashboardPage() {
 
         const customerIsVip = isVipQueueCustomer(customer);
         const expectedLaneType = customerIsVip ? "vip" : "regular";
-        if (meta.queueLaneType === expectedLaneType) {
+        if (
+          customerIsVip ||
+          meta.queueLaneType === "regular" ||
+          (meta.queueLaneType === "vip" && allowRegularInVipLane)
+        ) {
           queueLaneValidated = true;
           return null;
         }
@@ -3255,6 +3260,7 @@ export default function DashboardPage() {
     },
     [
       applySelectedBooking,
+      allowRegularInVipLane,
       executeBarrierCommand,
       laneAssignment,
       loadStaffTasks,
@@ -3680,6 +3686,25 @@ export default function DashboardPage() {
 
       <div className="grid items-start gap-4 xl:grid-cols-12">
         <div className="min-w-0 xl:col-span-7 2xl:col-span-8">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+            <div>
+              <p className="text-sm font-semibold text-on-surface">Check-in tại làn VIP</p>
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Xe VIP được check-in ở cả hai làn. {allowRegularInVipLane ? "Đang cho phép xe thường vào làn VIP." : "Xe thường cần đi làn thường."}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={allowRegularInVipLane}
+              aria-label="Cho phép xe thường check-in ở làn VIP"
+              disabled={loadingLookup || creatingWalkIn}
+              onClick={() => setAllowRegularInVipLane((allowed) => !allowed)}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-50 ${allowRegularInVipLane ? "border-primary bg-primary text-on-primary" : "border-outline-variant text-on-surface hover:bg-surface-container"}`}
+            >
+              {allowRegularInVipLane ? "Đang bật · Tắt cho phép" : "Cho phép xe thường vào làn VIP"}
+            </button>
+          </div>
           <LiveLprFeed
             laneLabel={laneLabel}
             onPlateDetected={handleCameraPlateDetected}

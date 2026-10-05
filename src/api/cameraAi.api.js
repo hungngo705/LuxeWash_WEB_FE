@@ -174,7 +174,9 @@ export async function cameraCheckInByPlate(licensePlate, options = {}) {
     'AllowOutsideScheduledTime',
     String(allowOutsideScheduledTime === true),
   )
-  const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-in?${params}`), {
+  // Plate recognition runs on the AI host; booking mutations and barrier
+  // commands must use the same business backend as staff check-in.
+  const data = await apiRequest(`/camera/check-in?${params}`, {
     method: 'POST',
     body: formData,
     timeoutMs: 30_000,
@@ -202,7 +204,7 @@ export async function cameraCheckOutByPlate(licensePlate, options = {}) {
     checkOutImage,
     checkOutImage.name || `checkout-${Date.now()}.jpg`,
   )
-  const data = await apiRequest(buildCameraUrl(`/api/v1/camera/check-out?${params}`), {
+  const data = await apiRequest(`/camera/check-out?${params}`, {
     method: 'POST',
     body: formData,
     timeoutMs: 30_000,
