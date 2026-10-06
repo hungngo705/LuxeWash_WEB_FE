@@ -33,11 +33,17 @@ export default function RevenueAnalyticsPanel() {
   }, [])
 
   const execute = async (action) => {
+    if (running) return
+    if (!Number.isInteger(period.year) || period.year < 2000 || period.year > 9999) {
+      setMessage({ type: 'error', text: 'Năm phải từ 2000 đến 9999.' })
+      return
+    }
     if (action !== 'all' && !Number(branchId)) {
       setMessage({ type: 'error', text: 'Vui lòng chọn chi nhánh.' })
       return
     }
     setRunning(action)
+    setResult(null)
     setMessage(null)
     try {
       const data = action === 'evaluate'
@@ -50,12 +56,12 @@ export default function RevenueAnalyticsPanel() {
         type: 'success',
         text: action === 'evaluate'
           ? 'Đã tải báo cáo doanh thu.'
-          : 'Đã chạy phân tích kích cầu. Các voucher phù hợp được đưa vào luồng xét duyệt.',
+          : 'Đã xử lý yêu cầu. Xem kết quả từng chi nhánh bên dưới.',
       })
     } catch (error) {
       setMessage({
         type: 'error',
-        text: error instanceof ApiError ? `Không kết nối được AI local: ${error.message}` : 'Thao tác thất bại.',
+        text: error instanceof ApiError ? error.message : 'Thao tác thất bại.',
       })
     } finally {
       setRunning('')
@@ -78,7 +84,9 @@ export default function RevenueAnalyticsPanel() {
           <select
             className="min-w-52 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={branchId}
-            onChange={(event) => setBranchId(event.target.value)}
+            disabled={Boolean(running)}
+            aria-label="Chi nhánh phân tích"
+            onChange={(event) => { setBranchId(event.target.value); setResult(null); setMessage(null) }}
           >
             <option value="">Chọn chi nhánh</option>
             {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
@@ -86,7 +94,9 @@ export default function RevenueAnalyticsPanel() {
           <select
             className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={period.month}
-            onChange={(event) => setPeriod((value) => ({ ...value, month: Number(event.target.value) }))}
+            disabled={Boolean(running)}
+            aria-label="Tháng phân tích"
+            onChange={(event) => { setPeriod((value) => ({ ...value, month: Number(event.target.value) })); setResult(null); setMessage(null) }}
           >
             {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>Tháng {index + 1}</option>)}
           </select>
@@ -94,7 +104,11 @@ export default function RevenueAnalyticsPanel() {
             type="number"
             className="w-24 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={period.year}
-            onChange={(event) => setPeriod((value) => ({ ...value, year: Number(event.target.value) }))}
+            disabled={Boolean(running)}
+            min="2000"
+            max="9999"
+            aria-label="Năm phân tích"
+            onChange={(event) => { setPeriod((value) => ({ ...value, year: Number(event.target.value) })); setResult(null); setMessage(null) }}
           />
         </div>
       </div>
@@ -141,7 +155,7 @@ export default function RevenueAnalyticsPanel() {
               <tr>
                 <th className="px-4 py-3">Chi nhánh</th>
                 <th className="px-4 py-3">Tháng trước</th>
-                <th className="px-4 py-3">Tháng hiện tại</th>
+                <th className="px-4 py-3">Tháng được chọn</th>
                 <th className="px-4 py-3">Mức giảm</th>
                 <th className="px-4 py-3">Voucher / trạng thái</th>
               </tr>
@@ -155,7 +169,7 @@ export default function RevenueAnalyticsPanel() {
                   <td className="px-4 py-3 text-error">{Number(row.revenueDropPercentage || 0).toFixed(2)}%</td>
                   <td className="px-4 py-3">
                     <p className="font-mono text-xs">{row.generatedVoucherCode || 'Chưa tạo'}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant">{row.approvalStatus || (row.isRevenueDropped ? 'Cần kích cầu' : 'Ổn định')}</p>
+                    <p className="mt-1 text-xs text-on-surface-variant">{row.message || row.approvalStatus || (row.isRevenueDropped ? 'Cần kích cầu' : 'Ổn định')}</p>
                   </td>
                 </tr>
               ))}

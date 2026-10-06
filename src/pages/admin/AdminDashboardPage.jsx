@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, fetchDashboardStats } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
 import RevenueAnalyticsPanel from '../../components/admin/dashboard/RevenueAnalyticsPanel'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
-import { formatVnd } from '../../utils/format'
 
 const EMPTY_DASHBOARD = {
   kpiCards: [],
@@ -18,8 +17,12 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState('')
+  const requestRef = useRef(null)
 
   const loadDashboard = useCallback(async (isRefresh = false) => {
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
     if (isRefresh) {
       setRefreshing(true)
     } else {
@@ -28,13 +31,18 @@ export default function AdminDashboardPage() {
     setLoadError('')
 
     try {
-      const data = await fetchDashboardStats()
+      const data = await fetchDashboardStats({ signal: controller.signal })
+      if (controller.signal.aborted) return
       setDashboard(data)
+      setLoadError(data.errors.join(' · '))
     } catch (err) {
+      if (controller.signal.aborted) return
       setLoadError(err instanceof ApiError ? err.message : 'Không tải được dữ liệu dashboard')
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      if (!controller.signal.aborted) {
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }, [])
 
@@ -42,7 +50,7 @@ export default function AdminDashboardPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial async dashboard load
     loadDashboard()
     const timer = setInterval(() => loadDashboard(true), 60000)
-    return () => clearInterval(timer)
+    return () => { clearInterval(timer); requestRef.current?.abort() }
   }, [loadDashboard])
 
   const maxBookingCount = Math.max(
@@ -108,6 +116,7 @@ export default function AdminDashboardPage() {
               />
             ))}
           </div>
+          <p className="mb-5 text-xs text-on-surface-variant">Thu dịch vụ ròng = thanh toán dịch vụ/hóa đơn thành công trừ hoàn tiền, không gồm nạp ví. Ngày thống kê theo giờ Việt Nam. Dấu — là chưa có đủ dữ liệu.</p>
 
           <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <section className="lw-card p-6">
@@ -121,17 +130,17 @@ export default function AdminDashboardPage() {
                   {dashboard.bookingsLast7Days.map((day) => (
                     <div
                       key={day.date}
-                      className="flex flex-1 flex-col items-center gap-2"
+                      className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
                     >
-                      <span className="text-xs font-medium text-on-surface">{day.count}</span>
+                      <span className="text-xs font-medium text-on-surface">{day.count ?? '—'}</span>
                       <div
                         className="w-full rounded-t-lg bg-primary-container transition-all duration-500 ease-out"
                         style={{
-                          height: `${(day.count / maxBookingCount) * 100}%`,
+                          height: `${((day.count ?? 0) / maxBookingCount) * 140}px`,
                           minHeight: day.count > 0 ? '8px' : '0',
                         }}
                       />
-                      <span className="text-[10px] text-on-surface-variant">{day.date}</span>
+                      <span className="text-[10px] text-on-surface-variant">{day.label}</span>
                     </div>
                   ))}
                 </div>
@@ -141,15 +150,14 @@ export default function AdminDashboardPage() {
             <section className="lw-card p-6">
               <h2 className="font-sora mb-4 text-lg font-semibold text-on-surface">Top dịch vụ</h2>
               {dashboard.topServices.length === 0 ? (
-                <p className="text-sm text-on-surface-variant">Chưa có dữ liệu dịch vụ.</p>
+                <p className="text-sm text-on-surface-variant">{dashboard.servicesUnavailable ? 'Chưa tải đủ dữ liệu để xếp hạng dịch vụ.' : 'Chưa có dịch vụ hoàn thành trong 7 ngày.'}</p>
               ) : (
                 <div className="lw-table-container overflow-hidden">
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="lw-table-header">
                         <th>Dịch vụ</th>
-                        <th>Lượt</th>
-                        <th>Doanh thu</th>
+                        <th>Lượt hoàn thành (7 ngày)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -160,7 +168,6 @@ export default function AdminDashboardPage() {
                         >
                           <td className="font-medium text-on-surface">{row.serviceName}</td>
                           <td className="text-on-surface-variant">{row.count}</td>
-                          <td className="text-on-surface">{formatVnd(row.revenue)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -171,10 +178,10 @@ export default function AdminDashboardPage() {
 
             <section className="lw-card p-6 xl:col-span-2">
               <h2 className="font-sora mb-4 text-lg font-semibold text-on-surface">
-                Hoạt động gần đây
+                Giao dịch thành công gần đây (tháng này)
               </h2>
               {dashboard.recentActivities.length === 0 ? (
-                <p className="text-sm text-on-surface-variant">Chưa có hoạt động gần đây.</p>
+                <p className="text-sm text-on-surface-variant">{dashboard.transactionsUnavailable ? 'Không tải được giao dịch.' : 'Chưa có giao dịch thành công trong tháng.'}</p>
               ) : (
                 <ul className="divide-y divide-outline-variant/40">
                   {dashboard.recentActivities.map((activity) => (

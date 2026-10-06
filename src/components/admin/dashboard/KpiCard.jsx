@@ -1,6 +1,7 @@
 import { formatVnd } from '../../../utils/format'
 
 function formatValue(value, format) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
   if (format === 'vnd') return formatVnd(value)
   if (format === 'percent') return `${value}%`
   return new Intl.NumberFormat('vi-VN').format(value)

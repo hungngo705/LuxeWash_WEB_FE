@@ -1,249 +1,94 @@
-import { fetchBookingsByDate, normalizeAdminBooking, toApiTargetDate } from './admin.bookings.api'
-import { fetchPointsHistory, fetchTransactions, normalizePointsEntry, normalizeTransaction } from './admin.transactions.api'
+import { fetchBookingsByDate } from './admin.bookings.api'
+import { fetchAdminTransactions, nextDate, transactionTypes } from './admin.customer-transactions.api'
 import { fetchUsers } from './admin.users.api'
 import { fetchVouchers } from './admin.vouchers.api'
 
-function pad2(n) {
-  return String(n).padStart(2, '0')
+const vnDate = (value = new Date()) => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(value)
+
+function dateKey(value) {
+  if (!value) return ''
+  if (!/Z$|[+-]\d{2}:\d{2}$/.test(value)) return String(value).slice(0, 10)
+  return vnDate(new Date(value))
 }
 
-function toDateValue(date) {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+function collection(value) {
+  if (!Array.isArray(value)) throw new Error('API không trả về danh sách hợp lệ.')
+  return value
 }
 
-function isSameDay(iso, date) {
-  if (!iso) return false
-  const value = new Date(iso)
-  return (
-    value.getFullYear() === date.getFullYear() &&
-    value.getMonth() === date.getMonth() &&
-    value.getDate() === date.getDate()
-  )
+async function monthlyTransactions(from, to, signal) {
+  const items = new Map()
+  let page = 1
+  let totalPages
+  do {
+    const result = await fetchAdminTransactions({ from, to, page, pageSize: 100 }, signal)
+    collection(result?.items).forEach((item) => items.set(item.transactionId, item))
+    totalPages = Number(result.totalPages)
+    if (!Number.isFinite(totalPages)) throw new Error('API giao dịch thiếu thông tin phân trang.')
+    page += 1
+  } while (page <= totalPages)
+  return [...items.values()]
 }
 
-function isInCurrentMonth(iso, ref = new Date()) {
-  if (!iso) return false
-  const value = new Date(iso)
-  return value.getFullYear() === ref.getFullYear() && value.getMonth() === ref.getMonth()
-}
-
-function formatChartDate(date) {
-  return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}`
-}
-
-function formatRelativeTime(iso) {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  const diffMs = Date.now() - date.getTime()
-  const minutes = Math.floor(diffMs / 60000)
-  if (minutes < 1) return 'Vừa xong'
-  if (minutes < 60) return `${minutes} phút trước`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} giờ trước`
-  return `${Math.floor(hours / 24)} ngày trước`
-}
-
-function getActivityTimestamp(booking) {
-  return booking.createdAt ?? booking.scheduledDate ?? null
-}
-
-function buildTopServices(bookings) {
-  const map = new Map()
-
-  for (const booking of bookings) {
-    const name = booking.serviceName && booking.serviceName !== '—' ? booking.serviceName : 'Khác'
-    const current = map.get(name) ?? { serviceName: name, count: 0, revenue: 0 }
-    current.count += 1
-    current.revenue += Number(booking.finalAmount) || 0
-    map.set(name, current)
-  }
-
-  return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 5)
-}
-
-function buildRecentActivities(bookings, transactions, points) {
-  const items = []
-
-  for (const booking of bookings) {
-    const time = getActivityTimestamp(booking)
-    if (!time) continue
-
-    if (booking.status === 'Completed') {
-      items.push({
-        id: `booking-complete-${booking.bookingId}`,
-        time,
-        message: `Hoàn thành #${booking.bookingId} — ${booking.customerName}`,
-        icon: 'check_circle',
-      })
-    } else if (booking.status === 'Cancelled' || booking.status === 'No-show') {
-      items.push({
-        id: `booking-cancel-${booking.bookingId}`,
-        time,
-        message: `Hủy booking #${booking.bookingId} — ${booking.status}`,
-        icon: 'cancel',
-      })
-    } else if (booking.status === 'Pending') {
-      items.push({
-        id: `booking-new-${booking.bookingId}`,
-        time,
-        message: `Booking #${booking.bookingId} mới — ${booking.customerName} · ${booking.serviceName}`,
-        icon: 'calendar_add_on',
-      })
-    }
-  }
-
-  for (const tx of transactions) {
-    if (tx.status !== 'Success' || !tx.createdAt) continue
-    items.push({
-      id: `tx-${tx.transactionId}`,
-      time: tx.createdAt,
-      message: `Thanh toán #${tx.transactionId} — ${tx.customerName}`,
-      icon: 'payments',
-    })
-  }
-
-  for (const entry of points) {
-    if (entry.type !== 'Earn' || !entry.createdAt) continue
-    items.push({
-      id: `points-${entry.id}`,
-      time: entry.createdAt,
-      message: `${entry.customerName} +${entry.points.toLocaleString('vi-VN')} điểm`,
-      icon: 'stars',
-    })
-  }
-
-  return items
-    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
-    .slice(0, 8)
-    .map((item) => ({
-      ...item,
-      time: formatRelativeTime(item.time),
-    }))
-}
-
-function computeCompletionRate(bookings) {
-  const completed = bookings.filter((b) => b.status === 'Completed').length
-  const denominator = bookings.filter((b) =>
-    ['Completed', 'Cancelled', 'No-show'].includes(b.status),
-  ).length
-  if (!denominator) return 0
-  return Math.round((completed / denominator) * 1000) / 10
-}
-
-/** @returns {Promise<{
- *   kpiCards: Array<{ id: string; label: string; value: number; format: string; icon: string }>
- *   bookingsLast7Days: Array<{ date: string; count: number }>
- *   topServices: Array<{ serviceName: string; count: number; revenue: number }>
- *   recentActivities: Array<{ id: string; message: string; time: string; icon: string }>
- * }>} */
-export async function fetchDashboardStats() {
-  const today = new Date()
-  const todayValue = toDateValue(today)
-  const monthLabel = new Intl.DateTimeFormat('vi-VN', { month: 'long' }).format(today)
-
-  const last7Days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today)
-    date.setDate(date.getDate() - (6 - index))
-    return date
+export function summarizeDashboard({ today, days, dayBookings, transactions, customerCount, vouchers, errors = [] }) {
+  const todayBookings = dayBookings.at(-1)
+  const weekComplete = dayBookings.every((items) => items !== null)
+  const bookings = dayBookings.flatMap((items) => items ?? [])
+  const paid = (transactions ?? []).filter((item) => ['Completed', 'Success'].includes(item.status))
+  const receiptTypes = ['Payment', 'BookingPayment', 'WalkInPayment', 'InvoicePayment']
+  const netReceipts = (items) => items.reduce((sum, item) => {
+    const amount = Math.abs(Number(item.amount) || 0)
+    return sum + (receiptTypes.includes(item.transactionType) ? amount : item.transactionType === 'Refund' ? -amount : 0)
+  }, 0)
+  const completed = bookings.filter((item) => item.status === 'Completed')
+  const closed = bookings.filter((item) => ['Completed', 'Cancelled', 'CancelledBySystem', 'NoShow', 'No-show'].includes(item.status))
+  const services = new Map()
+  completed.forEach((booking) => {
+    new Set((booking.serviceNames ?? []).filter(Boolean)).forEach((name) => services.set(name, (services.get(name) ?? 0) + 1))
   })
-
-  const [
-    transactionsRaw,
-    todayBookingsRaw,
-    customerUsersResult,
-    pointsRaw,
-    vouchersRaw,
-    ...last7BookingsRaw
-  ] = await Promise.all([
-    fetchTransactions(),
-    fetchBookingsByDate(toApiTargetDate(todayValue)),
-    fetchUsers({ page: 1, pageSize: 1, role: 'Customer' }),
-    fetchPointsHistory(),
-    fetchVouchers(),
-    ...last7Days.map((date) => fetchBookingsByDate(toApiTargetDate(toDateValue(date)))),
-  ])
-
-  const transactions = Array.isArray(transactionsRaw)
-    ? transactionsRaw.map(normalizeTransaction)
-    : []
-  const todayBookings = Array.isArray(todayBookingsRaw)
-    ? todayBookingsRaw.map(normalizeAdminBooking)
-    : []
-  const pointsHistory = Array.isArray(pointsRaw) ? pointsRaw.map(normalizePointsEntry) : []
-  const vouchers = Array.isArray(vouchersRaw) ? vouchersRaw : []
-
-  const last7Bookings = last7BookingsRaw.flatMap((day) =>
-    Array.isArray(day) ? day.map(normalizeAdminBooking) : [],
-  )
-
-  const revenueToday = transactions
-    .filter((tx) => tx.status === 'Success' && isSameDay(tx.createdAt, today))
-    .reduce((sum, tx) => sum + tx.amount, 0)
-
-  const revenueMonth = transactions
-    .filter((tx) => tx.status === 'Success' && isInCurrentMonth(tx.createdAt, today))
-    .reduce((sum, tx) => sum + tx.amount, 0)
-
-  const pendingCount = todayBookings.filter((b) =>
-    ['Pending', 'Checked-in'].includes(b.status),
-  ).length
-
-  const pointsEarnedMonth = pointsHistory
-    .filter((entry) => entry.type === 'Earn' && isInCurrentMonth(entry.createdAt, today))
-    .reduce((sum, entry) => sum + Math.max(entry.points, 0), 0)
-
-  const vouchersUsedMonth = vouchers.reduce(
-    (sum, voucher) => sum + Number(voucher.currentUsageCount ?? voucher.redeemedCount ?? 0),
-    0,
-  )
-
-  const bookingsLast7Days = last7Days.map((date, index) => {
-    const dayBookings = Array.isArray(last7BookingsRaw[index]) ? last7BookingsRaw[index] : []
-    return {
-      date: formatChartDate(date),
-      count: dayBookings.length,
-    }
-  })
-
-  const kpiCards = [
-    { id: 'revenue-today', label: 'Doanh thu hôm nay', value: revenueToday, format: 'vnd', icon: 'payments' },
-    { id: 'revenue-month', label: `Doanh thu ${monthLabel}`, value: revenueMonth, format: 'vnd', icon: 'trending_up' },
-    { id: 'bookings-today', label: 'Booking hôm nay', value: todayBookings.length, format: 'number', icon: 'calendar_month' },
-    { id: 'pending', label: 'Đang chờ (Pending)', value: pendingCount, format: 'number', icon: 'hourglass_top' },
-    {
-      id: 'total-customers',
-      label: 'Tổng Số Người Dùng',
-      value: customerUsersResult?.totalItems ?? 0,
-      format: 'number',
-      icon: 'group',
-    },
-    {
-      id: 'completion-rate',
-      label: 'Tỷ lệ hoàn thành',
-      value: computeCompletionRate(last7Bookings),
-      format: 'percent',
-      icon: 'check_circle',
-    },
-    {
-      id: 'vouchers-used',
-      label: 'Voucher đã dùng',
-      value: vouchersUsedMonth,
-      format: 'number',
-      icon: 'confirmation_number',
-    },
-    {
-      id: 'points-earned',
-      label: `Điểm đã cộng (${monthLabel})`,
-      value: pointsEarnedMonth,
-      format: 'number',
-      icon: 'stars',
-    },
-  ]
-
+  const activities = paid.filter((item) => item.createdAt).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 8).map((item) => ({
+    id: 'tx-' + item.transactionId,
+    message: (transactionTypes[item.transactionType] ?? item.transactionType) + ' #' + item.transactionId + ' — ' + (item.customerName || 'Khách tại quầy'),
+    icon: item.transactionType === 'Refund' ? 'undo' : 'payments',
+    time: new Date(/Z$|[+-]\d{2}:\d{2}$/.test(item.createdAt) ? item.createdAt : item.createdAt + '+07:00').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
+  }))
   return {
-    kpiCards,
-    bookingsLast7Days,
-    topServices: buildTopServices(last7Bookings),
-    recentActivities: buildRecentActivities(last7Bookings, transactions, pointsHistory),
+    errors,
+    kpiCards: [
+      { id: 'revenue-today', label: 'Thu dịch vụ ròng hôm nay', value: transactions === null ? null : netReceipts(paid.filter((item) => dateKey(item.createdAt) === today)), format: 'vnd', icon: 'payments' },
+      { id: 'revenue-month', label: 'Thu dịch vụ ròng tháng ' + today.slice(5, 7), value: transactions === null ? null : netReceipts(paid), format: 'vnd', icon: 'trending_up' },
+      { id: 'bookings-today', label: 'Booking hôm nay', value: todayBookings?.length ?? null, icon: 'calendar_month' },
+      { id: 'pending', label: 'Chờ / đã check-in hôm nay', value: todayBookings?.filter((item) => ['Pending', 'Confirmed', 'CheckedIn', 'Checked-in'].includes(item.status)).length ?? null, icon: 'hourglass_top' },
+      { id: 'customers', label: 'Tổng khách hàng cá nhân', value: customerCount, icon: 'group' },
+      { id: 'completion', label: 'Hoàn thành / đã kết thúc (7 ngày)', value: weekComplete && closed.length ? Math.round(completed.length / closed.length * 1000) / 10 : null, format: 'percent', icon: 'check_circle' },
+      { id: 'vouchers', label: 'Lượt dùng voucher (lũy kế)', value: vouchers === null ? null : vouchers.reduce((sum, item) => sum + Number(item.currentUsageCount ?? 0), 0), icon: 'confirmation_number' },
+      { id: 'processing', label: 'Đang rửa (booking hôm nay)', value: todayBookings?.filter((item) => item.status === 'Processing').length ?? null, icon: 'local_car_wash' },
+    ],
+    bookingsLast7Days: days.map((date, index) => ({ date, label: date.slice(8, 10) + '/' + date.slice(5, 7), count: dayBookings[index]?.length ?? null })),
+    topServices: weekComplete ? [...services].map(([serviceName, count]) => ({ serviceName, count })).sort((a, b) => b.count - a.count).slice(0, 5) : [],
+    servicesUnavailable: !weekComplete,
+    transactionsUnavailable: transactions === null,
+    recentActivities: activities,
   }
+}
+
+export async function fetchDashboardStats({ signal } = {}) {
+  const today = vnDate()
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today + 'T00:00:00Z')
+    date.setUTCDate(date.getUTCDate() - 6 + index)
+    return date.toISOString().slice(0, 10)
+  })
+  const results = await Promise.allSettled([
+    monthlyTransactions(today.slice(0, 7) + '-01', nextDate(today), signal),
+    fetchUsers({ page: 1, pageSize: 1, role: 'Customer', signal }),
+    fetchVouchers().then(collection),
+    ...days.map((date) => fetchBookingsByDate(date + 'T00:00:00', { signal }).then(collection)),
+  ])
+  const names = ['Giao dịch toàn hệ thống', 'Khách hàng', 'Voucher', ...days.map((date) => 'Booking ' + date)]
+  const errors = results.flatMap((result, index) => result.status === 'rejected' ? [names[index] + ': ' + (result.reason?.message || 'Không tải được dữ liệu')] : [])
+  const values = results.map((result) => result.status === 'fulfilled' ? result.value : null)
+  return summarizeDashboard({ today, days, transactions: values[0], customerCount: values[1]?.totalItems ?? null, vouchers: values[2], dayBookings: values.slice(3), errors })
 }
