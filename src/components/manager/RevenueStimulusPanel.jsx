@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   approveRevenueStimulusProposal,
@@ -8,43 +8,49 @@ import {
   modifyRevenueStimulusProposal,
   rejectRevenueStimulusProposal,
   triggerWeatherCampaign,
-} from '../../api'
-import { formatVnd } from '../../utils/format'
+} from "../../api";
+import { formatVnd } from "../../utils/format";
 
 function currentPeriod() {
-  const now = new Date()
-  return { month: now.getMonth() + 1, year: now.getFullYear() }
+  const now = new Date();
+  return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
 function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
-    code: proposal?.code ?? '',
+    code: proposal?.code ?? "",
     discountAmount: proposal?.discountAmount ?? 0,
     maxUsages: proposal?.maxUsages ?? 1,
     expiryDays: proposal?.expiryDays ?? 30,
-    proposalNote: proposal?.proposalNote ?? '',
-    rejectReason: '',
-  }))
+    proposalNote: proposal?.proposalNote ?? "",
+    rejectReason: "",
+  }));
 
-  const isReject = mode === 'reject'
+  const isReject = mode === "reject";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <form
         className="w-full max-w-lg rounded-2xl border border-outline-variant bg-surface-container-lowest p-6 shadow-2xl"
         onSubmit={(event) => {
-          event.preventDefault()
-          onSave(form)
+          event.preventDefault();
+          onSave(form);
         }}
       >
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h3 className="font-sora text-lg font-semibold text-on-surface">
-              {isReject ? 'Từ chối đề xuất' : 'Chỉnh sửa đề xuất voucher'}
+              {isReject ? "Từ chối đề xuất" : "Chỉnh sửa đề xuất voucher"}
             </h3>
-            <p className="mt-1 text-xs text-on-surface-variant">{proposal?.code}</p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              {proposal?.code}
+            </p>
           </div>
-          <button type="button" className="text-on-surface-variant" onClick={onClose}>
+          <button
+            type="button"
+            className="text-on-surface-variant"
+            onClick={onClose}
+          >
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -55,7 +61,12 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
             <textarea
               className="mt-2 min-h-28 w-full rounded-xl border border-outline-variant bg-surface-container-low px-3 py-2"
               value={form.rejectReason}
-              onChange={(event) => setForm((value) => ({ ...value, rejectReason: event.target.value }))}
+              onChange={(event) =>
+                setForm((value) => ({
+                  ...value,
+                  rejectReason: event.target.value,
+                }))
+              }
               placeholder="Ví dụ: Doanh thu giảm do chi nhánh bảo trì..."
             />
           </label>
@@ -66,7 +77,12 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
               <input
                 className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 font-mono"
                 value={form.code}
-                onChange={(event) => setForm((value) => ({ ...value, code: event.target.value.toUpperCase() }))}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    code: event.target.value.toUpperCase(),
+                  }))
+                }
                 required
               />
             </label>
@@ -78,7 +94,12 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
                 max="100"
                 className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
                 value={form.discountAmount}
-                onChange={(event) => setForm((value) => ({ ...value, discountAmount: event.target.value }))}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    discountAmount: event.target.value,
+                  }))
+                }
                 required
               />
             </label>
@@ -89,7 +110,12 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
                 min="1"
                 className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
                 value={form.maxUsages}
-                onChange={(event) => setForm((value) => ({ ...value, maxUsages: event.target.value }))}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    maxUsages: event.target.value,
+                  }))
+                }
                 required
               />
             </label>
@@ -100,7 +126,12 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
                 min="1"
                 className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
                 value={form.expiryDays}
-                onChange={(event) => setForm((value) => ({ ...value, expiryDays: event.target.value }))}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    expiryDays: event.target.value,
+                  }))
+                }
                 required
               />
             </label>
@@ -109,121 +140,151 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
               <textarea
                 className="mt-1 min-h-24 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
                 value={form.proposalNote}
-                onChange={(event) => setForm((value) => ({ ...value, proposalNote: event.target.value }))}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    proposalNote: event.target.value,
+                  }))
+                }
               />
             </label>
           </div>
         )}
 
         <div className="mt-6 flex justify-end gap-3">
-          <button type="button" className="rounded-lg border border-outline-variant px-4 py-2 text-sm" onClick={onClose}>
+          <button
+            type="button"
+            className="rounded-lg border border-outline-variant px-4 py-2 text-sm"
+            onClick={onClose}
+          >
             Hủy
           </button>
           <button
             type="submit"
             disabled={busy}
             className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 ${
-              isReject ? 'bg-error text-on-error' : 'bg-primary text-on-primary'
+              isReject ? "bg-error text-on-error" : "bg-primary text-on-primary"
             }`}
           >
-            {busy ? 'Đang lưu…' : isReject ? 'Xác nhận từ chối' : 'Lưu thay đổi'}
+            {busy
+              ? "Đang lưu…"
+              : isReject
+                ? "Xác nhận từ chối"
+                : "Lưu thay đổi"}
           </button>
         </div>
       </form>
     </div>
-  )
+  );
 }
 
 export default function RevenueStimulusPanel() {
-  const [period, setPeriod] = useState(currentPeriod)
-  const [analysis, setAnalysis] = useState(null)
-  const [proposals, setProposals] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [running, setRunning] = useState('')
-  const [actionId, setActionId] = useState(null)
-  const [modal, setModal] = useState(null)
-  const [message, setMessage] = useState(null)
-  const [weatherStatus, setWeatherStatus] = useState('')
+  const [period, setPeriod] = useState(currentPeriod);
+  const [analysis, setAnalysis] = useState(null);
+  const [proposals, setProposals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState("");
+  const [actionId, setActionId] = useState(null);
+  const [modal, setModal] = useState(null);
+  const [message, setMessage] = useState(null);
+  const [weatherStatus, setWeatherStatus] = useState("");
 
   const loadProposals = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      setProposals(await fetchRevenueStimulusProposals())
+      setProposals(await fetchRevenueStimulusProposals());
     } catch (error) {
       setMessage({
-        type: 'error',
-        text: error instanceof ApiError
-          ? `Không kết nối được AI local: ${error.message}`
-          : 'Không tải được đề xuất voucher.',
-      })
+        type: "error",
+        text:
+          error instanceof ApiError
+            ? `Không kết nối được AI local: ${error.message}`
+            : "Không tải được đề xuất voucher.",
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial AI proposal load
-    loadProposals()
-    
+    loadProposals();
+
     // Kích hoạt/Kiểm tra ngầm AI thời tiết khi mở panel
     triggerWeatherCampaign()
-      .then(res => {
-        if (res?.message && !res.message.toLowerCase().includes('clear')) {
-          setWeatherStatus(res.message)
+      .then((res) => {
+        if (res?.message && !res.message.toLowerCase().includes("clear")) {
+          setWeatherStatus(res.message);
         } else {
-          setWeatherStatus('Trời không mưa')
+          setWeatherStatus("Trời không mưa");
         }
       })
-      .catch(() => setWeatherStatus('Không thể kiểm tra thời tiết'))
-  }, [loadProposals])
+      .catch(() => setWeatherStatus("Không thể kiểm tra thời tiết"));
+  }, [loadProposals]);
 
   const runAnalysis = async (comprehensive) => {
-    setRunning(comprehensive ? 'comprehensive' : 'revenue')
-    setMessage(null)
+    setRunning(comprehensive ? "comprehensive" : "revenue");
+    setMessage(null);
     try {
       const result = comprehensive
         ? await generateComprehensiveRevenueProposals(period)
-        : await checkManagerRevenueStimulus(period)
-      if (comprehensive) setAnalysis(result)
-      setMessage({ type: 'success', text: result?.message || 'Đã hoàn tất phân tích.' })
-      await loadProposals()
+        : await checkManagerRevenueStimulus(period);
+      if (comprehensive) setAnalysis(result);
+      setMessage({
+        type: "success",
+        text: result?.message || "Đã hoàn tất phân tích.",
+      });
+      await loadProposals();
     } catch (error) {
-      setMessage({ type: 'error', text: error instanceof ApiError ? error.message : 'Phân tích thất bại.' })
+      setMessage({
+        type: "error",
+        text: error instanceof ApiError ? error.message : "Phân tích thất bại.",
+      });
     } finally {
-      setRunning('')
+      setRunning("");
     }
-  }
+  };
 
   const performProposalAction = async (proposal, action, payload) => {
-    setActionId(proposal.voucherId)
+    setActionId(proposal.voucherId);
     try {
-      if (action === 'approve') await approveRevenueStimulusProposal(proposal.voucherId)
-      if (action === 'modify') {
+      if (action === "approve")
+        await approveRevenueStimulusProposal(proposal.voucherId);
+      if (action === "modify") {
         await modifyRevenueStimulusProposal(proposal.voucherId, {
           code: payload.code.trim(),
           discountAmount: Number(payload.discountAmount),
           maxUsages: Number(payload.maxUsages),
           expiryDays: Number(payload.expiryDays),
           proposalNote: payload.proposalNote.trim() || null,
-        })
+        });
       }
-      if (action === 'reject') {
-        await rejectRevenueStimulusProposal(proposal.voucherId, payload.rejectReason)
+      if (action === "reject") {
+        await rejectRevenueStimulusProposal(
+          proposal.voucherId,
+          payload.rejectReason,
+        );
       }
-      setModal(null)
+      setModal(null);
       setMessage({
-        type: 'success',
-        text: action === 'approve' ? 'Voucher đã được phê duyệt và phát hành.' : 'Đã cập nhật đề xuất.',
-      })
-      await loadProposals()
+        type: "success",
+        text:
+          action === "approve"
+            ? "Voucher đã được phê duyệt và phát hành."
+            : "Đã cập nhật đề xuất.",
+      });
+      await loadProposals();
     } catch (error) {
-      setMessage({ type: 'error', text: error instanceof ApiError ? error.message : 'Thao tác thất bại.' })
+      setMessage({
+        type: "error",
+        text: error instanceof ApiError ? error.message : "Thao tác thất bại.",
+      });
     } finally {
-      setActionId(null)
+      setActionId(null);
     }
-  }
+  };
 
-  const traffic = analysis?.trafficAndCustomerStats
+  const traffic = analysis?.trafficAndCustomerStats;
 
   return (
     <section className="mt-6 rounded-2xl border border-secondary/30 bg-secondary/5 p-5">
@@ -233,22 +294,27 @@ export default function RevenueStimulusPanel() {
           mode={modal.mode}
           busy={actionId === modal.proposal.voucherId}
           onClose={() => setModal(null)}
-          onSave={(payload) => performProposalAction(modal.proposal, modal.mode, payload)}
+          onSave={(payload) =>
+            performProposalAction(modal.proposal, modal.mode, payload)
+          }
         />
       )}
 
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-secondary">psychology</span>
-            <h2 className="font-sora text-lg font-semibold text-on-surface">AI kích cầu doanh thu</h2>
+            <span className="material-symbols-outlined text-secondary">
+              psychology
+            </span>
+            <h2 className="font-sora text-lg font-semibold text-on-surface">
+              AI kích cầu doanh thu
+            </h2>
           </div>
-          <p className="mt-1 text-sm text-on-surface-variant">
-            Phân tích chạy trên backend AI local; voucher luôn ở trạng thái chờ duyệt trước khi phát hành.
-          </p>
           {weatherStatus && (
             <div className="mt-4 flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
-              <span className="material-symbols-outlined text-[20px]">cloud</span>
+              <span className="material-symbols-outlined text-[20px]">
+                cloud
+              </span>
               <div>
                 <strong>AI Thời Tiết:</strong> {weatherStatus}
               </div>
@@ -259,10 +325,17 @@ export default function RevenueStimulusPanel() {
           <select
             className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={period.month}
-            onChange={(event) => setPeriod((value) => ({ ...value, month: Number(event.target.value) }))}
+            onChange={(event) =>
+              setPeriod((value) => ({
+                ...value,
+                month: Number(event.target.value),
+              }))
+            }
           >
             {Array.from({ length: 12 }, (_, index) => (
-              <option key={index + 1} value={index + 1}>Tháng {index + 1}</option>
+              <option key={index + 1} value={index + 1}>
+                Tháng {index + 1}
+              </option>
             ))}
           </select>
           <input
@@ -271,7 +344,12 @@ export default function RevenueStimulusPanel() {
             max="2100"
             className="w-24 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={period.year}
-            onChange={(event) => setPeriod((value) => ({ ...value, year: Number(event.target.value) }))}
+            onChange={(event) =>
+              setPeriod((value) => ({
+                ...value,
+                year: Number(event.target.value),
+              }))
+            }
           />
           <button
             type="button"
@@ -279,7 +357,7 @@ export default function RevenueStimulusPanel() {
             className="rounded-lg border border-secondary px-3 py-2 text-sm font-semibold text-secondary disabled:opacity-50"
             onClick={() => runAnalysis(false)}
           >
-            {running === 'revenue' ? 'Đang kiểm tra…' : 'Kiểm tra doanh thu'}
+            {running === "revenue" ? "Đang kiểm tra…" : "Kiểm tra doanh thu"}
           </button>
           <button
             type="button"
@@ -287,17 +365,21 @@ export default function RevenueStimulusPanel() {
             className="rounded-lg bg-secondary px-3 py-2 text-sm font-semibold text-on-secondary disabled:opacity-50"
             onClick={() => runAnalysis(true)}
           >
-            {running === 'comprehensive' ? 'AI đang phân tích…' : 'Phân tích & đề xuất AI'}
+            {running === "comprehensive"
+              ? "AI đang phân tích…"
+              : "Phân tích & đề xuất AI"}
           </button>
         </div>
       </div>
 
       {message && (
-        <div className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
-          message.type === 'error'
-            ? 'border-error/40 bg-error-container/20 text-error'
-            : 'border-primary/30 bg-primary/10 text-primary'
-        }`}>
+        <div
+          className={`mt-4 rounded-lg border px-4 py-3 text-sm ${
+            message.type === "error"
+              ? "border-error/40 bg-error-container/20 text-error"
+              : "border-primary/30 bg-primary/10 text-primary"
+          }`}
+        >
           {message.text}
         </div>
       )}
@@ -310,34 +392,56 @@ export default function RevenueStimulusPanel() {
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
               <p className="text-xs text-on-surface-variant">Doanh thu tháng</p>
-              <p className="mt-1 font-sora font-semibold text-on-surface">{formatVnd(analysis.currentMonthRevenue)}</p>
-              <p className="text-xs text-error">Giảm {Number(analysis.revenueDropPercentage || 0).toFixed(2)}%</p>
+              <p className="mt-1 font-sora font-semibold text-on-surface">
+                {formatVnd(analysis.currentMonthRevenue)}
+              </p>
+              <p className="text-xs text-error">
+                Giảm {Number(analysis.revenueDropPercentage || 0).toFixed(2)}%
+              </p>
             </div>
             <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-              <p className="text-xs text-on-surface-variant">Lưu lượng trung bình</p>
-              <p className="mt-1 font-sora font-semibold text-on-surface">{traffic?.averageDailyCheckIns ?? 0} xe/ngày</p>
+              <p className="text-xs text-on-surface-variant">
+                Lưu lượng trung bình
+              </p>
+              <p className="mt-1 font-sora font-semibold text-on-surface">
+                {traffic?.averageDailyCheckIns ?? 0} xe/ngày
+              </p>
             </div>
             <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
               <p className="text-xs text-on-surface-variant">Ngày vắng khách</p>
-              <p className="mt-1 font-sora font-semibold text-on-surface">{traffic?.slowestDaysOfWeek || '—'}</p>
+              <p className="mt-1 font-sora font-semibold text-on-surface">
+                {traffic?.slowestDaysOfWeek || "—"}
+              </p>
             </div>
             <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-              <p className="text-xs text-on-surface-variant">Khách có nguy cơ rời bỏ</p>
-              <p className="mt-1 font-sora font-semibold text-on-surface">{traffic?.atRiskLoyalCustomersCount ?? 0} khách</p>
+              <p className="text-xs text-on-surface-variant">
+                Khách có nguy cơ rời bỏ
+              </p>
+              <p className="mt-1 font-sora font-semibold text-on-surface">
+                {traffic?.atRiskLoyalCustomersCount ?? 0} khách
+              </p>
             </div>
           </div>
         </div>
       )}
 
       <div className="mt-5 flex items-center justify-between">
-        <h3 className="font-sora font-semibold text-on-surface">Đề xuất chờ duyệt</h3>
-        <button type="button" className="text-sm text-secondary hover:underline" onClick={loadProposals}>
+        <h3 className="font-sora font-semibold text-on-surface">
+          Đề xuất chờ duyệt
+        </h3>
+        <button
+          type="button"
+          className="text-sm text-secondary hover:underline"
+          onClick={loadProposals}
+        >
           Làm mới
         </button>
       </div>
 
       {loading ? (
-        <p className="mt-3 text-sm text-on-surface-variant">Đang tải đề xuất từ AI local…</p>
+        <p className="mt-3 text-sm text-on-surface-variant">
+          Đang tải đề xuất từ AI local…
+        </p>
       ) : proposals.length === 0 ? (
         <p className="mt-3 rounded-xl border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
           Chưa có đề xuất nào đang chờ duyệt.
@@ -345,27 +449,39 @@ export default function RevenueStimulusPanel() {
       ) : (
         <div className="mt-3 grid gap-4 xl:grid-cols-2">
           {proposals.map((proposal) => (
-            <article key={proposal.voucherId} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
+            <article
+              key={proposal.voucherId}
+              className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="font-mono text-sm font-bold text-secondary">{proposal.code}</p>
+                  <p className="font-mono text-sm font-bold text-secondary">
+                    {proposal.code}
+                  </p>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    Giảm {proposal.discountAmount}% · {proposal.maxUsages?.toLocaleString('vi-VN')} lượt · {proposal.expiryDays} ngày
+                    Giảm {proposal.discountAmount}% ·{" "}
+                    {proposal.maxUsages?.toLocaleString("vi-VN")} lượt ·{" "}
+                    {proposal.expiryDays} ngày
                   </p>
                 </div>
                 <span className="rounded-full border border-tertiary/30 bg-tertiary/10 px-2 py-1 text-[10px] font-semibold uppercase text-tertiary">
                   {proposal.approvalStatus}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-on-surface">{proposal.proposalNote}</p>
+              <p className="mt-3 text-sm leading-6 text-on-surface">
+                {proposal.proposalNote}
+              </p>
               <p className="mt-2 text-xs text-on-surface-variant">
-                Ước tính {proposal.estimatedTargetCustomers?.toLocaleString('vi-VN') ?? 0} khách mục tiêu
+                Ước tính{" "}
+                {proposal.estimatedTargetCustomers?.toLocaleString("vi-VN") ??
+                  0}{" "}
+                khách mục tiêu
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
                   className="rounded-lg border border-outline-variant px-3 py-2 text-xs font-semibold"
-                  onClick={() => setModal({ proposal, mode: 'modify' })}
+                  onClick={() => setModal({ proposal, mode: "modify" })}
                 >
                   Sửa thông số
                 </button>
@@ -373,14 +489,14 @@ export default function RevenueStimulusPanel() {
                   type="button"
                   disabled={actionId === proposal.voucherId}
                   className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary disabled:opacity-50"
-                  onClick={() => performProposalAction(proposal, 'approve')}
+                  onClick={() => performProposalAction(proposal, "approve")}
                 >
                   Phê duyệt & phát hành
                 </button>
                 <button
                   type="button"
                   className="rounded-lg border border-error/40 px-3 py-2 text-xs font-semibold text-error"
-                  onClick={() => setModal({ proposal, mode: 'reject' })}
+                  onClick={() => setModal({ proposal, mode: "reject" })}
                 >
                   Từ chối
                 </button>
@@ -390,5 +506,5 @@ export default function RevenueStimulusPanel() {
         </div>
       )}
     </section>
-  )
+  );
 }
