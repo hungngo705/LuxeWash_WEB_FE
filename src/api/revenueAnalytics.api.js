@@ -76,3 +76,41 @@ export function triggerAllRevenueCampaigns({ month, year } = {}) {
     { method: 'POST' },
   ).then((data) => (Array.isArray(data) ? data : []))
 }
+
+export function fetchAdminRevenueStimulusProposals(branchId) {
+  return aiApiRequest(`/admin/revenue-analytics/proposals/${Number(branchId)}`).then((data) =>
+    Array.isArray(data) ? data : [],
+  )
+}
+
+export function generateAdminComprehensiveRevenueProposals(branchId, { month, year } = {}) {
+  return aiApiRequest(
+    withPeriod(`/admin/revenue-analytics/comprehensive-proposals/${Number(branchId)}`, month, year),
+    { method: 'POST' },
+  )
+}
+
+export function modifyAdminRevenueStimulusProposal(branchId, voucherId, payload) {
+  return aiApiRequest(`/admin/revenue-analytics/proposals/${Number(branchId)}/${Number(voucherId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function approveAdminRevenueStimulusProposal(branchId, voucherId) {
+  return aiApiRequest(
+    `/admin/revenue-analytics/proposals/${Number(branchId)}/${Number(voucherId)}/approve`,
+    { method: 'POST' },
+  )
+}
+
+export function rejectAdminRevenueStimulusProposal(branchId, voucherId, rejectReason = '') {
+  return aiApiRequest(
+    `/admin/revenue-analytics/proposals/${Number(branchId)}/${Number(voucherId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ rejectReason: String(rejectReason).trim() || null }) },
+  )
+}
+
+export function triggerAdminWeatherCampaign() {
+  return aiApiRequest('/admin/revenue-analytics/trigger-weather', { method: 'POST' })
+}

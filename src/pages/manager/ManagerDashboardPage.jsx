@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { ApiError, fetchManagerBookings } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
 import StatusBadge from '../../components/admin/shared/StatusBadge'
-import RevenueStimulusPanel from '../../components/manager/RevenueStimulusPanel'
 
 export default function ManagerDashboardPage() {
   const [stats, setStats] = useState({
@@ -145,7 +144,6 @@ export default function ManagerDashboardPage() {
         )}
       </div>
 
-      <RevenueStimulusPanel />
     </div>
   )
 }

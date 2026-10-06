@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, fetchDashboardStats } from '../../api'
 import KpiCard from '../../components/admin/dashboard/KpiCard'
 import RevenueAnalyticsPanel from '../../components/admin/dashboard/RevenueAnalyticsPanel'
+import RevenueStimulusPanel from '../../components/manager/RevenueStimulusPanel'
 import PageHeader from '../../components/admin/shared/PageHeader'
 import { Skeleton } from '../../components/ui/Skeleton'
 
@@ -208,6 +209,7 @@ export default function AdminDashboardPage() {
           <RevenueAnalyticsPanel />
         </>
       )}
+      <RevenueStimulusPanel role="admin" />
     </div>
   )
 }

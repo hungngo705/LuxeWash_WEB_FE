@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
+  approveAdminRevenueStimulusProposal,
   approveRevenueStimulusProposal,
   checkManagerRevenueStimulus,
+  fetchAdminBranches,
+  fetchAdminRevenueStimulusProposals,
   fetchRevenueStimulusProposals,
+  generateAdminComprehensiveRevenueProposals,
   generateComprehensiveRevenueProposals,
+  modifyAdminRevenueStimulusProposal,
   modifyRevenueStimulusProposal,
+  rejectAdminRevenueStimulusProposal,
   rejectRevenueStimulusProposal,
+  triggerAdminWeatherCampaign,
+  triggerBranchRevenueCampaign,
   triggerWeatherCampaign,
 } from "../../api";
 import { formatVnd } from "../../utils/format";
@@ -19,7 +27,8 @@ function currentPeriod() {
 function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     code: proposal?.code ?? "",
-    discountAmount: proposal?.discountAmount ?? 0,
+    discountPercent: proposal?.discountPercent ?? 0,
+    maxDiscountAmount: proposal?.maxDiscountAmount ?? "",
     maxUsages: proposal?.maxUsages ?? 1,
     expiryDays: proposal?.expiryDays ?? 30,
     proposalNote: proposal?.proposalNote ?? "",
@@ -92,15 +101,36 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
                 type="number"
                 min="1"
                 max="100"
+                step="any"
                 className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
-                value={form.discountAmount}
+                value={form.discountPercent}
                 onChange={(event) =>
                   setForm((value) => ({
                     ...value,
-                    discountAmount: event.target.value,
+                    discountPercent: event.target.value,
                   }))
                 }
                 required
+              />
+            </label>
+            <label className="text-sm text-on-surface">
+              Giảm tối đa (đ)
+              <input
+                type="number"
+                min="1"
+                step="any"
+                className="mt-1 w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2"
+                value={form.maxDiscountAmount}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    maxDiscountAmount: event.target.value,
+                  }))
+                }
+                required={
+                  Number(form.discountPercent) !== Number(proposal.discountPercent)
+                }
+                placeholder="Bắt buộc nếu đổi mức giảm"
               />
             </label>
             <label className="text-sm text-on-surface">
@@ -178,7 +208,10 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
   );
 }
 
-export default function RevenueStimulusPanel() {
+export default function RevenueStimulusPanel({ role = "manager" }) {
+  const isAdmin = role === "admin";
+  const [branches, setBranches] = useState([]);
+  const [branchId, setBranchId] = useState("");
   const [period, setPeriod] = useState(currentPeriod);
   const [analysis, setAnalysis] = useState(null);
   const [proposals, setProposals] = useState([]);
@@ -188,13 +221,42 @@ export default function RevenueStimulusPanel() {
   const [modal, setModal] = useState(null);
   const [message, setMessage] = useState(null);
   const [weatherStatus, setWeatherStatus] = useState("");
+  const proposalRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    fetchAdminBranches()
+      .then((items) => {
+        if (cancelled) return;
+        const active = items.filter((branch) => branch.isActive !== false);
+        setBranches(active);
+        setBranchId(String(active[0]?.id ?? ""));
+        if (active.length === 0) setLoading(false);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoading(false);
+          setMessage({
+            type: "error",
+            text: error instanceof ApiError ? error.message : "Không tải được chi nhánh.",
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isAdmin]);
 
   const loadProposals = useCallback(async () => {
+    if (isAdmin && !branchId) return;
+    const requestId = ++proposalRequestRef.current;
     setLoading(true);
     try {
-      setProposals(await fetchRevenueStimulusProposals());
+      const items = isAdmin
+        ? await fetchAdminRevenueStimulusProposals(branchId)
+        : await fetchRevenueStimulusProposals();
+      if (requestId === proposalRequestRef.current) setProposals(items);
     } catch (error) {
-      setMessage({
+      if (requestId === proposalRequestRef.current) setMessage({
         type: "error",
         text:
           error instanceof ApiError
@@ -202,16 +264,18 @@ export default function RevenueStimulusPanel() {
             : "Không tải được đề xuất voucher.",
       });
     } finally {
-      setLoading(false);
+      if (requestId === proposalRequestRef.current) setLoading(false);
     }
-  }, []);
+  }, [isAdmin, branchId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial AI proposal load
     loadProposals();
+  }, [loadProposals]);
 
+  useEffect(() => {
     // Kích hoạt/Kiểm tra ngầm AI thời tiết khi mở panel
-    triggerWeatherCampaign()
+    (isAdmin ? triggerAdminWeatherCampaign() : triggerWeatherCampaign())
       .then((res) => {
         if (res?.message && !res.message.toLowerCase().includes("clear")) {
           setWeatherStatus(res.message);
@@ -220,15 +284,23 @@ export default function RevenueStimulusPanel() {
         }
       })
       .catch(() => setWeatherStatus("Không thể kiểm tra thời tiết"));
-  }, [loadProposals]);
+  }, [isAdmin]);
 
   const runAnalysis = async (comprehensive) => {
+    if (isAdmin && !branchId) {
+      setMessage({ type: "error", text: "Vui lòng chọn chi nhánh." });
+      return;
+    }
     setRunning(comprehensive ? "comprehensive" : "revenue");
     setMessage(null);
     try {
       const result = comprehensive
-        ? await generateComprehensiveRevenueProposals(period)
-        : await checkManagerRevenueStimulus(period);
+        ? isAdmin
+          ? await generateAdminComprehensiveRevenueProposals(branchId, period)
+          : await generateComprehensiveRevenueProposals(period)
+        : isAdmin
+          ? await triggerBranchRevenueCampaign(branchId, period)
+          : await checkManagerRevenueStimulus(period);
       if (comprehensive) setAnalysis(result);
       setMessage({
         type: "success",
@@ -249,21 +321,33 @@ export default function RevenueStimulusPanel() {
     setActionId(proposal.voucherId);
     try {
       if (action === "approve")
-        await approveRevenueStimulusProposal(proposal.voucherId);
+        await (isAdmin
+          ? approveAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId)
+          : approveRevenueStimulusProposal(proposal.voucherId));
       if (action === "modify") {
-        await modifyRevenueStimulusProposal(proposal.voucherId, {
+        const percentChanged =
+          Number(payload.discountPercent) !== Number(proposal.discountPercent);
+        const hasMaxDiscountAmount = payload.maxDiscountAmount !== "";
+        const modification = {
           code: payload.code.trim(),
-          discountAmount: Number(payload.discountAmount),
+          ...(percentChanged || hasMaxDiscountAmount
+            ? {
+                discountPercent: Number(payload.discountPercent),
+                maxDiscountAmount: Number(payload.maxDiscountAmount),
+              }
+            : {}),
           maxUsages: Number(payload.maxUsages),
           expiryDays: Number(payload.expiryDays),
           proposalNote: payload.proposalNote.trim() || null,
-        });
+        };
+        await (isAdmin
+          ? modifyAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId, modification)
+          : modifyRevenueStimulusProposal(proposal.voucherId, modification));
       }
       if (action === "reject") {
-        await rejectRevenueStimulusProposal(
-          proposal.voucherId,
-          payload.rejectReason,
-        );
+        await (isAdmin
+          ? rejectAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId, payload.rejectReason)
+          : rejectRevenueStimulusProposal(proposal.voucherId, payload.rejectReason));
       }
       setModal(null);
       setMessage({
@@ -322,6 +406,28 @@ export default function RevenueStimulusPanel() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <select
+              className="min-w-52 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
+              aria-label="Chi nhánh kích cầu doanh thu"
+              value={branchId}
+              disabled={Boolean(running || actionId)}
+              onChange={(event) => {
+                proposalRequestRef.current += 1;
+                setBranchId(event.target.value);
+                setAnalysis(null);
+                setProposals([]);
+                setLoading(Boolean(event.target.value));
+                setMessage(null);
+                setModal(null);
+              }}
+            >
+              <option value="">Chọn chi nhánh</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>{branch.name}</option>
+              ))}
+            </select>
+          )}
           <select
             className="rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm"
             value={period.month}
@@ -353,7 +459,7 @@ export default function RevenueStimulusPanel() {
           />
           <button
             type="button"
-            disabled={Boolean(running)}
+            disabled={Boolean(running) || (isAdmin && !branchId)}
             className="rounded-lg border border-secondary px-3 py-2 text-sm font-semibold text-secondary disabled:opacity-50"
             onClick={() => runAnalysis(false)}
           >
@@ -361,7 +467,7 @@ export default function RevenueStimulusPanel() {
           </button>
           <button
             type="button"
-            disabled={Boolean(running)}
+            disabled={Boolean(running) || (isAdmin && !branchId)}
             className="rounded-lg bg-secondary px-3 py-2 text-sm font-semibold text-on-secondary disabled:opacity-50"
             onClick={() => runAnalysis(true)}
           >
@@ -459,7 +565,9 @@ export default function RevenueStimulusPanel() {
                     {proposal.code}
                   </p>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    Giảm {proposal.discountAmount}% ·{" "}
+                    Giảm {Number(proposal.discountPercent) > 0
+                      ? `${proposal.discountPercent}%`
+                      : formatVnd(proposal.discountAmount)} ·{" "}
                     {proposal.maxUsages?.toLocaleString("vi-VN")} lượt ·{" "}
                     {proposal.expiryDays} ngày
                   </p>

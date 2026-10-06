@@ -3513,7 +3513,7 @@ export default function DashboardPage() {
           await updateStaffBookingStatus(bookingId, "Completed");
         }
         rememberManualCompletion(task);
-        const message = `Xe ${task?.licensePlate ?? bookingId ?? fleetWashLogId} đã hoàn thành thủ công — hãy mở barie cổng ra bằng điều khiển thủ công.`;
+        const message = `Xe ${task?.licensePlate ?? bookingId ?? fleetWashLogId} đã hoàn thành thủ công.`;
         setBarrierAlert({ type: "manual", message });
         notice(message);
         setStaffTasks((prev) =>
@@ -3769,7 +3769,7 @@ export default function DashboardPage() {
               {barrierAlert.type === "success"
                 ? "Thanh toán hợp lệ, lượt rửa đã hoàn thành và vật tư đã được ghi nhận."
                 : barrierAlert.type === "manual"
-                  ? "Hệ thống không tự mở barie trong luồng dự phòng này."
+                  ? ""
                   : "Barie vẫn đóng. Vui lòng xử lý với khách hàng trước khi quét lại."}
             </p>
           </div>

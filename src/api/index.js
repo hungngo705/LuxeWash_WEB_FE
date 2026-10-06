@@ -183,15 +183,21 @@ export {
 export { fetchDashboardStats } from './admin.dashboard.api'
 
 export {
+  approveAdminRevenueStimulusProposal,
   approveRevenueStimulusProposal,
   checkManagerRevenueStimulus,
   evaluateBranchRevenue,
+  fetchAdminRevenueStimulusProposals,
   fetchRevenueStimulusProposals,
+  generateAdminComprehensiveRevenueProposals,
   generateComprehensiveRevenueProposals,
+  modifyAdminRevenueStimulusProposal,
   modifyRevenueStimulusProposal,
+  rejectAdminRevenueStimulusProposal,
   rejectRevenueStimulusProposal,
   triggerAllRevenueCampaigns,
   triggerBranchRevenueCampaign,
+  triggerAdminWeatherCampaign,
   triggerWeatherCampaign,
 } from './revenueAnalytics.api'
 
