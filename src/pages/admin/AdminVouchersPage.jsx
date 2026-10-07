@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   buildVoucherPayload,
@@ -15,130 +15,146 @@ import {
   VOUCHER_TYPE,
   VOUCHER_TYPE_LABEL,
   CAMPAIGN_TYPE,
-} from '../../api'
-import ConfirmDialog from '../../components/admin/shared/ConfirmDialog'
-import DiscountFields from '../../components/admin/shared/DiscountFields'
-import FormModal from '../../components/admin/shared/FormModal'
-import PageHeader from '../../components/admin/shared/PageHeader'
-import StatusBadge from '../../components/admin/shared/StatusBadge'
-import TimeRangeField from '../../components/admin/shared/TimeRangeField'
-import DataTable from '../../components/ui/DataTable'
-import Input from '../../components/ui/Input'
-import { useToast } from '../../components/ui/Toast'
+} from "../../api";
+import ConfirmDialog from "../../components/admin/shared/ConfirmDialog";
+import DiscountFields from "../../components/admin/shared/DiscountFields";
+import FormModal from "../../components/admin/shared/FormModal";
+import PageHeader from "../../components/admin/shared/PageHeader";
+import StatusBadge from "../../components/admin/shared/StatusBadge";
+import TimeRangeField from "../../components/admin/shared/TimeRangeField";
+import DataTable from "../../components/ui/DataTable";
+import Input from "../../components/ui/Input";
+import { useToast } from "../../components/ui/Toast";
 import {
   describeVoucherUsability,
   formatVoucherDailyWindow,
   formatVoucherDiscount,
   formatVoucherValidityWindow,
-} from '../../utils/voucherDisplay'
+} from "../../utils/voucherDisplay";
 const VOUCHER_TYPE_OPTIONS = [
-  { value: VOUCHER_TYPE.Discount, label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Discount] },
-]
+  {
+    value: VOUCHER_TYPE.Discount,
+    label: VOUCHER_TYPE_LABEL[VOUCHER_TYPE.Discount],
+  },
+];
 
 const emptyForm = {
-  code: '',
+  code: "",
   discountKind: DISCOUNT_KIND.Fixed,
-  discountAmount: '',
-  discountPercent: '',
-  maxDiscountAmount: '',
-  pointsRequired: '',
-  maxUsages: '',
-  maxUsagePerUser: '1',
-  minOrderAmount: '0',
-  expiryDate: '',
-  startDate: '',
+  discountAmount: "",
+  discountPercent: "",
+  maxDiscountAmount: "",
+  pointsRequired: "",
+  maxUsages: "",
+  maxUsagePerUser: "1",
+  minOrderAmount: "0",
+  expiryDate: "",
+  startDate: "",
   voucherType: VOUCHER_TYPE.Discount,
-  imageUrl: '',
-  requiredTierId: '',
-  vehicleTypeId: '',
-  validStartTime: '',
-  validEndTime: '',
+  imageUrl: "",
+  requiredTierId: "",
+  vehicleTypeId: "",
+  validStartTime: "",
+  validEndTime: "",
   isActive: true,
-}
+};
 
 function validateForm(form) {
-  if (!form.code.trim()) return 'Vui lòng nhập mã voucher'
-  if (form.code.trim().length > 50) return 'Mã voucher tối đa 50 ký tự'
+  if (!form.code.trim()) return "Vui lòng nhập mã voucher";
+  if (form.code.trim().length > 50) return "Mã voucher tối đa 50 ký tự";
   if (form.discountKind === DISCOUNT_KIND.Percent) {
-    if (!form.discountPercent || Number(form.discountPercent) < 1 || Number(form.discountPercent) > 100) {
-      return 'Phần trăm giảm phải từ 1–100'
+    if (
+      !form.discountPercent ||
+      Number(form.discountPercent) < 1 ||
+      Number(form.discountPercent) > 100
+    ) {
+      return "Phần trăm giảm phải từ 1–100";
     }
     if (!form.maxDiscountAmount || Number(form.maxDiscountAmount) < 1) {
-      return 'Vui lòng nhập trần giảm tối đa (VND)'
+      return "Vui lòng nhập trần giảm tối đa (VND)";
     }
-  } else if (form.discountAmount === '' || form.discountAmount == null) {
-    return 'Vui lòng nhập giảm giá'
+  } else if (form.discountAmount === "" || form.discountAmount == null) {
+    return "Vui lòng nhập giảm giá";
   } else {
-    const amount = Number(form.discountAmount)
-    if (amount < 0 || amount > 1_000_000_000) return 'Giảm giá phải từ 0 đến 1.000.000.000 VND'
+    const amount = Number(form.discountAmount);
+    if (amount < 0 || amount > 1_000_000_000)
+      return "Giảm giá phải từ 0 đến 1.000.000.000 VND";
   }
-  if (!form.expiryDate) return 'Vui lòng chọn ngày hết hạn'
-  if (form.maxUsages === '' || form.maxUsages == null) return 'Vui lòng nhập max usages'
-  if (Number(form.maxUsages) < 1) return 'Max usages phải ít nhất 1'
-  if (form.pointsRequired === '' || form.pointsRequired == null) return 'Vui lòng nhập điểm đổi'
-  if (Number(form.pointsRequired) < 0) return 'Điểm đổi không được âm'
-  return null
+  if (!form.expiryDate) return "Vui lòng chọn ngày hết hạn";
+  if (form.maxUsages === "" || form.maxUsages == null)
+    return "Vui lòng nhập max usages";
+  if (Number(form.maxUsages) < 1) return "Max usages phải ít nhất 1";
+  if (form.pointsRequired === "" || form.pointsRequired == null)
+    return "Vui lòng nhập điểm đổi";
+  if (Number(form.pointsRequired) < 0) return "Điểm đổi không được âm";
+  return null;
 }
 
 export default function AdminVouchersPage() {
-  const [vouchers, setVouchers] = useState([])
-  const [tiers, setTiers] = useState([])
-  const [vehicleTypes, setVehicleTypes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState(emptyForm)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [grantTarget, setGrantTarget] = useState(null)
-  const [grantUserIds, setGrantUserIds] = useState('')
-  const [granting, setGranting] = useState(false)
-  const [deactivateTarget, setDeactivateTarget] = useState(null)
-  const [deactivating, setDeactivating] = useState(false)
-  const toast = useToast()
+  const [vouchers, setVouchers] = useState([]);
+  const [tiers, setTiers] = useState([]);
+  const [vehicleTypes, setVehicleTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(emptyForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [grantTarget, setGrantTarget] = useState(null);
+  const [grantUserIds, setGrantUserIds] = useState("");
+  const [granting, setGranting] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const toast = useToast();
 
   const loadVouchers = useCallback(async () => {
-    setLoading(true)
-    setLoadError('')
+    setLoading(true);
+    setLoadError("");
     try {
-      const data = await fetchVouchers()
-      const arr = Array.isArray(data) ? data : []
+      const data = await fetchVouchers();
+      const arr = Array.isArray(data) ? data : [];
       // Chỉ hiển thị voucher thủ công (đổi điểm)
-      const filtered = arr.filter(v => !v.campaignType || v.campaignType === CAMPAIGN_TYPE.Manual)
-      setVouchers(filtered)
+      const filtered = arr.filter(
+        (v) => !v.campaignType || v.campaignType === CAMPAIGN_TYPE.Manual,
+      );
+      setVouchers(filtered);
     } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : 'Không tải được danh sách voucher')
+      setLoadError(
+        err instanceof ApiError
+          ? err.message
+          : "Không tải được danh sách voucher",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    loadVouchers()
-  }, [loadVouchers])
+    loadVouchers();
+  }, [loadVouchers]);
 
   useEffect(() => {
     fetchTiers()
       .then((data) => setTiers(Array.isArray(data) ? data : []))
-      .catch(() => {})
+      .catch(() => {});
     fetchVehicleTypes()
       .then((data) => setVehicleTypes(Array.isArray(data) ? data : []))
-      .catch(() => {})
-  }, [])
+      .catch(() => {});
+  }, []);
 
   const openCreate = () => {
-    setEditingId(null)
+    setEditingId(null);
     setForm({
       ...emptyForm,
-      expiryDate: toDatetimeLocalValue('2026-12-31T23:59:59Z'),
-    })
-    setModalOpen(true)
-  }
+      expiryDate: toDatetimeLocalValue("2026-12-31T23:59:59Z"),
+    });
+    setModalOpen(true);
+  };
 
   const openEdit = (voucher) => {
-    setEditingId(voucher.voucherId)
+    setEditingId(voucher.voucherId);
     setForm({
       code: voucher.code,
       discountKind:
@@ -147,7 +163,7 @@ export default function AdminVouchersPage() {
           : DISCOUNT_KIND.Fixed,
       discountAmount: String(voucher.discountAmount),
       discountPercent:
-        voucher.discountPercent != null ? String(voucher.discountPercent) : '',
+        voucher.discountPercent != null ? String(voucher.discountPercent) : "",
       maxDiscountAmount:
         voucher.maxDiscountAmount != null
           ? String(voucher.maxDiscountAmount)
@@ -157,145 +173,173 @@ export default function AdminVouchersPage() {
       maxUsagePerUser: String(voucher.maxUsagePerUser ?? 1),
       minOrderAmount: String(voucher.minOrderAmount ?? 0),
       expiryDate: toDatetimeLocalValue(voucher.expiryDate),
-      startDate: voucher.startDate ? toDatetimeLocalValue(voucher.startDate) : '',
+      startDate: voucher.startDate
+        ? toDatetimeLocalValue(voucher.startDate)
+        : "",
       voucherType: voucher.voucherType ?? VOUCHER_TYPE.Discount,
-      imageUrl: voucher.imageUrl ?? '',
-      requiredTierId: voucher.requiredTierId ? String(voucher.requiredTierId) : '',
-      vehicleTypeId: voucher.vehicleTypeId ? String(voucher.vehicleTypeId) : '',
+      imageUrl: voucher.imageUrl ?? "",
+      requiredTierId: voucher.requiredTierId
+        ? String(voucher.requiredTierId)
+        : "",
+      vehicleTypeId: voucher.vehicleTypeId ? String(voucher.vehicleTypeId) : "",
       validStartTime: toTimeInputValue(voucher.validStartTime),
       validEndTime: toTimeInputValue(voucher.validEndTime),
       isActive: voucher.isActive !== false,
-    })
-    setModalOpen(true)
-  }
+    });
+    setModalOpen(true);
+  };
 
   const handleSave = async () => {
-    if (saving) return
+    if (saving) return;
 
-    const validationError = validateForm(form)
+    const validationError = validateForm(form);
     if (validationError) {
-      toast.error(validationError)
-      return
+      toast.error(validationError);
+      return;
     }
 
-    const payload = buildVoucherPayload(form)
+    const payload = buildVoucherPayload(form);
 
-    setSaving(true)
+    setSaving(true);
     try {
       if (editingId) {
-        await updateVoucher(editingId, payload)
-        toast.success('Đã cập nhật voucher')
+        await updateVoucher(editingId, payload);
+        toast.success("Đã cập nhật voucher");
       } else {
-        await createVoucher(payload)
-        toast.success('Đã thêm voucher mới')
+        await createVoucher(payload);
+        toast.success("Đã thêm voucher mới");
       }
 
-      setModalOpen(false)
-      await loadVouchers()
+      setModalOpen(false);
+      await loadVouchers();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không lưu được voucher')
+      toast.error(
+        err instanceof ApiError ? err.message : "Không lưu được voucher",
+      );
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (!deleteTarget || deleting) return
+    if (!deleteTarget || deleting) return;
 
-    setDeleting(true)
+    setDeleting(true);
     try {
-      await deleteVoucher(deleteTarget)
-      setDeleteTarget(null)
-      toast.success('Đã xóa voucher')
-      await loadVouchers()
+      await deleteVoucher(deleteTarget);
+      setDeleteTarget(null);
+      toast.success("Đã xóa voucher");
+      await loadVouchers();
     } catch (err) {
-      setDeleteTarget(null)
-      const msg = err instanceof ApiError ? err.message : String(err)
-      if (msg.toLowerCase().includes('claimed')) {
-        setDeactivateTarget(deleteTarget)
+      setDeleteTarget(null);
+      const msg = err instanceof ApiError ? err.message : String(err);
+      if (msg.toLowerCase().includes("claimed")) {
+        setDeactivateTarget(deleteTarget);
       } else {
-        toast.error(msg)
+        toast.error(msg);
       }
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }
+  };
 
   const handleDeactivate = async () => {
-    if (!deactivateTarget || deactivating) return
+    if (!deactivateTarget || deactivating) return;
 
-    setDeactivating(true)
+    setDeactivating(true);
     try {
-      await updateVoucher(deactivateTarget, { isActive: false })
-      toast.success('Đã hủy kích hoạt voucher. Voucher không còn khả dụng với khách.')
-      setDeactivateTarget(null)
-      await loadVouchers()
+      await updateVoucher(deactivateTarget, { isActive: false });
+      toast.success(
+        "Đã hủy kích hoạt voucher. Voucher không còn khả dụng với khách.",
+      );
+      setDeactivateTarget(null);
+      await loadVouchers();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không hủy kích hoạt được')
+      toast.error(
+        err instanceof ApiError ? err.message : "Không hủy kích hoạt được",
+      );
     } finally {
-      setDeactivating(false)
+      setDeactivating(false);
     }
-  }
+  };
 
   const handleGrant = async () => {
-    if (!grantTarget || granting) return
+    if (!grantTarget || granting) return;
     const userIds = grantUserIds
       .split(/[,;\s]+/)
       .map((v) => Number(v.trim()))
-      .filter((id) => id > 0)
+      .filter((id) => id > 0);
     if (!userIds.length) {
-      toast.warning('Nhập ít nhất một User ID')
-      return
+      toast.warning("Nhập ít nhất một User ID");
+      return;
     }
-    setGranting(true)
+    setGranting(true);
     try {
-      await grantVoucherToUsers(grantTarget.voucherId, userIds)
-      toast.success(`Đã cấp voucher ${grantTarget.code} cho ${userIds.length} khách`)
-      setGrantTarget(null)
-      setGrantUserIds('')
-      await loadVouchers()
+      await grantVoucherToUsers(grantTarget.voucherId, userIds);
+      toast.success(
+        `Đã cấp voucher ${grantTarget.code} cho ${userIds.length} khách`,
+      );
+      setGrantTarget(null);
+      setGrantUserIds("");
+      await loadVouchers();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Không cấp được voucher')
+      toast.error(
+        err instanceof ApiError ? err.message : "Không cấp được voucher",
+      );
     } finally {
-      setGranting(false)
+      setGranting(false);
     }
-  }
+  };
 
   const columns = [
-    { key: 'code', label: 'Mã voucher', render: (voucher) => <span className="font-mono font-medium">{voucher.code}</span> },
-    { key: 'discount', label: 'Giảm giá', render: (voucher) => formatVoucherDiscount(voucher) },
     {
-      key: 'validity',
-      label: 'Thời gian hiệu lực',
-      tdClassName: 'text-xs text-on-surface-variant',
+      key: "code",
+      label: "Mã voucher",
+      render: (voucher) => (
+        <span className="font-mono font-medium">{voucher.code}</span>
+      ),
+    },
+    {
+      key: "discount",
+      label: "Giảm giá",
+      render: (voucher) => formatVoucherDiscount(voucher),
+    },
+    {
+      key: "validity",
+      label: "Thời gian hiệu lực",
+      tdClassName: "text-xs text-on-surface-variant",
       render: (voucher) => formatVoucherValidityWindow(voucher),
     },
     {
-      key: 'daily',
-      label: 'Thời gian',
-      tdClassName: 'text-xs text-on-surface-variant',
+      key: "daily",
+      label: "Thời gian",
+      tdClassName: "text-xs text-on-surface-variant",
       render: (voucher) => formatVoucherDailyWindow(voucher),
     },
     {
-      key: 'status',
-      label: 'Trạng thái',
-      render: (voucher) => <StatusBadge status={describeVoucherUsability(voucher)} />,
+      key: "status",
+      label: "Trạng thái",
+      render: (voucher) => (
+        <StatusBadge status={describeVoucherUsability(voucher)} />
+      ),
     },
     {
-      key: 'usage',
-      label: 'Đã dùng',
-      render: (voucher) => `${voucher.currentUsageCount ?? voucher.redeemedCount ?? 0} / ${voucher.maxUsages}`,
+      key: "usage",
+      label: "Đã dùng",
+      render: (voucher) =>
+        `${voucher.currentUsageCount ?? voucher.redeemedCount ?? 0} / ${voucher.maxUsages}`,
     },
     {
-      key: 'type',
-      label: 'Loại',
-      tdClassName: 'text-on-surface-variant',
-      render: (voucher) => VOUCHER_TYPE_LABEL[voucher.voucherType] ?? voucher.voucherType,
+      key: "type",
+      label: "Loại",
+      tdClassName: "text-on-surface-variant",
+      render: (voucher) =>
+        VOUCHER_TYPE_LABEL[voucher.voucherType] ?? voucher.voucherType,
     },
     {
-      key: 'actions',
-      label: 'Thao tác',
-      width: '200px',
+      key: "actions",
+      label: "Thao tác",
+      width: "200px",
       renderActions: (voucher) => (
         <div className="flex gap-2">
           <button
@@ -303,7 +347,10 @@ export default function AdminVouchersPage() {
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-primary hover:bg-primary-container/20"
             onClick={() => openEdit(voucher)}
           >
-            <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-[16px]"
+              style={{ fontVariationSettings: "'FILL' 0" }}
+            >
               edit
             </span>
             Sửa
@@ -312,11 +359,14 @@ export default function AdminVouchersPage() {
             type="button"
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-secondary hover:bg-secondary-container/20"
             onClick={() => {
-              setGrantTarget(voucher)
-              setGrantUserIds('')
+              setGrantTarget(voucher);
+              setGrantUserIds("");
             }}
           >
-            <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-[16px]"
+              style={{ fontVariationSettings: "'FILL' 0" }}
+            >
               card_giftcard
             </span>
             Cấp
@@ -326,7 +376,10 @@ export default function AdminVouchersPage() {
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-error hover:bg-error-container/20"
             onClick={() => setDeleteTarget(voucher.voucherId)}
           >
-            <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 0" }}>
+            <span
+              className="material-symbols-outlined text-[16px]"
+              style={{ fontVariationSettings: "'FILL' 0" }}
+            >
               delete
             </span>
             Xóa
@@ -334,9 +387,11 @@ export default function AdminVouchersPage() {
         </div>
       ),
     },
-  ]
+  ];
 
-  const filteredVouchers = vouchers.filter((v) => Number(v.campaignType ?? 0) === CAMPAIGN_TYPE.Manual)
+  const filteredVouchers = vouchers.filter(
+    (v) => Number(v.campaignType ?? 0) === CAMPAIGN_TYPE.Manual,
+  );
 
   return (
     <div className="w-full">
@@ -373,8 +428,8 @@ export default function AdminVouchersPage() {
 
       <FormModal
         open={modalOpen}
-        title={editingId ? 'Sửa voucher' : 'Thêm voucher'}
-        submitLabel={saving ? 'Đang lưu…' : 'Lưu'}
+        title={editingId ? "Sửa voucher" : "Thêm voucher"}
+        submitLabel={saving ? "Đang lưu…" : "Lưu"}
         onClose={() => !saving && setModalOpen(false)}
         onSubmit={handleSave}
         size="xl"
@@ -388,7 +443,9 @@ export default function AdminVouchersPage() {
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.voucherType}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, voucherType: Number(e.target.value) }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, voucherType: Number(e.target.value) }))
+              }
             >
               {VOUCHER_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -403,7 +460,9 @@ export default function AdminVouchersPage() {
             required
             value={form.code}
             disabled={saving}
-            onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))
+            }
             className="font-mono uppercase"
           />
 
@@ -421,9 +480,9 @@ export default function AdminVouchersPage() {
                 value={form.pointsRequired}
                 disabled={saving}
                 onChange={(e) => {
-                  const value = e.target.value
-                  if (value !== '' && !/^\d+$/.test(value)) return
-                  setForm((f) => ({ ...f, pointsRequired: value }))
+                  const value = e.target.value;
+                  if (value !== "" && !/^\d+$/.test(value)) return;
+                  setForm((f) => ({ ...f, pointsRequired: value }));
                 }}
               />
             </label>
@@ -438,9 +497,9 @@ export default function AdminVouchersPage() {
                 value={form.minOrderAmount}
                 disabled={saving}
                 onChange={(e) => {
-                  const value = e.target.value
-                  if (value !== '' && !/^\d+$/.test(value)) return
-                  setForm((f) => ({ ...f, minOrderAmount: value }))
+                  const value = e.target.value;
+                  if (value !== "" && !/^\d+$/.test(value)) return;
+                  setForm((f) => ({ ...f, minOrderAmount: value }));
                 }}
               />
             </label>
@@ -457,9 +516,9 @@ export default function AdminVouchersPage() {
                 value={form.maxUsages}
                 disabled={saving}
                 onChange={(e) => {
-                  const value = e.target.value
-                  if (value !== '' && !/^\d+$/.test(value)) return
-                  setForm((f) => ({ ...f, maxUsages: value }))
+                  const value = e.target.value;
+                  if (value !== "" && !/^\d+$/.test(value)) return;
+                  setForm((f) => ({ ...f, maxUsages: value }));
                 }}
               />
             </label>
@@ -474,9 +533,9 @@ export default function AdminVouchersPage() {
                 value={form.maxUsagePerUser}
                 disabled={saving}
                 onChange={(e) => {
-                  const value = e.target.value
-                  if (value !== '' && !/^\d+$/.test(value)) return
-                  setForm((f) => ({ ...f, maxUsagePerUser: value }))
+                  const value = e.target.value;
+                  if (value !== "" && !/^\d+$/.test(value)) return;
+                  setForm((f) => ({ ...f, maxUsagePerUser: value }));
                 }}
               />
             </label>
@@ -487,7 +546,9 @@ export default function AdminVouchersPage() {
               label="Thời gian bắt đầu"
               value={form.startDate}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, startDate: e.target.value }))
+              }
               helper="Để trống = có hiệu lực ngay khi kích hoạt."
             />
             <Input
@@ -495,7 +556,9 @@ export default function AdminVouchersPage() {
               label="Thời gian kết thúc"
               value={form.expiryDate}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, expiryDate: e.target.value }))
+              }
             />
           </div>
 
@@ -505,8 +568,12 @@ export default function AdminVouchersPage() {
             endValue={form.validEndTime}
             disabled={saving}
             hint="Khung giờ trong ngày khách được dùng voucher. Để trống = cả ngày."
-            onStartChange={(value) => setForm((f) => ({ ...f, validStartTime: value }))}
-            onEndChange={(value) => setForm((f) => ({ ...f, validEndTime: value }))}
+            onStartChange={(value) =>
+              setForm((f) => ({ ...f, validStartTime: value }))
+            }
+            onEndChange={(value) =>
+              setForm((f) => ({ ...f, validEndTime: value }))
+            }
           />
           <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
@@ -516,7 +583,9 @@ export default function AdminVouchersPage() {
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.requiredTierId}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, requiredTierId: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, requiredTierId: e.target.value }))
+              }
             >
               <option value="">— Không yêu cầu —</option>
               {tiers.map((tier) => (
@@ -534,11 +603,16 @@ export default function AdminVouchersPage() {
               className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2"
               value={form.vehicleTypeId}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, vehicleTypeId: e.target.value }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, vehicleTypeId: e.target.value }))
+              }
             >
               <option value="">— Tất cả loại xe —</option>
               {vehicleTypes.map((vt) => (
-                <option key={vt.vehicleTypeId ?? vt.id} value={vt.vehicleTypeId ?? vt.id}>
+                <option
+                  key={vt.vehicleTypeId ?? vt.id}
+                  value={vt.vehicleTypeId ?? vt.id}
+                >
                   {vt.name}
                 </option>
               ))}
@@ -549,11 +623,13 @@ export default function AdminVouchersPage() {
               type="checkbox"
               checked={form.isActive}
               disabled={saving}
-              onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, isActive: e.target.checked }))
+              }
             />
             Đang kích hoạt
           </label>
-          <label className="block space-y-1">
+          {/* <label className="block space-y-1">
             <span className="text-xs font-semibold tracking-wider text-on-surface-variant uppercase">
               URL ảnh (tùy chọn)
             </span>
@@ -564,20 +640,21 @@ export default function AdminVouchersPage() {
               disabled={saving}
               onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
             />
-          </label>
+          </label> */}
         </div>
       </FormModal>
 
       <FormModal
         open={Boolean(grantTarget)}
-        title={`Cấp voucher ${grantTarget?.code ?? ''}`}
-        submitLabel={granting ? 'Đang cấp…' : 'Cấp voucher'}
+        title={`Cấp voucher ${grantTarget?.code ?? ""}`}
+        submitLabel={granting ? "Đang cấp…" : "Cấp voucher"}
         onClose={() => !granting && setGrantTarget(null)}
         onSubmit={handleGrant}
       >
         <div className="space-y-3">
           <p className="text-sm text-on-surface-variant">
-            Nhập User ID (cách nhau bởi dấu phẩy). Có tra cứu ID tại trang Người dùng.
+            Nhập User ID (cách nhau bởi dấu phẩy). Có tra cứu ID tại trang Người
+            dùng.
           </p>
           <textarea
             className="w-full rounded-lg border border-outline-variant px-3 py-2 font-mono text-sm"
@@ -594,7 +671,7 @@ export default function AdminVouchersPage() {
         open={Boolean(deleteTarget)}
         title="Xóa voucher"
         message="Bạn chắc chắn muốn xóa voucher này?"
-        confirmLabel={deleting ? 'Đang xóa…' : 'Xóa'}
+        confirmLabel={deleting ? "Đang xóa…" : "Xóa"}
         variant="danger"
         loading={deleting}
         onConfirm={handleDelete}
@@ -605,12 +682,12 @@ export default function AdminVouchersPage() {
         open={Boolean(deactivateTarget)}
         title="Không thể xóa voucher"
         message="Voucher đã có khách nhận, không thể xóa. Bạn có muốn hủy kích hoạt voucher này để ngăn khách sử dụng không?"
-        confirmLabel={deactivating ? 'Đang hủy…' : 'Hủy kích hoạt'}
+        confirmLabel={deactivating ? "Đang hủy…" : "Hủy kích hoạt"}
         variant="warning"
         loading={deactivating}
         onConfirm={handleDeactivate}
         onCancel={() => !deactivating && setDeactivateTarget(null)}
       />
     </div>
-  )
+  );
 }
