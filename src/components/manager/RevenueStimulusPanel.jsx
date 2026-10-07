@@ -128,7 +128,8 @@ function ProposalModal({ proposal, mode, busy, onClose, onSave }) {
                   }))
                 }
                 required={
-                  Number(form.discountPercent) !== Number(proposal.discountPercent)
+                  Number(form.discountPercent) !==
+                  Number(proposal.discountPercent)
                 }
                 placeholder="Bắt buộc nếu đổi mức giảm"
               />
@@ -239,11 +240,16 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
           setLoading(false);
           setMessage({
             type: "error",
-            text: error instanceof ApiError ? error.message : "Không tải được chi nhánh.",
+            text:
+              error instanceof ApiError
+                ? error.message
+                : "Không tải được chi nhánh.",
           });
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isAdmin]);
 
   const loadProposals = useCallback(async () => {
@@ -256,13 +262,14 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
         : await fetchRevenueStimulusProposals();
       if (requestId === proposalRequestRef.current) setProposals(items);
     } catch (error) {
-      if (requestId === proposalRequestRef.current) setMessage({
-        type: "error",
-        text:
-          error instanceof ApiError
-            ? `Không kết nối được AI local: ${error.message}`
-            : "Không tải được đề xuất voucher.",
-      });
+      if (requestId === proposalRequestRef.current)
+        setMessage({
+          type: "error",
+          text:
+            error instanceof ApiError
+              ? `Không kết nối được AI local: ${error.message}`
+              : "Không tải được đề xuất voucher.",
+        });
     } finally {
       if (requestId === proposalRequestRef.current) setLoading(false);
     }
@@ -322,7 +329,10 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
     try {
       if (action === "approve")
         await (isAdmin
-          ? approveAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId)
+          ? approveAdminRevenueStimulusProposal(
+              proposal.branchId,
+              proposal.voucherId,
+            )
           : approveRevenueStimulusProposal(proposal.voucherId));
       if (action === "modify") {
         const percentChanged =
@@ -341,13 +351,24 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
           proposalNote: payload.proposalNote.trim() || null,
         };
         await (isAdmin
-          ? modifyAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId, modification)
+          ? modifyAdminRevenueStimulusProposal(
+              proposal.branchId,
+              proposal.voucherId,
+              modification,
+            )
           : modifyRevenueStimulusProposal(proposal.voucherId, modification));
       }
       if (action === "reject") {
         await (isAdmin
-          ? rejectAdminRevenueStimulusProposal(proposal.branchId, proposal.voucherId, payload.rejectReason)
-          : rejectRevenueStimulusProposal(proposal.voucherId, payload.rejectReason));
+          ? rejectAdminRevenueStimulusProposal(
+              proposal.branchId,
+              proposal.voucherId,
+              payload.rejectReason,
+            )
+          : rejectRevenueStimulusProposal(
+              proposal.voucherId,
+              payload.rejectReason,
+            ));
       }
       setModal(null);
       setMessage({
@@ -424,7 +445,9 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
             >
               <option value="">Chọn chi nhánh</option>
               {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>{branch.name}</option>
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
               ))}
             </select>
           )}
@@ -546,7 +569,7 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
 
       {loading ? (
         <p className="mt-3 text-sm text-on-surface-variant">
-          Đang tải đề xuất từ AI local…
+          Đang tải đề xuất...
         </p>
       ) : proposals.length === 0 ? (
         <p className="mt-3 rounded-xl border border-dashed border-outline-variant p-6 text-center text-sm text-on-surface-variant">
@@ -565,10 +588,11 @@ export default function RevenueStimulusPanel({ role = "manager" }) {
                     {proposal.code}
                   </p>
                   <p className="mt-1 text-xs text-on-surface-variant">
-                    Giảm {Number(proposal.discountPercent) > 0
+                    Giảm{" "}
+                    {Number(proposal.discountPercent) > 0
                       ? `${proposal.discountPercent}%`
-                      : formatVnd(proposal.discountAmount)} ·{" "}
-                    {proposal.maxUsages?.toLocaleString("vi-VN")} lượt ·{" "}
+                      : formatVnd(proposal.discountAmount)}{" "}
+                    · {proposal.maxUsages?.toLocaleString("vi-VN")} lượt ·{" "}
                     {proposal.expiryDays} ngày
                   </p>
                 </div>
